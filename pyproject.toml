@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "openclaw-voice-server"
+version = "0.1.0"
+description = "Standalone browser-to-OpenClaw voice server."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "elevenlabs>=2.11.0",
+  "faster-whisper>=1.1.0",
+  "httpx>=0.28.0",
+  "numpy>=2.0.0",
+  "websockets>=15.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+]
+
+[project.scripts]
+openclaw-voice-server = "openclaw_voice_server.app:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
