@@ -3,7 +3,13 @@ __pycache__/
 .venv/
 dist/
 build/
+/media/
 *.pyc
 *.pyo
 *.pyd
-
+config.json
+.env
+AGENTS.md
+config.pre-setup-reset.json
+*.Zone.Identifier
+*:Zone.Identifier

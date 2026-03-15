@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenClaw Voice Setup</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #090909;
+    --card: #141414;
+    --card-2: #1d1d1d;
+    --text: #f3f3f3;
+    --muted: #a0a0a0;
+    --line: #2b2b2b;
+    --ok: #5bc08a;
+    --bad: #ff6b6b;
+    --accent: #d6d6d6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+  }
+  main {
+    width: min(860px, calc(100vw - 32px));
+    margin: 0 auto;
+    padding: 28px 0 64px;
+  }
+  h1, h2, p { margin: 0; }
+  header {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .intro {
+    background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 18px 20px;
+    color: var(--accent);
+    font-size: 1.04rem;
+    line-height: 1.6;
+  }
+  .paths {
+    color: var(--muted);
+    font-size: 0.92rem;
+    line-height: 1.5;
+    display: none;
+  }
+  .section {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 18px 20px 20px;
+    display: grid;
+    gap: 16px;
+    margin-top: 16px;
+  }
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+  }
+  .section-title {
+    display: grid;
+    gap: 6px;
+  }
+  .section-title p {
+    color: var(--muted);
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+  .badge {
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 0.8rem;
+    letter-spacing: 0.02em;
+    background: var(--card-2);
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .badge.ok { color: var(--ok); }
+  .badge.bad { color: var(--bad); }
+  .grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  }
+  label, .option-group {
+    display: grid;
+    gap: 6px;
+    font-size: 0.95rem;
+  }
+  input, select, button {
+    font: inherit;
+  }
+  input, select {
+    width: 100%;
+    border: 1px solid var(--line);
+    background: #0f0f0f;
+    color: var(--text);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .checks {
+    display: grid;
+    gap: 8px;
+  }
+  .check {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    color: var(--accent);
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  button {
+    border: 1px solid var(--line);
+    background: #202020;
+    color: var(--text);
+    border-radius: 999px;
+    padding: 10px 14px;
+    cursor: pointer;
+  }
+  button.primary {
+    background: #f0f0f0;
+    color: #050505;
+  }
+  button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .result {
+    min-height: 1.4em;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+  .note {
+    color: var(--muted);
+    font-size: 0.98rem;
+    line-height: 1.5;
+  }
+  .result.ok { color: var(--ok); }
+  .result.bad { color: var(--bad); }
+  .hidden { display: none; }
+  .summary {
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  a.launch {
+    display: inline-flex;
+    text-decoration: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    padding: 12px 16px;
+    background: #f0f0f0;
+    color: #050505;
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>OpenClaw Voice Setup</h1>
+    <div class="intro" id="intro"></div>
+    <div class="paths" id="paths"></div>
+  </header>
+
+  <section class="section" id="stt-section">
+    <div class="section-header">
+      <div class="section-title">
+        <h2>1. STT</h2>
+        <p>Choose one Whisper-family backend, model, and device. This step must validate and save before the rest of setup appears.</p>
+      </div>
+      <div class="badge" id="stt-badge">Not checked</div>
+    </div>
+    <div class="grid">
+      <label>Backend
+        <select id="stt-default"></select>
+      </label>
+      <label>Language
+        <select id="stt-language"></select>
+      </label>
+      <label>Device
+        <select id="stt-device">
+          <option value="cpu">CPU</option>
+          <option value="cuda">GPU (CUDA)</option>
+        </select>
+      </label>
+      <label>Compute type
+        <select id="stt-compute-type">
+          <option value="int8">int8</option>
+          <option value="float16">float16</option>
+          <option value="int8_float16">int8_float16</option>
+          <option value="float32">float32</option>
+        </select>
+      </label>
+      <label id="model-group-faster-whisper">Faster Whisper model
+        <select id="model-faster-whisper"></select>
+      </label>
+      <label id="model-group-whisper">OpenAI Whisper model
+        <select id="model-whisper"></select>
+      </label>
+    </div>
+    <div class="note" id="gpu-note"></div>
+    <div class="actions">
+      <button class="primary" id="validate-stt">Validate STT And Save</button>
+      <button id="continue-stt">Continue With Validated STT</button>
+    </div>
+    <div class="result" id="stt-result"></div>
+  </section>
+
+  <section class="section hidden" id="tts-section">
+    <div class="section-header">
+      <div class="section-title">
+        <h2>2. TTS</h2>
+        <p>Choose one speech provider. This step only appears after STT has been validated and saved.</p>
+      </div>
+      <div class="badge" id="tts-badge">Not checked</div>
+    </div>
+    <div class="grid">
+      <label>Provider
+        <select id="tts-default"></select>
+      </label>
+    </div>
+    <div class="actions">
+      <button class="primary" id="validate-tts">Validate TTS Provider And Save</button>
+      <button id="continue-tts">Continue With Validated TTS</button>
+    </div>
+    <div class="result" id="tts-result"></div>
+  </section>
+
+  <section class="section hidden" id="edge-section">
+    <div class="section-header">
+      <div class="section-title">
+        <h2>3. Edge Voice</h2>
+        <p>Choose an Edge voice and test synthesis immediately before it is saved.</p>
+      </div>
+      <div class="badge" id="edge-badge">Not checked</div>
+    </div>
+    <div class="grid">
+      <label>Voice
+        <select id="edge-voice"></select>
+      </label>
+      <label>Rate
+        <input id="edge-rate" type="text">
+      </label>
+    </div>
+    <div class="actions">
+      <button class="primary" id="load-edge-voices">Load Edge Voices</button>
+      <button class="primary" id="validate-edge">Validate Edge Voice And Save</button>
+      <button id="continue-edge">Continue With Validated Edge</button>
+    </div>
+    <div class="result" id="edge-result"></div>
+  </section>
+
+  <section class="section hidden" id="eleven-section">
+    <div class="section-header">
+      <div class="section-title">
+        <h2>4. ElevenLabs</h2>
+        <p>Validate the API key first, then choose one of your saved account voices here or paste a voice ID manually before saving.</p>
+      </div>
+      <div class="badge" id="eleven-badge">Not checked</div>
+    </div>
+    <div class="grid">
+      <label>API key
+        <input id="eleven-api-key" type="password" placeholder="Stored key will be reused if left blank">
+      </label>
+      <label>Model
+        <input id="eleven-model" type="text">
+      </label>
+      <label>Saved account voices
+        <select id="eleven-voice-select">
+          <option value="">Load voices after validating the API key</option>
+        </select>
+      </label>
+      <label>Voice ID
+        <input id="eleven-voice-id" type="text">
+      </label>
+      <label>Resolved voice name
+        <input id="eleven-voice-name" type="text" disabled>
+      </label>
+    </div>
+    <div class="actions">
+      <button class="primary" id="validate-eleven-key">Validate API Key And Save</button>
+      <button id="load-eleven-voices">Load Saved Voices</button>
+      <button class="primary" id="validate-eleven-voice">Validate Voice And Save</button>
+      <button id="continue-eleven">Continue With Validated ElevenLabs</button>
+    </div>
+    <div class="result" id="eleven-result"></div>
+  </section>
+
+  <section class="section hidden" id="gateway-section">
+    <div class="section-header">
+      <div class="section-title">
+        <h2>5. Conversation Backend</h2>
+        <p>Validate the direct-agent gateway before launch. This check runs from the local voice server, so use the local OpenClaw gateway URL instead of the public browser-facing .ts.net address. The app adds the chat completions API path automatically and reuses one stable agent session.</p>
+      </div>
+      <div class="badge" id="gateway-badge">Not checked</div>
+    </div>
+    <div class="grid">
+      <label>Gateway URL
+        <input id="gateway-url" type="text" placeholder="http://127.0.0.1:18789">
+      </label>
+      <label>Gateway token
+        <input id="gateway-token" type="password" placeholder="Stored token will be reused if left blank">
+      </label>
+      <label>Agent Model
+        <input id="gateway-model" type="text" placeholder="openclaw:main">
+      </label>
+      <label>Agent Session
+        <input id="gateway-session-key" type="text" placeholder="agent:main:voice-chat-main">
+      </label>
+    </div>
+    <div class="note" id="gateway-note"></div>
+    <div class="actions">
+      <button class="primary" id="validate-gateway">Validate Gateway And Save</button>
+      <button id="continue-gateway">Continue With Validated Gateway</button>
+    </div>
+    <div class="result" id="gateway-result"></div>
+  </section>
+
+  <section class="section hidden" id="launch-section">
+    <div class="section-header">
+      <div class="section-title">
+        <h2>Launch</h2>
+        <p>The voice app only launches after the selected providers, keys, models, and voices have already been validated and saved.</p>
+      </div>
+      <div class="badge" id="launch-badge">Waiting</div>
+    </div>
+    <div class="summary" id="launch-summary"></div>
+    <div class="actions">
+      <a class="launch" id="launch-link" href="./">Open Voice App</a>
+    </div>
+  </section>
+</main>
+
+<script>
+let setupState = null;
+let edgeVoices = [];
+let elevenVoices = [];
+const STT_LANGUAGES = [
+  ["de", "German"],
+  ["en", "English"],
+  ["fr", "French"],
+  ["es", "Spanish"],
+  ["it", "Italian"],
+  ["nl", "Dutch"],
+  ["pt", "Portuguese"],
+  ["pl", "Polish"],
+  ["ru", "Russian"],
+  ["tr", "Turkish"],
+  ["uk", "Ukrainian"],
+];
+
+function currentSttBackend() {
+  return document.getElementById('stt-default').value;
+}
+
+function currentTtsProvider() {
+  return document.getElementById('tts-default').value;
+}
+
+function updateDeviceNotes() {
+  const device = (document.getElementById('stt-device').value || '').trim().toLowerCase();
+  const gpuNote = document.getElementById('gpu-note');
+  if (device.startsWith('cuda') || device === 'gpu') {
+    gpuNote.textContent = `${setupState?.hints?.gpu_note || 'GPU mode currently targets NVIDIA CUDA.'} Recommended compute type: float16.`;
+  } else {
+    gpuNote.textContent = 'CPU mode works without CUDA and is the safest default. Recommended compute type: int8.';
+  }
+}
+
+function resolveAppBase() {
+  return new URL('.', window.location.href);
+}
+
+const APP_BASE = resolveAppBase();
+const appUrl = (path) => new URL(path, APP_BASE).toString();
+
+function setResult(id, text, ok = null) {
+  const el = document.getElementById(id);
+  el.textContent = text || '';
+  el.classList.remove('ok', 'bad');
+  if (ok === true) el.classList.add('ok');
+  if (ok === false) el.classList.add('bad');
+}
+
+function setBadge(id, text, ok = null) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.classList.remove('ok', 'bad');
+  if (ok === true) el.classList.add('ok');
+  if (ok === false) el.classList.add('bad');
+}
+
+function updateSelectOptions(select, values, labels = {}) {
+  const current = select.value;
+  select.innerHTML = '';
+  for (const value of values) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = labels[value] || value;
+    select.appendChild(option);
+  }
+  if (values.includes(current)) {
+    select.value = current;
+  } else if (values.length > 0) {
+    select.value = values[0];
+  }
+}
+
+function updateBackendSpecificFields() {
+  const backend = currentSttBackend();
+  document.getElementById('model-group-faster-whisper').classList.toggle('hidden', backend !== 'faster-whisper');
+  document.getElementById('model-group-whisper').classList.toggle('hidden', backend !== 'whisper');
+}
+
+function recommendedComputeType() {
+  return document.getElementById('stt-device').value === 'cuda' ? 'float16' : 'int8';
+}
+
+function applyRecommendedComputeType() {
+  document.getElementById('stt-compute-type').value = recommendedComputeType();
+}
+
+function renderElevenVoiceOptions(voices) {
+  elevenVoices = voices;
+  const select = document.getElementById('eleven-voice-select');
+  const currentVoiceId = document.getElementById('eleven-voice-id').value.trim();
+  select.innerHTML = '';
+
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = voices.length ? 'Choose one of your saved voices' : 'No saved voices loaded';
+  select.appendChild(placeholder);
+
+  for (const voice of voices) {
+    const option = document.createElement('option');
+    option.value = voice.voice_id;
+    option.textContent = voice.name;
+    select.appendChild(option);
+  }
+
+  if (currentVoiceId && voices.some((voice) => voice.voice_id === currentVoiceId)) {
+    select.value = currentVoiceId;
+  } else {
+    select.value = '';
+  }
+}
+
+function syncElevenVoiceSelectionFromId() {
+  const voiceId = document.getElementById('eleven-voice-id').value.trim();
+  const voiceName = document.getElementById('eleven-voice-name');
+  const select = document.getElementById('eleven-voice-select');
+  const match = elevenVoices.find((voice) => voice.voice_id === voiceId);
+
+  select.value = match ? voiceId : '';
+  if (match) {
+    voiceName.value = match.name;
+    return;
+  }
+  if (voiceId !== (setupState?.saved?.tts?.elevenlabs_voice_id || '')) {
+    voiceName.value = '';
+  }
+}
+
+function getEffectiveStatus() {
+  const status = setupState?.status || {};
+  const saved = setupState?.saved;
+  if (!saved) {
+    return {
+      stt_ready: false,
+      tts_ready: false,
+      edge_ready: false,
+      eleven_ready: false,
+      gateway_ready: false,
+      runtime_ready: false,
+    };
+  }
+
+  const sttSaved = saved.stt || {};
+  const currentBackend = currentSttBackend();
+  const sttReady = Boolean(
+    status.stt_ready
+    && currentBackend === sttSaved.default_backend
+    && document.getElementById('stt-language').value.trim() === sttSaved.language
+    && document.getElementById('stt-device').value === sttSaved.device
+    && document.getElementById('stt-compute-type').value === sttSaved.compute_type
+    && (
+      currentBackend === 'faster-whisper'
+        ? document.getElementById('model-faster-whisper').value === sttSaved.backend_models['faster-whisper']
+        : document.getElementById('model-whisper').value === sttSaved.backend_models.whisper
+    )
+  );
+
+  const ttsSaved = saved.tts || {};
+  const currentProvider = currentTtsProvider();
+  const ttsReady = Boolean(
+    sttReady
+    && status.tts_selection_ready
+    && currentProvider === ttsSaved.default_provider
+  );
+
+  const edgeReady = Boolean(
+    ttsReady
+    && currentProvider === 'edge'
+    && status.edge_ready
+    && document.getElementById('edge-voice').value === ttsSaved.edge_voice
+    && document.getElementById('edge-rate').value.trim() === ttsSaved.edge_rate
+  );
+
+  const elevenReady = Boolean(
+    ttsReady
+    && currentProvider === 'elevenlabs'
+    && status.eleven_key_ready
+    && status.eleven_voice_ready
+    && document.getElementById('eleven-api-key').value.trim() === ''
+    && document.getElementById('eleven-model').value.trim() === ttsSaved.elevenlabs_model
+    && document.getElementById('eleven-voice-id').value.trim() === ttsSaved.elevenlabs_voice_id
+  );
+
+  const gatewaySaved = saved.gateway || {};
+  const savedSessionKey = gatewaySaved.session_key || (setupState?.hints?.default_voice_session_key || '');
+  const gatewayReady = Boolean(
+    (edgeReady || elevenReady)
+    && status.gateway_ready
+    && document.getElementById('gateway-url').value.trim() === gatewaySaved.url
+    && document.getElementById('gateway-model').value.trim() === gatewaySaved.model
+    && document.getElementById('gateway-session-key').value.trim() === savedSessionKey
+    && document.getElementById('gateway-token').value.trim() === ''
+  );
+
+  return {
+    stt_ready: sttReady,
+    tts_ready: ttsReady,
+    edge_ready: edgeReady,
+    eleven_ready: elevenReady,
+    gateway_ready: gatewayReady,
+    runtime_ready: gatewayReady,
+  };
+}
+
+function updateFlowVisibility() {
+  const effective = getEffectiveStatus();
+  const currentProvider = currentTtsProvider();
+  const showTts = effective.stt_ready;
+  const showEdge = showTts && effective.tts_ready && currentProvider === 'edge';
+  const showEleven = showTts && effective.tts_ready && currentProvider === 'elevenlabs';
+  const providerReady = showEdge
+    ? effective.edge_ready
+    : showEleven
+      ? effective.eleven_ready
+      : false;
+  const showGateway = showTts && effective.tts_ready && providerReady;
+  const showLaunch = showGateway && effective.gateway_ready;
+
+  document.getElementById('tts-section').classList.toggle('hidden', !showTts);
+  document.getElementById('edge-section').classList.toggle('hidden', !showEdge);
+  document.getElementById('eleven-section').classList.toggle('hidden', !showEleven);
+  document.getElementById('gateway-section').classList.toggle('hidden', !showGateway);
+  document.getElementById('launch-section').classList.toggle('hidden', !showLaunch);
+
+  setBadge('stt-badge', effective.stt_ready ? 'Validated' : 'Needs validation', effective.stt_ready);
+  setBadge('tts-badge', effective.tts_ready ? 'Validated' : 'Needs validation', effective.tts_ready);
+  setBadge('edge-badge', effective.edge_ready ? 'Validated' : 'Needs validation', effective.edge_ready);
+  setBadge('eleven-badge', effective.eleven_ready ? 'Validated' : 'Needs validation', effective.eleven_ready);
+  setBadge('gateway-badge', effective.gateway_ready ? 'Validated' : 'Needs validation', effective.gateway_ready);
+  setBadge('launch-badge', effective.runtime_ready ? 'Ready' : 'Waiting', effective.runtime_ready);
+  document.getElementById('continue-stt').disabled = !effective.stt_ready;
+  document.getElementById('continue-tts').disabled = !effective.tts_ready;
+  document.getElementById('continue-edge').disabled = !effective.edge_ready;
+  document.getElementById('continue-eleven').disabled = !effective.eleven_ready;
+  document.getElementById('continue-gateway').disabled = !effective.gateway_ready;
+  document.getElementById('launch-link').style.pointerEvents = effective.runtime_ready ? 'auto' : 'none';
+  document.getElementById('launch-link').style.opacity = effective.runtime_ready ? '1' : '0.45';
+  document.getElementById('launch-summary').textContent = effective.runtime_ready
+    ? 'Validated configuration saved. The voice app can be opened now.'
+    : 'Finish validating the required sections before launch.';
+}
+
+async function fetchJson(url, options = {}) {
+  let response;
+  try {
+    response = await fetch(url, {
+      headers: { 'content-type': 'application/json' },
+      ...options,
+    });
+  } catch (error) {
+    const detail = error instanceof Error && error.message ? error.message : 'Network request failed.';
+    throw new Error(`Could not reach ${url}: ${detail}`);
+  }
+  const rawText = await response.text();
+  let payload;
+  try {
+    payload = rawText ? JSON.parse(rawText) : {};
+  } catch {
+    payload = { error: rawText || `HTTP ${response.status}` };
+  }
+  if (!response.ok) {
+    throw new Error(payload.error || 'Request failed');
+  }
+  return payload;
+}
+
+function scrollToSection(id) {
+  document.getElementById(id).scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function populateFromState(state) {
+  setupState = state;
+  document.getElementById('intro').textContent = state.message;
+  document.getElementById('paths').textContent = '';
+
+  const stt = state.saved.stt;
+  const sttLabels = Object.fromEntries(state.catalog.stt_backends.map((item) => [item.id, item.label]));
+  const languageLabels = Object.fromEntries(STT_LANGUAGES);
+  updateSelectOptions(
+    document.getElementById('stt-default'),
+    state.catalog.stt_backends.map((item) => item.id),
+    sttLabels,
+  );
+  updateSelectOptions(
+    document.getElementById('stt-language'),
+    STT_LANGUAGES.map(([value]) => value),
+    languageLabels,
+  );
+  if (!STT_LANGUAGES.some(([value]) => value === stt.language) && stt.language) {
+    const option = document.createElement('option');
+    option.value = stt.language;
+    option.textContent = stt.language;
+    document.getElementById('stt-language').appendChild(option);
+  }
+  document.getElementById('stt-language').value = stt.language;
+  document.getElementById('stt-device').value = stt.device;
+  document.getElementById('stt-compute-type').value = stt.compute_type;
+  updateSelectOptions(
+    document.getElementById('model-faster-whisper'),
+    state.catalog.stt_backends.find((item) => item.id === 'faster-whisper').models,
+  );
+  updateSelectOptions(
+    document.getElementById('model-whisper'),
+    state.catalog.stt_backends.find((item) => item.id === 'whisper').models,
+  );
+  document.getElementById('model-faster-whisper').value = stt.backend_models['faster-whisper'];
+  document.getElementById('model-whisper').value = stt.backend_models.whisper;
+  document.getElementById('stt-default').value = stt.default_backend;
+  updateBackendSpecificFields();
+
+  const tts = state.saved.tts;
+  const ttsLabels = Object.fromEntries(state.catalog.tts_providers.map((item) => [item.id, item.label]));
+  updateSelectOptions(
+    document.getElementById('tts-default'),
+    state.catalog.tts_providers.map((item) => item.id),
+    ttsLabels,
+  );
+  document.getElementById('tts-default').value = tts.default_provider;
+  document.getElementById('edge-rate').value = tts.edge_rate;
+  document.getElementById('eleven-model').value = tts.elevenlabs_model;
+  document.getElementById('eleven-voice-id').value = tts.elevenlabs_voice_id;
+  document.getElementById('eleven-voice-name').value = tts.elevenlabs_voice_name;
+  syncElevenVoiceSelectionFromId();
+
+  const gateway = state.saved.gateway;
+  document.getElementById('gateway-url').value = gateway.url;
+  document.getElementById('gateway-model').value = gateway.model;
+  document.getElementById('gateway-session-key').value = gateway.session_key || state.hints.default_voice_session_key;
+  document.getElementById('gateway-note').textContent = `${state.hints.gateway_note} Default agent session: ${state.hints.default_voice_session_key}`;
+  updateDeviceNotes();
+  document.getElementById('launch-link').href = appUrl('');
+  updateFlowVisibility();
+}
+
+async function refreshState() {
+  const state = await fetchJson(appUrl('api/setup/state'), { headers: {} });
+  populateFromState(state);
+}
+
+async function loadEdgeVoices() {
+  setResult('edge-result', 'Loading Edge voices...');
+  const payload = await fetchJson(appUrl('api/setup/edge-voices'), { headers: {} });
+  edgeVoices = payload.voices;
+  const select = document.getElementById('edge-voice');
+  select.innerHTML = '';
+  for (const voice of edgeVoices) {
+    const option = document.createElement('option');
+    option.value = voice.ShortName;
+    option.textContent = `${voice.FriendlyName || voice.ShortName} (${voice.Locale})`;
+    select.appendChild(option);
+  }
+  if (setupState.saved.tts.edge_voice) {
+    select.value = setupState.saved.tts.edge_voice;
+  }
+  setResult('edge-result', `Loaded ${edgeVoices.length} Edge voices.`, true);
+  updateFlowVisibility();
+}
+
+async function loadElevenVoices() {
+  const payload = await fetchJson(appUrl('api/setup/eleven-voices'), { headers: {} });
+  renderElevenVoiceOptions(payload.voices || []);
+  syncElevenVoiceSelectionFromId();
+  return payload;
+}
+document.getElementById('stt-default').addEventListener('change', () => {
+  updateBackendSpecificFields();
+  updateFlowVisibility();
+});
+document.getElementById('stt-language').addEventListener('change', updateFlowVisibility);
+document.getElementById('stt-device').addEventListener('change', () => {
+  applyRecommendedComputeType();
+  updateDeviceNotes();
+  updateFlowVisibility();
+});
+document.getElementById('stt-compute-type').addEventListener('change', updateFlowVisibility);
+document.getElementById('model-faster-whisper').addEventListener('change', updateFlowVisibility);
+document.getElementById('model-whisper').addEventListener('change', updateFlowVisibility);
+document.getElementById('tts-default').addEventListener('change', updateFlowVisibility);
+document.getElementById('edge-voice').addEventListener('change', updateFlowVisibility);
+document.getElementById('edge-rate').addEventListener('input', updateFlowVisibility);
+document.getElementById('eleven-api-key').addEventListener('input', updateFlowVisibility);
+document.getElementById('eleven-model').addEventListener('input', updateFlowVisibility);
+document.getElementById('eleven-voice-select').addEventListener('change', () => {
+  const selected = elevenVoices.find((voice) => voice.voice_id === document.getElementById('eleven-voice-select').value);
+  document.getElementById('eleven-voice-id').value = selected ? selected.voice_id : '';
+  document.getElementById('eleven-voice-name').value = selected ? selected.name : '';
+  updateFlowVisibility();
+});
+document.getElementById('eleven-voice-id').addEventListener('input', () => {
+  syncElevenVoiceSelectionFromId();
+  updateFlowVisibility();
+});
+document.getElementById('gateway-url').addEventListener('input', updateFlowVisibility);
+document.getElementById('gateway-token').addEventListener('input', updateFlowVisibility);
+document.getElementById('gateway-model').addEventListener('input', updateFlowVisibility);
+document.getElementById('gateway-session-key').addEventListener('input', updateFlowVisibility);
+
+document.getElementById('validate-stt').addEventListener('click', async () => {
+  try {
+    const backend = currentSttBackend();
+    setResult('stt-result', 'Validating STT backend...');
+    const payload = await fetchJson(appUrl('api/setup/validate-stt'), {
+      method: 'POST',
+      body: JSON.stringify({
+        enabled_backends: [backend],
+        default_backend: backend,
+        language: document.getElementById('stt-language').value,
+        device: document.getElementById('stt-device').value,
+        compute_type: document.getElementById('stt-compute-type').value,
+        backend_models: {
+          'faster-whisper': document.getElementById('model-faster-whisper').value,
+          whisper: document.getElementById('model-whisper').value,
+        },
+      }),
+    });
+    setResult('stt-result', `Validated: ${payload.results.map((item) => `${item.label} (${item.model})`).join(', ')}`, true);
+    await refreshState();
+    scrollToSection('tts-section');
+  } catch (error) {
+    setResult('stt-result', error.message, false);
+  }
+});
+
+document.getElementById('validate-tts').addEventListener('click', async () => {
+  try {
+    const provider = currentTtsProvider();
+    setResult('tts-result', 'Validating TTS provider...');
+    const payload = await fetchJson(appUrl('api/setup/validate-tts'), {
+      method: 'POST',
+      body: JSON.stringify({
+        enabled_providers: [provider],
+        default_provider: provider,
+      }),
+    });
+    setResult('tts-result', `Saved TTS provider: ${payload.default_provider}`, true);
+    await refreshState();
+    scrollToSection(payload.default_provider === 'edge' ? 'edge-section' : 'eleven-section');
+  } catch (error) {
+    setResult('tts-result', error.message, false);
+  }
+});
+
+document.getElementById('load-edge-voices').addEventListener('click', () => {
+  loadEdgeVoices().catch((error) => setResult('edge-result', error.message, false));
+});
+
+document.getElementById('validate-edge').addEventListener('click', async () => {
+  try {
+    setResult('edge-result', 'Testing Edge voice...');
+    const payload = await fetchJson(appUrl('api/setup/validate-edge'), {
+      method: 'POST',
+      body: JSON.stringify({
+        voice: document.getElementById('edge-voice').value,
+        rate: document.getElementById('edge-rate').value,
+      }),
+    });
+    setResult('edge-result', `Validated ${payload.voice_name} (${payload.locale}).`, true);
+    await refreshState();
+    scrollToSection('gateway-section');
+  } catch (error) {
+    setResult('edge-result', error.message, false);
+  }
+});
+
+document.getElementById('validate-eleven-key').addEventListener('click', async () => {
+  try {
+    setResult('eleven-result', 'Validating ElevenLabs API key...');
+    const payload = await fetchJson(appUrl('api/setup/validate-eleven-key'), {
+      method: 'POST',
+      body: JSON.stringify({
+        api_key: document.getElementById('eleven-api-key').value,
+      }),
+    });
+    renderElevenVoiceOptions(payload.voices || []);
+    syncElevenVoiceSelectionFromId();
+    setResult('eleven-result', `Validated API key. ${payload.voice_count} voices loaded.`, true);
+    document.getElementById('eleven-api-key').value = '';
+    await refreshState();
+  } catch (error) {
+    setResult('eleven-result', error.message, false);
+  }
+});
+
+document.getElementById('load-eleven-voices').addEventListener('click', async () => {
+  try {
+    setResult('eleven-result', 'Loading ElevenLabs voices...');
+    const payload = await loadElevenVoices();
+    setResult('eleven-result', `Loaded ${payload.voices.length} ElevenLabs voices.`, true);
+  } catch (error) {
+    setResult('eleven-result', error.message, false);
+  }
+});
+
+document.getElementById('validate-eleven-voice').addEventListener('click', async () => {
+  try {
+    setResult('eleven-result', 'Validating ElevenLabs voice...');
+    const payload = await fetchJson(appUrl('api/setup/validate-eleven-voice'), {
+      method: 'POST',
+      body: JSON.stringify({
+        voice_id: document.getElementById('eleven-voice-id').value,
+        model_id: document.getElementById('eleven-model').value,
+      }),
+    });
+    document.getElementById('eleven-voice-name').value = payload.voice_name;
+    setResult('eleven-result', `Validated ElevenLabs voice: ${payload.voice_name}.`, true);
+    await refreshState();
+    scrollToSection('gateway-section');
+  } catch (error) {
+    setResult('eleven-result', error.message, false);
+  }
+});
+
+document.getElementById('validate-gateway').addEventListener('click', async () => {
+  try {
+    setResult('gateway-result', 'Validating direct-agent gateway...');
+    const payload = await fetchJson(appUrl('api/setup/validate-gateway'), {
+      method: 'POST',
+      body: JSON.stringify({
+        url: document.getElementById('gateway-url').value,
+        token: document.getElementById('gateway-token').value,
+        model: document.getElementById('gateway-model').value,
+        session_key: document.getElementById('gateway-session-key').value,
+      }),
+    });
+    setResult('gateway-result', `Validated gateway reply: ${payload.reply_preview}`, true);
+    document.getElementById('gateway-token').value = '';
+    await refreshState();
+    scrollToSection('launch-summary');
+  } catch (error) {
+    setResult('gateway-result', error.message, false);
+  }
+});
+
+document.getElementById('continue-stt').addEventListener('click', () => scrollToSection('tts-section'));
+document.getElementById('continue-tts').addEventListener('click', () => {
+  scrollToSection(currentTtsProvider() === 'edge' ? 'edge-section' : 'eleven-section');
+});
+document.getElementById('continue-edge').addEventListener('click', () => scrollToSection('gateway-section'));
+document.getElementById('continue-eleven').addEventListener('click', () => scrollToSection('gateway-section'));
+document.getElementById('continue-gateway').addEventListener('click', () => scrollToSection('launch-summary'));
+
+refreshState()
+  .then(() => {
+    if (!edgeVoices.length && setupState.saved.tts.default_provider === 'edge' && !document.getElementById('edge-section').classList.contains('hidden')) {
+      loadEdgeVoices().catch(() => {});
+    }
+    if (!elevenVoices.length && setupState.saved.tts.elevenlabs_api_key_present && setupState.saved.tts.default_provider === 'elevenlabs' && !document.getElementById('eleven-section').classList.contains('hidden')) {
+      loadElevenVoices().catch(() => {});
+    }
+  })
+  .catch((error) => {
+    document.getElementById('intro').textContent = error.message;
+  });
+</script>
+</body>
+</html>

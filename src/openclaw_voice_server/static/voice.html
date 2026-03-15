@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title></title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #000000;
+    --text: #c7c7c7;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    display: grid;
+    place-items: center;
+  }
+  #version {
+    position: fixed;
+    top: 16px;
+    right: 18px;
+    color: #808080;
+    font-size: 0.95rem;
+    letter-spacing: 0.02em;
+  }
+  #version .alpha {
+    color: #f0c44e;
+  }
+  #setup-link {
+    position: fixed;
+    top: 16px;
+    left: 18px;
+    color: #9a9a9a;
+    font-size: 1.8rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-decoration: none;
+  }
+  #setup-link:hover {
+    color: #d0d0d0;
+  }
+  main {
+    width: min(72vw, 360px);
+    display: grid;
+    gap: 18px;
+    justify-items: center;
+  }
+  #status {
+    width: 100%;
+    text-align: center;
+    font-size: 1.35rem;
+    line-height: 1.2;
+    color: #b7b7b7;
+    min-height: 1.3em;
+    text-transform: lowercase;
+  }
+  #level {
+    width: 100%;
+    height: 8px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  #level-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #ff735c, #6de2ff);
+    transition: width 50ms linear;
+  }
+  #thinking-timer {
+    width: 100%;
+    min-height: 1.1em;
+    text-align: center;
+    color: #8e8e8e;
+    font-size: 0.95rem;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.04em;
+  }
+  .hidden {
+    display: none !important;
+  }
+  #crab {
+    width: 100%;
+    display: block;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+</style>
+</head>
+<body>
+<a id="setup-link" href="./setup">setup</a>
+<div id="version">v0.04 <span class="alpha">ALPHA</span></div>
+<main>
+  <div id="status">listening</div>
+  <div id="level" aria-hidden="true"><div id="level-bar"></div></div>
+  <div id="thinking-timer" class="hidden"></div>
+  <img id="crab" src="" alt="">
+</main>
+
+<script>
+function resolveAppBase() {
+  return new URL('.', window.location.href);
+}
+
+const APP_BASE = resolveAppBase();
+const appUrl = (path) => new URL(path, APP_BASE).toString();
+const CRAB_IMAGES = {
+  listening: [appUrl('static/media/listening_transparent.png')],
+  thinking: [appUrl('static/media/thinking_transparent.png')],
+  speaking: [appUrl('static/media/speaking1_transparent.png'), appUrl('static/media/speaking2_transparent.png')],
+};
+
+let ws = null;
+let audioCtx = null;
+let stream = null;
+let processor = null;
+let analyser = null;
+let audioChunks = [];
+let silenceStart = null;
+let speechStart = null;
+let hasSpeech = false;
+let busy = false;
+let pendingIdle = false;
+let currentState = 'listening';
+let speakingTimer = null;
+let speakingFrame = 0;
+let audioQueue = [];
+let currentAudio = null;
+let currentLevelWidth = 0;
+let thinkingStartedAt = null;
+let transientStatusTimer = null;
+let settings = {
+  silence_threshold: 0.015,
+  silence_ms: 2000,
+  min_speech_ms: 500,
+};
+
+function setLevelBar(width) {
+  currentLevelWidth = Math.max(0, Math.min(100, width));
+  document.getElementById('level-bar').style.width = `${currentLevelWidth}%`;
+}
+
+function setStatusText(text) {
+  document.getElementById('status').textContent = text;
+}
+
+function scheduleListeningStatusRestore() {
+  if (transientStatusTimer) {
+    clearTimeout(transientStatusTimer);
+  }
+  transientStatusTimer = setTimeout(() => {
+    transientStatusTimer = null;
+    if (!busy && currentState === 'listening') {
+      setStatusText('listening');
+    }
+  }, 4000);
+}
+
+function humanizeRuntimeError(message) {
+  const text = (message || '').trim();
+  if (!text) return 'runtime error';
+  if (text.includes('Command lane') && text.includes('cleared')) {
+    return 'session interrupted';
+  }
+  return text;
+}
+
+function formatThinkingElapsed(ms) {
+  return `${(ms / 1000).toFixed(3)}s`;
+}
+
+function updateIndicatorVisibility(state) {
+  const level = document.getElementById('level');
+  const timer = document.getElementById('thinking-timer');
+  level.classList.toggle('hidden', state !== 'listening');
+  timer.classList.toggle('hidden', state !== 'thinking');
+  if (state !== 'thinking') {
+    timer.textContent = '';
+  }
+  if (state !== 'listening') {
+    setLevelBar(0);
+  }
+}
+
+function setState(state) {
+  currentState = state;
+  setStatusText(state);
+  if (state === 'thinking') {
+    if (thinkingStartedAt === null) {
+      thinkingStartedAt = performance.now();
+    }
+  } else {
+    thinkingStartedAt = null;
+  }
+  updateIndicatorVisibility(state);
+  const crab = document.getElementById('crab');
+  if (state !== 'speaking') {
+    if (speakingTimer) {
+      clearInterval(speakingTimer);
+      speakingTimer = null;
+    }
+    crab.src = CRAB_IMAGES[state][0];
+    return;
+  }
+  speakingFrame = 0;
+  crab.src = CRAB_IMAGES.speaking[speakingFrame];
+  if (speakingTimer) clearInterval(speakingTimer);
+  speakingTimer = setInterval(() => {
+    speakingFrame = speakingFrame === 0 ? 1 : 0;
+    crab.src = CRAB_IMAGES.speaking[speakingFrame];
+  }, 240);
+}
+
+function flattenAudio(chunks) {
+  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const merged = new Int16Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return merged.buffer;
+}
+
+function maybeReturnToListening() {
+  if (pendingIdle && !currentAudio && audioQueue.length === 0) {
+    pendingIdle = false;
+    setState('listening');
+  }
+}
+
+function playNextAudio() {
+  if (currentAudio || audioQueue.length === 0) {
+    maybeReturnToListening();
+    return;
+  }
+  const nextBuffer = audioQueue.shift();
+  const blob = new Blob([nextBuffer], { type: 'audio/mpeg' });
+  const url = URL.createObjectURL(blob);
+  currentAudio = new Audio(url);
+  currentAudio.onended = () => {
+    URL.revokeObjectURL(url);
+    currentAudio = null;
+    playNextAudio();
+  };
+  currentAudio.onerror = () => {
+    URL.revokeObjectURL(url);
+    currentAudio = null;
+    playNextAudio();
+  };
+  currentAudio.play().catch(() => {
+    URL.revokeObjectURL(url);
+    currentAudio = null;
+    playNextAudio();
+  });
+}
+
+async function connect() {
+  const wsUrl = new URL('ws/voice', APP_BASE);
+  wsUrl.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(wsUrl);
+  ws.binaryType = 'arraybuffer';
+  ws.onopen = () => setState('listening');
+  ws.onclose = () => {
+    setTimeout(connect, 1500);
+  };
+  ws.onmessage = (event) => {
+    if (event.data instanceof ArrayBuffer) {
+      audioQueue.push(event.data);
+      setState('speaking');
+      playNextAudio();
+      return;
+    }
+    const data = JSON.parse(event.data);
+    if (data.error) {
+      busy = false;
+      pendingIdle = false;
+      setState('listening');
+      setStatusText(humanizeRuntimeError(data.error));
+      scheduleListeningStatusRestore();
+      return;
+    }
+    if (data.status === 'thinking') {
+      busy = true;
+      pendingIdle = false;
+      setState('thinking');
+    } else if (data.status === 'speaking') {
+      busy = true;
+      pendingIdle = false;
+      setState('speaking');
+    } else if (data.status === 'idle') {
+      busy = false;
+      pendingIdle = true;
+      maybeReturnToListening();
+    }
+  };
+}
+
+async function ensureAudio() {
+  if (audioCtx) return;
+  stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  audioCtx = new AudioContext({ sampleRate: 16000 });
+  await audioCtx.resume();
+  const source = audioCtx.createMediaStreamSource(stream);
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 2048;
+  processor = audioCtx.createScriptProcessor(4096, 1, 1);
+  source.connect(analyser);
+  analyser.connect(processor);
+  processor.connect(audioCtx.destination);
+  processor.onaudioprocess = onAudioProcess;
+}
+
+function onAudioProcess(event) {
+  if (
+    !ws ||
+    ws.readyState !== WebSocket.OPEN ||
+    busy ||
+    currentAudio ||
+    audioQueue.length > 0 ||
+    pendingIdle ||
+    currentState === 'speaking'
+  ) {
+    return;
+  }
+  const input = event.inputBuffer.getChannelData(0);
+  const pcm = new Int16Array(input.length);
+  let level = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    const sample = Math.max(-1, Math.min(1, input[i]));
+    pcm[i] = sample * 32767;
+    level = Math.max(level, Math.abs(sample));
+  }
+  setLevelBar(Math.max(level * 280, currentLevelWidth * 0.84));
+  const now = performance.now();
+  if (level > settings.silence_threshold) {
+    if (!speechStart) speechStart = now;
+    silenceStart = null;
+    hasSpeech = true;
+    audioChunks.push(pcm);
+    return;
+  }
+  if (!hasSpeech) return;
+  audioChunks.push(pcm);
+  if (!silenceStart) silenceStart = now;
+  const speechDuration = speechStart ? now - speechStart : 0;
+  const silenceDuration = now - silenceStart;
+  if (speechDuration >= settings.min_speech_ms && silenceDuration >= settings.silence_ms) {
+    busy = true;
+    pendingIdle = false;
+    setState('thinking');
+    ws.send(flattenAudio(audioChunks));
+    audioChunks = [];
+    silenceStart = null;
+    speechStart = null;
+    hasSpeech = false;
+  }
+}
+
+async function init() {
+  try {
+    const runtimeState = await fetch(appUrl('api/runtime/state')).then((response) => response.json());
+    settings = runtimeState.audio;
+    await ensureAudio();
+    await connect();
+    setState('listening');
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function animateLevelDecay() {
+  if (currentState === 'thinking' && thinkingStartedAt !== null) {
+    document.getElementById('thinking-timer').textContent = formatThinkingElapsed(
+      performance.now() - thinkingStartedAt,
+    );
+  }
+  if (busy || currentState !== 'listening') {
+    if (currentLevelWidth !== 0) {
+      setLevelBar(0);
+    }
+  } else if (currentLevelWidth > 0.1) {
+    setLevelBar(currentLevelWidth * 0.88);
+  } else if (currentLevelWidth !== 0) {
+    setLevelBar(0);
+  }
+  requestAnimationFrame(animateLevelDecay);
+}
+
+document.getElementById('crab').addEventListener('click', () => {
+  if (!audioCtx) {
+    init();
+  }
+});
+
+setState('listening');
+animateLevelDecay();
+init();
+</script>
+</body>
+</html>
