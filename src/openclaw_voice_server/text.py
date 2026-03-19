@@ -16,8 +16,18 @@ _COMMON_NOISE = {
     "bis zum naechsten mal",
     "bis zum nächsten mal",
 }
-_INTERRUPT_WORDS = {"stop", "stopp"}
-_PAUSE_WORDS = {"pause", "pausieren"}
+_COMMAND_KEYWORDS = {
+    "de": {
+        "interrupt": {"stopp"},
+        "pause": {"pause", "pausieren"},
+        "send_phrases": ("hey los", "los"),
+    },
+    "en": {
+        "interrupt": {"stop"},
+        "pause": {"pause"},
+        "send_phrases": ("hey go", "go"),
+    },
+}
 _TRAILING_FILLERS = {"bitte", "danke", "jetzt", "okay", "ok", "mal", "kurz"}
 _LEADING_FILLERS = {"hey", "ok", "okay", "bitte", "bonnie", "clyde"}
 
@@ -57,6 +67,23 @@ def normalize_voice_text(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", text.lower())).strip()
 
 
+def resolve_command_language(language: str | None) -> str | None:
+    normalized = str(language or "").strip().lower()
+    if not normalized:
+        return None
+    for prefix in _COMMAND_KEYWORDS:
+        if normalized == prefix or normalized.startswith(f"{prefix}-"):
+            return prefix
+    return None
+
+
+def command_send_phrases(language: str | None) -> tuple[str, ...]:
+    resolved = resolve_command_language(language)
+    if resolved is None:
+        return ()
+    return tuple(_COMMAND_KEYWORDS[resolved]["send_phrases"])
+
+
 def _trim_control_fillers(words: list[str]) -> list[str]:
     trimmed = list(words)
     while trimmed and trimmed[0] in _LEADING_FILLERS:
@@ -85,8 +112,9 @@ def should_drop_voice_transcript(
     *,
     min_duration: float = 0.5,
     min_words: int = 1,
+    command_language: str | None = None,
 ) -> bool:
-    if detect_voice_control_command(text):
+    if detect_voice_control_command(text, language=command_language):
         return False
 
     if should_drop_stt_false_positive(text, duration, min_duration):
@@ -118,22 +146,29 @@ def has_probable_voice_transcript(
     return True
 
 
-def detect_voice_control_command(text: str) -> str | None:
+def detect_voice_control_command(text: str, *, language: str | None = None) -> str | None:
     normalized = normalize_voice_text(text)
     if not normalized:
         return None
     words = _trim_control_fillers(normalized.split())
     if not words or len(words) > 3:
         return None
-    if any(word in _PAUSE_WORDS for word in words):
+    resolved = resolve_command_language(language)
+    if resolved is None:
+        pause_words = set().union(*(keywords["pause"] for keywords in _COMMAND_KEYWORDS.values()))
+        interrupt_words = set().union(*(keywords["interrupt"] for keywords in _COMMAND_KEYWORDS.values()))
+    else:
+        pause_words = _COMMAND_KEYWORDS[resolved]["pause"]
+        interrupt_words = _COMMAND_KEYWORDS[resolved]["interrupt"]
+    if any(word in pause_words for word in words):
         return "pause"
-    if any(word in _INTERRUPT_WORDS for word in words):
+    if any(word in interrupt_words for word in words):
         return "interrupt"
     return None
 
 
-def should_cancel_voice_input(text: str) -> bool:
-    return detect_voice_control_command(text) == "interrupt"
+def should_cancel_voice_input(text: str, *, language: str | None = None) -> bool:
+    return detect_voice_control_command(text, language=language) == "interrupt"
 
 
 def _within_edit_distance_one(source: str, target: str) -> bool:

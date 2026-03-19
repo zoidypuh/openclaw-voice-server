@@ -281,13 +281,13 @@ def test_handle_ws_keeps_short_real_speech_for_gateway(monkeypatch):
     assert ws.json_messages == [{"status": "thinking"}, {"status": "idle"}]
 
 
-def test_handle_ws_manual_finish_mode_strips_trailing_hey_go_before_gateway(monkeypatch):
+def test_handle_ws_manual_finish_mode_strips_trailing_language_specific_phrase_before_gateway(monkeypatch):
     FakeWebSocketResponse.created.clear()
     gateway_calls = []
 
     class FakeTranscriber:
         def transcribe(self, audio_bytes):
-            return type("Result", (), {"text": "tell me the weather hey go", "duration_seconds": 1.4})()
+            return type("Result", (), {"text": "sag mir das wetter hey los", "duration_seconds": 1.4})()
 
     class FakeSynthesizer:
         async def synthesize(self, text, *, preset_name=None):
@@ -329,17 +329,17 @@ def test_handle_ws_manual_finish_mode_strips_trailing_hey_go_before_gateway(monk
 
     ws = asyncio.run(scenario())
 
-    assert gateway_calls == ["tell me the weather"]
+    assert gateway_calls == ["sag mir das wetter"]
     assert {"status": "speaking"} in ws.json_messages
 
 
-def test_handle_ws_manual_finish_mode_keeps_go_as_fallback(monkeypatch):
+def test_handle_ws_manual_finish_mode_keeps_language_specific_short_fallback(monkeypatch):
     FakeWebSocketResponse.created.clear()
     gateway_calls = []
 
     class FakeTranscriber:
         def transcribe(self, audio_bytes):
-            return type("Result", (), {"text": "tell me the weather go", "duration_seconds": 1.4})()
+            return type("Result", (), {"text": "sag mir das wetter los", "duration_seconds": 1.4})()
 
     class FakeSynthesizer:
         async def synthesize(self, text, *, preset_name=None):
@@ -381,7 +381,7 @@ def test_handle_ws_manual_finish_mode_keeps_go_as_fallback(monkeypatch):
 
     asyncio.run(scenario())
 
-    assert gateway_calls == ["tell me the weather"]
+    assert gateway_calls == ["sag mir das wetter"]
 
 
 def test_speak_text_pushes_server_side_audio_to_active_client(monkeypatch):
@@ -450,12 +450,12 @@ def test_speak_text_requires_active_voice_client(monkeypatch):
     asyncio.run(scenario())
 
 
-def test_handle_interrupt_probe_forces_english_language(monkeypatch):
+def test_handle_interrupt_probe_uses_configured_language(monkeypatch):
     captured_settings = {}
 
     class FakeTranscriber:
         def transcribe(self, audio_bytes):
-            return type("Result", (), {"text": "hey stop"})()
+            return type("Result", (), {"text": "hey stopp"})()
 
     class FakeRequest:
         can_read_body = True
@@ -479,8 +479,8 @@ def test_handle_interrupt_probe_forces_english_language(monkeypatch):
     response = asyncio.run(scenario())
 
     assert captured_settings["default_backend"] == "faster-whisper"
-    assert captured_settings["language"] == "en"
-    assert response.text == '{"ok": true, "matched": true, "action": "interrupt", "heard": "hey stop", "usable_speech": true}'
+    assert captured_settings["language"] == "de"
+    assert response.text == '{"ok": true, "matched": true, "action": "interrupt", "heard": "hey stopp", "usable_speech": true}'
 
 
 def test_handle_interrupt_probe_returns_pause_action(monkeypatch):
@@ -508,10 +508,10 @@ def test_handle_interrupt_probe_returns_pause_action(monkeypatch):
     assert response.text == '{"ok": true, "matched": false, "action": "pause", "heard": "hey pause", "usable_speech": true}'
 
 
-def test_handle_interrupt_probe_returns_send_action_for_manual_finish_phrase(monkeypatch):
+def test_handle_interrupt_probe_returns_send_action_for_language_specific_manual_finish_phrase(monkeypatch):
     class FakeTranscriber:
         def transcribe(self, audio_bytes):
-            return type("Result", (), {"text": "tell me the weather hey go"})()
+            return type("Result", (), {"text": "sag mir das wetter hey los"})()
 
     class FakeRequest:
         can_read_body = True
@@ -532,4 +532,4 @@ def test_handle_interrupt_probe_returns_send_action_for_manual_finish_phrase(mon
 
     response = asyncio.run(scenario())
 
-    assert response.text == '{"ok": true, "matched": false, "action": "send", "heard": "tell me the weather hey go", "usable_speech": true}'
+    assert response.text == '{"ok": true, "matched": false, "action": "send", "heard": "sag mir das wetter hey los", "usable_speech": true}'

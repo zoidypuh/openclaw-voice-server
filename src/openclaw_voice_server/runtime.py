@@ -13,6 +13,7 @@ from .errors import ValidationError
 from .gateway import DirectGatewayClient, resolve_voice_session_key
 from .providers import build_synthesizer, build_transcriber
 from .text import (
+    command_send_phrases,
     detect_voice_control_command,
     extract_voice_style_directive,
     has_probable_voice_transcript,
@@ -23,7 +24,6 @@ from .text import (
 
 
 LOGGER = logging.getLogger(__name__)
-COMMAND_STT_LANGUAGE = "en"
 
 
 class VoiceRuntime:
@@ -50,11 +50,7 @@ class VoiceRuntime:
 
     @staticmethod
     def _interrupt_stt_settings(stt_settings: dict) -> dict:
-        interrupt_settings = dict(stt_settings)
-        # Voice-control phrases are fixed English commands, so probing with a
-        # fixed language is more stable than Whisper auto-detection on 1-2 words.
-        interrupt_settings["language"] = COMMAND_STT_LANGUAGE
-        return interrupt_settings
+        return dict(stt_settings)
 
     async def _get_interrupt_transcriber(self):
         settings = self._interrupt_stt_settings(self.store.load_runtime_settings()["stt"])
@@ -69,7 +65,6 @@ class VoiceRuntime:
         payload = await request.json() if request.can_read_body else {}
         audio_b64 = str(payload.get("audio_b64") or "").strip()
         allow_send_phrase = bool(payload.get("allow_send_phrase"))
-        send_phrase = str(payload.get("send_phrase") or "").strip()
         if not audio_b64:
             raise ValidationError("Missing interrupt probe audio.")
         try:
@@ -80,15 +75,15 @@ class VoiceRuntime:
             return web.json_response({"ok": True, "matched": False, "heard": ""})
 
         transcriber = await self._get_interrupt_transcriber()
+        command_language = self.store.load_runtime_settings()["stt"].get("language", "")
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(None, transcriber.transcribe, audio_bytes)
         text = result.text.strip()
         duration = float(getattr(result, "duration_seconds", 0.0) or 0.0)
-        action = detect_voice_control_command(text)
+        action = detect_voice_control_command(text, language=command_language)
         if not action and allow_send_phrase:
-            candidate_phrases = ((send_phrase,) if send_phrase else tuple()) + ("go",)
-            for phrase in candidate_phrases:
-                stripped_text, matched_send_phrase = split_send_phrase(text, phrase)
+            for phrase in command_send_phrases(command_language):
+                _, matched_send_phrase = split_send_phrase(text, phrase)
                 if matched_send_phrase:
                     action = "send"
                     break
@@ -179,11 +174,12 @@ class VoiceRuntime:
             model=settings["gateway"]["model"],
             session_key=voice_session_key,
         )
+        command_language = settings["stt"].get("language", "")
 
         active_task: asyncio.Task | None = None
         abort_event = asyncio.Event()
         manual_finish_enabled = True
-        manual_finish_phrases = ("hey go", "go")
+        manual_finish_phrases = command_send_phrases(command_language)
 
         async def process_audio(audio_bytes: bytes, task_abort_event: asyncio.Event) -> None:
             nonlocal manual_finish_enabled, manual_finish_phrases
@@ -207,14 +203,14 @@ class VoiceRuntime:
                         await ws.send_json({"status": "idle"})
                         return
                     break
-            action = detect_voice_control_command(text)
+            action = detect_voice_control_command(text, language=command_language)
             if action:
                 await ws.send_json({"type": "voice-command", "action": action, "heard": text})
                 await ws.send_json({"status": "idle"})
                 return
             audio_settings = settings.get("audio", {})
             min_duration = max(float(audio_settings.get("min_speech_ms", 500) or 500) / 1000.0, 0.0)
-            if should_drop_voice_transcript(text, duration, min_duration=min_duration):
+            if should_drop_voice_transcript(text, duration, min_duration=min_duration, command_language=command_language):
                 LOGGER.info("Dropping short/noisy transcript: %r (duration=%.3fs)", text, duration)
                 await ws.send_json({"status": "idle"})
                 return
@@ -300,8 +296,7 @@ class VoiceRuntime:
                         await cancel_active_task(send_idle=True)
                     elif msg_type == "set-capture-mode":
                         manual_finish_enabled = bool(payload.get("manual_finish"))
-                        phrase = str(payload.get("send_phrase") or "").strip()
-                        manual_finish_phrases = ((phrase,) if phrase else tuple()) + ("go",)
+                        manual_finish_phrases = command_send_phrases(command_language)
                     continue
                 if message.type != WSMsgType.BINARY:
                     continue

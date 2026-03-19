@@ -1,4 +1,5 @@
 from openclaw_voice_server.text import (
+    command_send_phrases,
     detect_voice_control_command,
     has_probable_voice_transcript,
     should_cancel_voice_input,
@@ -22,6 +23,20 @@ def test_detect_voice_control_command_accepts_pause_phrases():
     assert detect_voice_control_command("hey pause") == "pause"
     assert detect_voice_control_command("pause bitte") == "pause"
     assert detect_voice_control_command("bonnie pausieren jetzt") == "pause"
+
+
+def test_detect_voice_control_command_respects_selected_language():
+    assert detect_voice_control_command("hey stop", language="en") == "interrupt"
+    assert detect_voice_control_command("hey stop", language="de") is None
+    assert detect_voice_control_command("bonnie stopp jetzt", language="de") == "interrupt"
+    assert detect_voice_control_command("bonnie stopp jetzt", language="en") is None
+
+
+def test_command_send_phrases_follow_selected_language():
+    assert command_send_phrases("en") == ("hey go", "go")
+    assert command_send_phrases("en-US") == ("hey go", "go")
+    assert command_send_phrases("de") == ("hey los", "los")
+    assert command_send_phrases("fr") == ()
 
 
 def test_should_cancel_voice_input_rejects_long_or_non_cancel_phrases():
