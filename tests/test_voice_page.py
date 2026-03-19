@@ -16,8 +16,9 @@ def test_voice_html_resumes_audio_before_fetching_runtime_state_for_safari():
     voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
 
     assert "window.AudioContext || window.webkitAudioContext" in voice_html
-    assert "await ensureAudio();\n  await loadRuntimeState();\n  await connect();" in voice_html
-    assert "currentAudio.playsInline = true;" in voice_html
+    assert "await ensureAudio();\n  await unlockPlaybackAudio();\n  await loadRuntimeState();\n  await connect();" in voice_html
+    assert "await unlockPlaybackAudio();" in voice_html
+    assert "playbackAudio = new Audio();" in voice_html
     assert "handleResumeFailure(error);" in voice_html
 
 
@@ -43,3 +44,13 @@ def test_voice_html_has_mute_button_and_mic_gate():
     assert "track.enabled = !muted;" in voice_html
     assert "if (muted) {" in voice_html
     assert "document.getElementById('mute-btn').addEventListener('click', () => {" in voice_html
+
+
+def test_voice_html_uses_persistent_unlocked_playback_audio():
+    voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
+
+    assert "function ensurePlaybackAudioElement()" in voice_html
+    assert "function unlockPlaybackAudio()" in voice_html
+    assert "currentAudio = ensurePlaybackAudioElement();" in voice_html
+    assert "setStatusText('tap resume to enable audio');" in voice_html
+    assert "setStatusText('audio playback failed');" in voice_html

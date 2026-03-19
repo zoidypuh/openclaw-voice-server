@@ -310,6 +310,7 @@ let audioCtx = null;
 let stream = null;
 let processor = null;
 let analyser = null;
+let playbackAudio = null;
 let audioChunks = [];
 let silenceStart = null;
 let speechStart = null;
@@ -349,6 +350,7 @@ let pendingBargeInAudio = null;
 let manualFinishProbePending = false;
 let manualFinishProbeCooldownUntil = 0;
 let runtimeStatePromise = null;
+let playbackUnlocked = false;
 let settings = {
   min_speech_ms: 500,
 };
@@ -638,6 +640,34 @@ function handleResumeFailure(error) {
   setStatusText(describeResumeError(error));
   updateControlStates();
   syncShellState({ force: true });
+}
+
+function ensurePlaybackAudioElement() {
+  if (playbackAudio) {
+    return playbackAudio;
+  }
+  playbackAudio = new Audio();
+  playbackAudio.playsInline = true;
+  playbackAudio.preload = 'auto';
+  return playbackAudio;
+}
+
+async function unlockPlaybackAudio() {
+  const audio = ensurePlaybackAudioElement();
+  if (playbackUnlocked) {
+    return audio;
+  }
+  audio.muted = true;
+  audio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+  audio.load();
+  await audio.play();
+  audio.pause();
+  audio.currentTime = 0;
+  audio.removeAttribute('src');
+  audio.load();
+  audio.muted = false;
+  playbackUnlocked = true;
+  return audio;
 }
 
 async function loadRuntimeState() {
@@ -1191,6 +1221,7 @@ async function setPausedState(nextPaused, { forceInterrupt = false } = {}) {
     if (audioCtx.state === 'suspended') {
       await audioCtx.resume();
     }
+    await unlockPlaybackAudio();
   } catch (error) {
     handleResumeFailure(error);
     return;
@@ -1219,7 +1250,8 @@ function playNextAudio() {
   const blob = new Blob([nextBuffer], { type: 'audio/mpeg' });
   currentAudioUrl = URL.createObjectURL(blob);
   const playbackUrl = currentAudioUrl;
-  currentAudio = new Audio(playbackUrl);
+  currentAudio = ensurePlaybackAudioElement();
+  currentAudio.src = playbackUrl;
   currentAudio.playsInline = true;
   currentAudio.preload = 'auto';
   currentAudio.onended = () => {
@@ -1227,6 +1259,8 @@ function playNextAudio() {
     if (currentAudioUrl === playbackUrl) {
       currentAudioUrl = null;
     }
+    currentAudio.removeAttribute('src');
+    currentAudio.load();
     currentAudio = null;
     updateControlStates();
     playNextAudio();
@@ -1236,17 +1270,24 @@ function playNextAudio() {
     if (currentAudioUrl === playbackUrl) {
       currentAudioUrl = null;
     }
+    currentAudio.removeAttribute('src');
+    currentAudio.load();
     currentAudio = null;
+    setStatusText('audio playback failed');
     updateControlStates();
     playNextAudio();
   };
   startPlaybackSession();
-  currentAudio.play().catch(() => {
+  currentAudio.play().catch((error) => {
+    console.error(error);
     URL.revokeObjectURL(playbackUrl);
     if (currentAudioUrl === playbackUrl) {
       currentAudioUrl = null;
     }
+    currentAudio.removeAttribute('src');
+    currentAudio.load();
     currentAudio = null;
+    setStatusText('tap resume to enable audio');
     updateControlStates();
     playNextAudio();
   });
@@ -1512,6 +1553,7 @@ function onAudioProcess(event) {
 
 async function init() {
   await ensureAudio();
+  await unlockPlaybackAudio();
   await loadRuntimeState();
   await connect();
   setState(paused ? 'paused' : 'listening');
