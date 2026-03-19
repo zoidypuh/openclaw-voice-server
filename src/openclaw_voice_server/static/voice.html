@@ -379,6 +379,12 @@ const PLAYBACK_NO_BARGE_IN_MS = 800;
 const BARGE_IN_MIN_SPEECH_MS = 180;
 const BARGE_IN_SILENCE_MS = 280;
 const BARGE_IN_MAX_MS = 3000;
+const APPLE_PLAYBACK_NO_BARGE_IN_MS = 1800;
+const APPLE_BARGE_IN_THRESHOLD_MULTIPLIER = 0.92;
+const APPLE_BARGE_IN_THRESHOLD_MAX = 10.5;
+const APPLE_BARGE_IN_MIN_SPEECH_MS = 420;
+const APPLE_BARGE_IN_SILENCE_MS = 420;
+const APPLE_BARGE_IN_MAX_MS = 2600;
 const MANUAL_FINISH_PROBE_MIN_SILENCE_MS = 260;
 const MANUAL_FINISH_PROBE_COOLDOWN_MS = 900;
 let tuning = { ...DEFAULT_TUNING };
@@ -550,6 +556,21 @@ function humanizeRuntimeError(message) {
 
 function audioContextConstructor() {
   return window.AudioContext || window.webkitAudioContext || null;
+}
+
+function isAppleVoiceClient() {
+  const userAgent = navigator.userAgent || '';
+  if (/iPhone|iPad|iPod/.test(userAgent)) {
+    return true;
+  }
+  if (navigator.maxTouchPoints > 1 && userAgent.includes('Macintosh')) {
+    return true;
+  }
+  return userAgent.includes('Macintosh');
+}
+
+function allowsFreeformBargeIn() {
+  return !isAppleVoiceClient();
 }
 
 function describeResumeError(error) {
@@ -726,7 +747,9 @@ function startPlaybackSession() {
     return;
   }
   playbackSessionStarted = true;
-  bargeInGraceUntil = performance.now() + PLAYBACK_NO_BARGE_IN_MS;
+  bargeInGraceUntil = performance.now() + (
+    allowsFreeformBargeIn() ? PLAYBACK_NO_BARGE_IN_MS : APPLE_PLAYBACK_NO_BARGE_IN_MS
+  );
 }
 
 function rearmVoiceInterrupt() {
@@ -992,10 +1015,16 @@ function maybeCaptureBargeInProbe(pcm, displayedLevel, speechLike, frameMs, now)
     return true;
   }
 
+  const allowFreeformBargeIn = allowsFreeformBargeIn();
   const bargeThreshold = Math.min(
-    tuning.endOfTurnBarThreshold * BARGE_IN_THRESHOLD_MULTIPLIER,
-    BARGE_IN_THRESHOLD_MAX,
+    tuning.endOfTurnBarThreshold * (
+      allowFreeformBargeIn ? BARGE_IN_THRESHOLD_MULTIPLIER : APPLE_BARGE_IN_THRESHOLD_MULTIPLIER
+    ),
+    allowFreeformBargeIn ? BARGE_IN_THRESHOLD_MAX : APPLE_BARGE_IN_THRESHOLD_MAX,
   );
+  const requiredBargeInSpeechMs = allowFreeformBargeIn ? BARGE_IN_MIN_SPEECH_MS : APPLE_BARGE_IN_MIN_SPEECH_MS;
+  const requiredBargeInSilenceMs = allowFreeformBargeIn ? BARGE_IN_SILENCE_MS : APPLE_BARGE_IN_SILENCE_MS;
+  const allowedBargeInMaxMs = allowFreeformBargeIn ? BARGE_IN_MAX_MS : APPLE_BARGE_IN_MAX_MS;
   const aboveThreshold = speechLike && displayedLevel >= bargeThreshold;
   const hasCapture = bargeInChunks.length > 0;
   if (!hasCapture && !aboveThreshold) {
@@ -1004,7 +1033,9 @@ function maybeCaptureBargeInProbe(pcm, displayedLevel, speechLike, frameMs, now)
 
   if (!bargeInPending) {
     bargeInPending = true;
-    pausePlaybackForBargeIn();
+    if (allowFreeformBargeIn) {
+      pausePlaybackForBargeIn();
+    }
   }
 
   bargeInChunks.push(pcm.slice());
@@ -1017,10 +1048,10 @@ function maybeCaptureBargeInProbe(pcm, displayedLevel, speechLike, frameMs, now)
 
   const totalMs = bargeInSpeechMs + bargeInSilenceMs;
   const shouldProbe = (
-    bargeInSpeechMs >= BARGE_IN_MIN_SPEECH_MS
+    bargeInSpeechMs >= requiredBargeInSpeechMs
     && (
-      bargeInSilenceMs >= BARGE_IN_SILENCE_MS
-      || totalMs >= BARGE_IN_MAX_MS
+      bargeInSilenceMs >= requiredBargeInSilenceMs
+      || totalMs >= allowedBargeInMaxMs
     )
   );
   if (!shouldProbe) {
@@ -1036,15 +1067,28 @@ function maybeCaptureBargeInProbe(pcm, displayedLevel, speechLike, frameMs, now)
       await setPausedState(true, { forceInterrupt: true });
       return;
     }
-    if (result.action === 'interrupt' || result.action === 'send' || result.usableSpeech) {
+    if (result.action === 'interrupt') {
+      requestInterrupt({ keepPaused: false });
+      resetBargeInCapture();
+      return;
+    }
+    if (allowFreeformBargeIn && (result.action === 'send' || result.usableSpeech)) {
       promoteBargeIn(probeBuffer);
       resetBargeInCapture();
       return;
     }
-    resumePlaybackAfterBargeIn();
+    if (playbackSoftPaused) {
+      resumePlaybackAfterBargeIn();
+      return;
+    }
+    resetBargeInCapture();
   }).catch(() => {
     bargeInProbePending = false;
-    resumePlaybackAfterBargeIn();
+    if (playbackSoftPaused) {
+      resumePlaybackAfterBargeIn();
+      return;
+    }
+    resetBargeInCapture();
   });
   return true;
 }
@@ -1301,7 +1345,14 @@ async function ensureAudio() {
   if (!AudioContextClass) {
     throw new Error('This browser does not support Web Audio.');
   }
-  stream = await getUserMedia({ audio: true });
+  stream = await getUserMedia({
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+      channelCount: 1,
+    },
+  });
   try {
     audioCtx = new AudioContextClass({ sampleRate: 16000 });
   } catch (_) {
@@ -1314,9 +1365,12 @@ async function ensureAudio() {
   analyser = audioCtx.createAnalyser();
   analyser.fftSize = 2048;
   processor = audioCtx.createScriptProcessor(4096, 1, 1);
+  const processorSink = audioCtx.createGain();
+  processorSink.gain.value = 0;
   source.connect(analyser);
   analyser.connect(processor);
-  processor.connect(audioCtx.destination);
+  processor.connect(processorSink);
+  processorSink.connect(audioCtx.destination);
   processor.onaudioprocess = onAudioProcess;
 }
 
