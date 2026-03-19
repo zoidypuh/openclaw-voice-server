@@ -40,7 +40,7 @@ High level flow:
 - an OpenClaw gateway reachable locally from the same host, typically `http://127.0.0.1:18789`
 - one working STT backend
 - one working TTS backend
-- a browser with microphone access
+- a supported voice client surface
 - Tailscale if you want to use the app from other devices over MagicDNS
 
 Optional, depending on chosen providers:
@@ -49,10 +49,17 @@ Optional, depending on chosen providers:
 - ElevenLabs API key if using ElevenLabs
 - Edge TTS package if using Edge TTS
 
-This app works from any device that can reach the host over Tailscale, for example through:
+Supported access paths right now:
 
 - `http://127.0.0.1:8765` on the host itself
-- `https://<machine>.ts.net/voice/` from other tailnet devices through the existing proxy route
+- the Windows Tauri client in [clients/windows](clients/windows)
+- `https://<machine>.ts.net/voice/` only for browser paths that actually work in your environment
+
+Current platform limitation:
+
+- the tested remote path is the existing Windows setup
+- iOS and macOS browser clients should currently be treated as unsupported
+- Safari/WebKit behavior is not a working target right now
 
 Network model:
 
@@ -61,6 +68,7 @@ Network model:
 - the browser can still reach it from other devices when your existing OpenClaw/Tailscale setup proxies `/voice/`
 - the voice server talks to the OpenClaw gateway locally on the same host
 - Tailscale/MagicDNS is for browser access from other devices, not for the voice server's backend-to-backend gateway call
+- remote browser reachability does not imply the voice runtime will work correctly on iOS/macOS
 
 ## Tests
 
@@ -153,6 +161,8 @@ Recommended Tailscale/MagicDNS address when routed through the existing OpenClaw
 https://<machine>.ts.net/voice/
 ```
 
+Treat that as a remote access URL, not as a promise that every browser engine works. The current tested path is still Windows-first.
+
 ## Command Calibration
 
 The voice runtime now includes a lightweight calibration workflow for spoken control phrases such as `hey go`, `hey stop`, and `hey pause`.
@@ -226,6 +236,7 @@ This shared-session mode is powerful, but it also means voice and the other chan
 - minor: unnecessary OpenAI/OpenAI-compat sessions may still be spawned in some flows
 - spoken voice command detection still needs more real-world tuning
 - Windows tray shell is usable, but still has rough edges and should be treated as alpha
+- iOS/macOS browser use should currently be treated as unsupported; do not assume Safari/WebKit will behave like the tested Windows path
 
 ## Tested
 
@@ -241,6 +252,12 @@ Tested successfully in the main path:
 
 - Edge TTS
 - OpenAI Whisper on CPU
+
+## Not Supported Right Now
+
+- iPhone/iOS browser use
+- macOS browser use
+- assuming Safari/WebKit behaves like the tested Windows browser/Tauri path
 
 ## TODO
 
