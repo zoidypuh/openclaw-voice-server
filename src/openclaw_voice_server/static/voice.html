@@ -86,6 +86,7 @@
     width: 100%;
     display: flex;
     justify-content: flex-end;
+    gap: 0.5rem;
   }
   .control-btn {
     appearance: none;
@@ -248,6 +249,7 @@
     <button id="pause-btn" class="control-btn" type="button">pause</button>
   </div>
   <div id="utility-bar">
+    <button id="mute-btn" class="mini-btn" type="button">mute</button>
     <button id="sliders-toggle" class="mini-btn active" type="button">threshold</button>
   </div>
   <div id="level" aria-hidden="true"><div id="level-bar"></div></div>
@@ -312,6 +314,7 @@ let hasSpeech = false;
 let busy = false;
 let pendingIdle = false;
 let paused = true;
+let muted = false;
 let interruptPending = false;
 let currentState = 'paused';
 let replyActive = false;
@@ -496,8 +499,31 @@ function scheduleListeningStatusRestore() {
 
 function updateControlStates() {
   const pauseBtn = document.getElementById('pause-btn');
+  const muteBtn = document.getElementById('mute-btn');
   pauseBtn.textContent = paused ? 'resume' : 'pause';
   pauseBtn.classList.toggle('active', paused);
+  muteBtn.textContent = muted ? 'unmute' : 'mute';
+  muteBtn.classList.toggle('active', muted);
+}
+
+function applyMicMuteState() {
+  if (!stream) {
+    return;
+  }
+  for (const track of stream.getAudioTracks()) {
+    track.enabled = !muted;
+  }
+}
+
+function setMutedState(nextMuted) {
+  muted = Boolean(nextMuted);
+  applyMicMuteState();
+  resetCaptureBuffer();
+  resetInterruptSpeechDetection();
+  resetInterruptProbeCapture();
+  resetBargeInCapture();
+  setLevelBar(0);
+  updateControlStates();
 }
 
 function resolveShellState() {
@@ -1362,6 +1388,7 @@ async function ensureAudio() {
     await audioCtx.resume();
   }
   const source = audioCtx.createMediaStreamSource(stream);
+  applyMicMuteState();
   analyser = audioCtx.createAnalyser();
   analyser.fftSize = 2048;
   processor = audioCtx.createScriptProcessor(4096, 1, 1);
@@ -1382,6 +1409,16 @@ function onAudioProcess(event) {
   ) {
     resetInterruptSpeechDetection();
     resetInterruptProbeCapture();
+    return;
+  }
+  if (muted) {
+    resetCaptureBuffer();
+    resetInterruptSpeechDetection();
+    resetInterruptProbeCapture();
+    resetBargeInCapture();
+    if (currentLevelWidth !== 0) {
+      setLevelBar(0);
+    }
     return;
   }
   const input = event.inputBuffer.getChannelData(0);
@@ -1501,6 +1538,10 @@ document.getElementById('crab').addEventListener('click', () => {
 
 document.getElementById('pause-btn').addEventListener('click', async () => {
   await setPausedState(!paused);
+});
+
+document.getElementById('mute-btn').addEventListener('click', () => {
+  setMutedState(!muted);
 });
 
 setState('paused');
