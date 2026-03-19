@@ -45,6 +45,20 @@ def test_config_store_reads_legacy_voice_id_from_env(tmp_path):
     assert settings["tts"]["elevenlabs_voice_id"] == "voice-from-env"
 
 
+def test_config_store_reads_whisper_endpoint_from_env(tmp_path):
+    config_path = tmp_path / "config.json"
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        "OPENCLAW_VOICE_WHISPER_ENDPOINT_URL=http://127.0.0.1:18000/v1/audio/transcriptions\n",
+        encoding="utf-8",
+    )
+
+    store = ConfigStore(config_path=config_path, env_path=env_path)
+    settings = store.load_runtime_settings()
+
+    assert settings["stt"]["whisper_endpoint_url"] == "http://127.0.0.1:18000/v1/audio/transcriptions"
+
+
 def test_update_config_replaces_validation_section_payloads(tmp_path):
     config_path = tmp_path / "config.json"
     env_path = tmp_path / ".env"

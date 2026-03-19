@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Command Recorder</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #050505;
+    --panel: rgba(255,255,255,0.04);
+    --border: rgba(255,255,255,0.12);
+    --text: #d2d2d2;
+    --muted: #8c8c8c;
+    --accent: #86c8ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+  }
+  main {
+    width: min(92vw, 520px);
+    display: grid;
+    gap: 18px;
+    padding: 20px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    background: var(--panel);
+  }
+  h1 {
+    margin: 0;
+    font-size: 1.3rem;
+    font-weight: 600;
+  }
+  p {
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+  .grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: 1fr 120px;
+  }
+  label {
+    display: grid;
+    gap: 6px;
+    font-size: 0.9rem;
+  }
+  input {
+    width: 100%;
+    padding: 0.72rem 0.82rem;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: rgba(255,255,255,0.05);
+    color: var(--text);
+    font: inherit;
+  }
+  button {
+    appearance: none;
+    border: 1px solid rgba(134,200,255,0.24);
+    border-radius: 999px;
+    background: rgba(134,200,255,0.09);
+    color: #cfeaff;
+    font: inherit;
+    padding: 0.82rem 1rem;
+    cursor: pointer;
+  }
+  button:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+  #status {
+    min-height: 1.4em;
+    color: var(--accent);
+  }
+  #files {
+    display: grid;
+    gap: 6px;
+    max-height: 260px;
+    overflow: auto;
+    padding: 8px 0 0;
+  }
+  #files a {
+    color: #d9ecff;
+    text-decoration: none;
+  }
+  #files a:hover {
+    text-decoration: underline;
+  }
+  .note {
+    font-size: 0.82rem;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Command Recorder</h1>
+  <p>Use this page from your Windows browser to record calibration WAVs. Each click records one sample and downloads a `16kHz` mono WAV file.</p>
+
+  <div class="grid">
+    <label>
+      Phrase
+      <input id="phrase" type="text" value="hey go">
+    </label>
+    <label>
+      Samples
+      <input id="count" type="number" min="1" max="99" value="20">
+    </label>
+  </div>
+
+  <button id="record-btn" type="button">record next sample</button>
+  <div id="status">idle</div>
+  <p class="note">Speak immediately after clicking. Recording auto-stops after 2 seconds and downloads the WAV.</p>
+  <div id="files"></div>
+</main>
+
+<script>
+const TARGET_SAMPLE_RATE = 16000;
+const RECORD_DURATION_MS = 2000;
+
+let audioCtx = null;
+let stream = null;
+let processor = null;
+let source = null;
+let recording = false;
+let sampleIndex = 0;
+let floatChunks = [];
+let stopTimer = null;
+
+function setStatus(text) {
+  document.getElementById('status').textContent = text;
+}
+
+function getTargetCount() {
+  const raw = Number(document.getElementById('count').value);
+  if (!Number.isFinite(raw)) {
+    return 20;
+  }
+  return Math.max(1, Math.min(99, Math.floor(raw)));
+}
+
+function padIndex(value) {
+  return String(value).padStart(2, '0');
+}
+
+function slugify(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'sample';
+}
+
+function mergeFloatChunks(chunks) {
+  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const merged = new Float32Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return merged;
+}
+
+function downsampleBuffer(buffer, inputSampleRate, outputSampleRate) {
+  if (outputSampleRate >= inputSampleRate) {
+    return buffer;
+  }
+  const sampleRateRatio = inputSampleRate / outputSampleRate;
+  const newLength = Math.round(buffer.length / sampleRateRatio);
+  const result = new Float32Array(newLength);
+  let offsetResult = 0;
+  let offsetBuffer = 0;
+  while (offsetResult < result.length) {
+    const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+    let accum = 0;
+    let count = 0;
+    for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i += 1) {
+      accum += buffer[i];
+      count += 1;
+    }
+    result[offsetResult] = count ? accum / count : 0;
+    offsetResult += 1;
+    offsetBuffer = nextOffsetBuffer;
+  }
+  return result;
+}
+
+function floatTo16BitPCM(floatBuffer) {
+  const pcm = new Int16Array(floatBuffer.length);
+  for (let i = 0; i < floatBuffer.length; i += 1) {
+    const sample = Math.max(-1, Math.min(1, floatBuffer[i]));
+    pcm[i] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+  }
+  return pcm;
+}
+
+function encodeWav(pcm, sampleRate) {
+  const bytesPerSample = 2;
+  const blockAlign = bytesPerSample;
+  const byteRate = sampleRate * blockAlign;
+  const buffer = new ArrayBuffer(44 + pcm.length * bytesPerSample);
+  const view = new DataView(buffer);
+
+  function writeString(offset, value) {
+    for (let i = 0; i < value.length; i += 1) {
+      view.setUint8(offset + i, value.charCodeAt(i));
+    }
+  }
+
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + pcm.length * bytesPerSample, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeString(36, 'data');
+  view.setUint32(40, pcm.length * bytesPerSample, true);
+
+  let offset = 44;
+  for (let i = 0; i < pcm.length; i += 1) {
+    view.setInt16(offset, pcm[i], true);
+    offset += bytesPerSample;
+  }
+
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+function addDownloadLink(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.textContent = filename;
+  document.getElementById('files').prepend(link);
+  link.click();
+}
+
+async function ensureAudio() {
+  if (audioCtx) {
+    return;
+  }
+  stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  audioCtx = new AudioContext();
+  source = audioCtx.createMediaStreamSource(stream);
+  processor = audioCtx.createScriptProcessor(4096, 1, 1);
+  processor.onaudioprocess = (event) => {
+    if (!recording) {
+      return;
+    }
+    const input = event.inputBuffer.getChannelData(0);
+    floatChunks.push(new Float32Array(input));
+  };
+  source.connect(processor);
+  processor.connect(audioCtx.destination);
+}
+
+function finishRecording() {
+  if (!recording) {
+    return;
+  }
+  recording = false;
+  clearTimeout(stopTimer);
+  stopTimer = null;
+  const merged = mergeFloatChunks(floatChunks);
+  floatChunks = [];
+  const downsampled = downsampleBuffer(merged, audioCtx.sampleRate, TARGET_SAMPLE_RATE);
+  const pcm = floatTo16BitPCM(downsampled);
+  const phrase = document.getElementById('phrase').value.trim();
+  const filename = `${slugify(phrase)}-${padIndex(sampleIndex)}.wav`;
+  const wav = encodeWav(pcm, TARGET_SAMPLE_RATE);
+  addDownloadLink(wav, filename);
+
+  const targetCount = getTargetCount();
+  if (sampleIndex >= targetCount) {
+    setStatus(`done: ${sampleIndex}/${targetCount}`);
+    document.getElementById('record-btn').disabled = true;
+    return;
+  }
+  setStatus(`saved ${filename} (${sampleIndex}/${targetCount})`);
+}
+
+async function recordNextSample() {
+  await ensureAudio();
+  const targetCount = getTargetCount();
+  if (sampleIndex >= targetCount) {
+    setStatus(`done: ${sampleIndex}/${targetCount}`);
+    return;
+  }
+  sampleIndex += 1;
+  floatChunks = [];
+  recording = true;
+  const phrase = document.getElementById('phrase').value.trim() || 'sample';
+  setStatus(`recording ${sampleIndex}/${targetCount}: say "${phrase}" now`);
+  stopTimer = setTimeout(finishRecording, RECORD_DURATION_MS);
+}
+
+document.getElementById('record-btn').addEventListener('click', () => {
+  void recordNextSample().catch((error) => {
+    console.error(error);
+    setStatus(error?.message || 'recording failed');
+  });
+});
+
+document.getElementById('count').addEventListener('input', () => {
+  if (sampleIndex < getTargetCount()) {
+    document.getElementById('record-btn').disabled = false;
+  }
+});
+</script>
+</body>
+</html>

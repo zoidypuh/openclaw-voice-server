@@ -210,6 +210,12 @@
       <label id="model-group-whisper">OpenAI Whisper model
         <select id="model-whisper"></select>
       </label>
+      <label class="hidden" id="whisper-endpoint-group">Remote Whisper endpoint (optional)
+        <input id="whisper-endpoint-url" type="text" placeholder="http://127.0.0.1:18000/v1/audio/transcriptions">
+      </label>
+      <label class="hidden" id="whisper-endpoint-model-group">Remote Whisper model (optional)
+        <input id="whisper-endpoint-model" type="text" placeholder="Leave blank to use the endpoint default model">
+      </label>
     </div>
     <div class="note" id="gpu-note"></div>
     <div class="actions">
@@ -289,7 +295,11 @@
       <label>Resolved voice name
         <input id="eleven-voice-name" type="text" disabled>
       </label>
+      <label>Default style preset
+        <select id="eleven-preset"></select>
+      </label>
     </div>
+    <div class="note">Bonnie can override the default per reply by starting with <code>[voice:calm]</code>, <code>[voice:natural]</code>, <code>[voice:expressive]</code>, or <code>[voice:focused]</code>.</div>
     <div class="actions">
       <button class="primary" id="validate-eleven-key">Validate API Key And Save</button>
       <button id="load-eleven-voices">Load Saved Voices</button>
@@ -349,6 +359,7 @@ let setupState = null;
 let edgeVoices = [];
 let elevenVoices = [];
 const STT_LANGUAGES = [
+  ["auto", "Auto Detect"],
   ["de", "German"],
   ["en", "English"],
   ["fr", "French"],
@@ -423,6 +434,8 @@ function updateBackendSpecificFields() {
   const backend = currentSttBackend();
   document.getElementById('model-group-faster-whisper').classList.toggle('hidden', backend !== 'faster-whisper');
   document.getElementById('model-group-whisper').classList.toggle('hidden', backend !== 'whisper');
+  document.getElementById('whisper-endpoint-group').classList.toggle('hidden', backend !== 'whisper');
+  document.getElementById('whisper-endpoint-model-group').classList.toggle('hidden', backend !== 'whisper');
 }
 
 function recommendedComputeType() {
@@ -496,6 +509,8 @@ function getEffectiveStatus() {
     && document.getElementById('stt-language').value.trim() === sttSaved.language
     && document.getElementById('stt-device').value === sttSaved.device
     && document.getElementById('stt-compute-type').value === sttSaved.compute_type
+    && document.getElementById('whisper-endpoint-url').value.trim() === (sttSaved.whisper_endpoint_url || '')
+    && document.getElementById('whisper-endpoint-model').value.trim() === (sttSaved.whisper_endpoint_model || '')
     && (
       currentBackend === 'faster-whisper'
         ? document.getElementById('model-faster-whisper').value === sttSaved.backend_models['faster-whisper']
@@ -527,6 +542,7 @@ function getEffectiveStatus() {
     && document.getElementById('eleven-api-key').value.trim() === ''
     && document.getElementById('eleven-model').value.trim() === ttsSaved.elevenlabs_model
     && document.getElementById('eleven-voice-id').value.trim() === ttsSaved.elevenlabs_voice_id
+    && document.getElementById('eleven-preset').value === (ttsSaved.elevenlabs_preset || 'natural')
   );
 
   const gatewaySaved = saved.gateway || {};
@@ -653,21 +669,30 @@ function populateFromState(state) {
   );
   document.getElementById('model-faster-whisper').value = stt.backend_models['faster-whisper'];
   document.getElementById('model-whisper').value = stt.backend_models.whisper;
+  document.getElementById('whisper-endpoint-url').value = stt.whisper_endpoint_url || '';
+  document.getElementById('whisper-endpoint-model').value = stt.whisper_endpoint_model || '';
   document.getElementById('stt-default').value = stt.default_backend;
   updateBackendSpecificFields();
 
   const tts = state.saved.tts;
   const ttsLabels = Object.fromEntries(state.catalog.tts_providers.map((item) => [item.id, item.label]));
+  const presetLabels = Object.fromEntries((state.catalog.elevenlabs_presets || []).map((item) => [item.id, item.label]));
   updateSelectOptions(
     document.getElementById('tts-default'),
     state.catalog.tts_providers.map((item) => item.id),
     ttsLabels,
+  );
+  updateSelectOptions(
+    document.getElementById('eleven-preset'),
+    (state.catalog.elevenlabs_presets || []).map((item) => item.id),
+    presetLabels,
   );
   document.getElementById('tts-default').value = tts.default_provider;
   document.getElementById('edge-rate').value = tts.edge_rate;
   document.getElementById('eleven-model').value = tts.elevenlabs_model;
   document.getElementById('eleven-voice-id').value = tts.elevenlabs_voice_id;
   document.getElementById('eleven-voice-name').value = tts.elevenlabs_voice_name;
+  document.getElementById('eleven-preset').value = tts.elevenlabs_preset || 'natural';
   syncElevenVoiceSelectionFromId();
 
   const gateway = state.saved.gateway;
@@ -723,11 +748,14 @@ document.getElementById('stt-device').addEventListener('change', () => {
 document.getElementById('stt-compute-type').addEventListener('change', updateFlowVisibility);
 document.getElementById('model-faster-whisper').addEventListener('change', updateFlowVisibility);
 document.getElementById('model-whisper').addEventListener('change', updateFlowVisibility);
+document.getElementById('whisper-endpoint-url').addEventListener('input', updateFlowVisibility);
+document.getElementById('whisper-endpoint-model').addEventListener('input', updateFlowVisibility);
 document.getElementById('tts-default').addEventListener('change', updateFlowVisibility);
 document.getElementById('edge-voice').addEventListener('change', updateFlowVisibility);
 document.getElementById('edge-rate').addEventListener('input', updateFlowVisibility);
 document.getElementById('eleven-api-key').addEventListener('input', updateFlowVisibility);
 document.getElementById('eleven-model').addEventListener('input', updateFlowVisibility);
+document.getElementById('eleven-preset').addEventListener('change', updateFlowVisibility);
 document.getElementById('eleven-voice-select').addEventListener('change', () => {
   const selected = elevenVoices.find((voice) => voice.voice_id === document.getElementById('eleven-voice-select').value);
   document.getElementById('eleven-voice-id').value = selected ? selected.voice_id : '';
@@ -755,6 +783,8 @@ document.getElementById('validate-stt').addEventListener('click', async () => {
         language: document.getElementById('stt-language').value,
         device: document.getElementById('stt-device').value,
         compute_type: document.getElementById('stt-compute-type').value,
+        whisper_endpoint_url: document.getElementById('whisper-endpoint-url').value,
+        whisper_endpoint_model: document.getElementById('whisper-endpoint-model').value,
         backend_models: {
           'faster-whisper': document.getElementById('model-faster-whisper').value,
           whisper: document.getElementById('model-whisper').value,
@@ -847,6 +877,7 @@ document.getElementById('validate-eleven-voice').addEventListener('click', async
       body: JSON.stringify({
         voice_id: document.getElementById('eleven-voice-id').value,
         model_id: document.getElementById('eleven-model').value,
+        preset_name: document.getElementById('eleven-preset').value,
       }),
     });
     document.getElementById('eleven-voice-name').value = payload.voice_name;

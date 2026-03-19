@@ -5,7 +5,11 @@ from abc import ABC, abstractmethod
 
 import httpx
 
-from ..catalog import DEFAULT_SAMPLE_TEXT, SUPPORTED_TTS_PROVIDERS
+from ..catalog import (
+    DEFAULT_SAMPLE_TEXT,
+    ELEVENLABS_DEFAULT_PRESET,
+    SUPPORTED_TTS_PROVIDERS,
+)
 from ..errors import ValidationError
 from ..installer import ensure_python_package
 
@@ -15,7 +19,7 @@ ELEVENLABS_API_BASE = "https://api.elevenlabs.io/v1"
 
 class BaseSynthesizer(ABC):
     @abstractmethod
-    async def synthesize(self, text: str) -> bytes:
+    async def synthesize(self, text: str, *, preset_name: str | None = None) -> bytes:
         raise NotImplementedError
 
 
@@ -24,7 +28,7 @@ class EdgeSynthesizer(BaseSynthesizer):
         self.voice = voice
         self.rate = rate
 
-    async def synthesize(self, text: str) -> bytes:
+    async def synthesize(self, text: str, *, preset_name: str | None = None) -> bytes:
         import edge_tts
 
         communicate = edge_tts.Communicate(text=text, voice=self.voice, rate=self.rate)
@@ -36,12 +40,14 @@ class EdgeSynthesizer(BaseSynthesizer):
 
 
 class ElevenLabsSynthesizer(BaseSynthesizer):
-    def __init__(self, *, api_key: str, voice_id: str, model_id: str):
+    def __init__(self, *, api_key: str, voice_id: str, model_id: str, default_preset: str):
         self.api_key = api_key
         self.voice_id = voice_id
         self.model_id = model_id
+        self.default_preset = normalize_elevenlabs_preset(default_preset)
 
-    async def synthesize(self, text: str) -> bytes:
+    async def synthesize(self, text: str, *, preset_name: str | None = None) -> bytes:
+        normalize_elevenlabs_preset(preset_name or self.default_preset)
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
                 f"{ELEVENLABS_API_BASE}/text-to-speech/{self.voice_id}",
@@ -59,6 +65,13 @@ class ElevenLabsSynthesizer(BaseSynthesizer):
         if response.status_code >= 400:
             raise ValidationError(_http_error_message(response))
         return response.content
+
+
+def normalize_elevenlabs_preset(preset_name: str | None) -> str:
+    normalized = str(preset_name or "").strip().lower()
+    if normalized in {"calm", "natural", "expressive", "focused"}:
+        return normalized
+    return ELEVENLABS_DEFAULT_PRESET
 
 
 def _http_error_message(response: httpx.Response) -> str:
@@ -133,7 +146,7 @@ async def validate_elevenlabs_api_key(api_key: str) -> dict:
     return {"ok": True, "voice_count": len(voices)}
 
 
-async def validate_elevenlabs_voice(*, api_key: str, voice_id: str, model_id: str) -> dict:
+async def validate_elevenlabs_voice(*, api_key: str, voice_id: str, model_id: str, preset_name: str) -> dict:
     if not api_key.strip():
         raise ValidationError("Validate and save the ElevenLabs API key first.")
     if not voice_id.strip():
@@ -184,5 +197,6 @@ def build_synthesizer(tts_settings: dict, secrets: dict[str, str]) -> BaseSynthe
             api_key=secrets["elevenlabs_api_key"],
             voice_id=tts_settings["elevenlabs_voice_id"],
             model_id=tts_settings["elevenlabs_model"],
+            default_preset=tts_settings["elevenlabs_preset"],
         )
     raise ValidationError(f"Unsupported TTS provider: {provider}")

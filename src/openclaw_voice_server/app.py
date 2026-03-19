@@ -11,6 +11,7 @@ from .config_store import ConfigStore
 from .errors import ValidationError
 from .runtime import VoiceRuntime
 from .setup_service import SetupService
+from .windows_client_state import WindowsClientStateStore
 
 
 LOGGER = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ def create_app() -> web.Application:
     store = ConfigStore()
     setup_service = SetupService(store)
     runtime = VoiceRuntime(store)
+    windows_client_state = WindowsClientStateStore()
     static_dir = _static_dir()
 
     async def root(request: web.Request) -> web.StreamResponse:
@@ -47,6 +49,9 @@ def create_app() -> web.Application:
 
     async def voice_page(request: web.Request) -> web.StreamResponse:
         return web.FileResponse(static_dir / "voice.html")
+
+    async def record_page(request: web.Request) -> web.StreamResponse:
+        return web.FileResponse(static_dir / "record.html")
 
     async def health(request: web.Request) -> web.Response:
         state = setup_service.state()
@@ -73,10 +78,29 @@ def create_app() -> web.Application:
             }
         )
 
+    async def runtime_interrupt_probe(request: web.Request) -> web.Response:
+        return await runtime.handle_interrupt_probe(request)
+
+    async def runtime_speak(request: web.Request) -> web.Response:
+        return await runtime.handle_speak_request(request)
+
+    async def windows_client_status(request: web.Request) -> web.Response:
+        shell_id = request.query.get("shell_id", "")
+        return web.json_response(windows_client_state.snapshot(shell_id))
+
     async def parse_json(request: web.Request) -> dict:
         if request.can_read_body:
             return await request.json()
         return {}
+
+    async def update_windows_client_status(request: web.Request) -> web.Response:
+        payload = await parse_json(request)
+        return web.json_response(
+            windows_client_state.update(
+                str(payload.get("shell_id", "")),
+                str(payload.get("state", "")),
+            )
+        )
 
     async def validate_gateway(request: web.Request) -> web.Response:
         payload = await parse_json(request)
@@ -127,9 +151,14 @@ def create_app() -> web.Application:
     app.router.add_get("/", root)
     app.router.add_get("/setup", setup_page)
     app.router.add_get("/voice", voice_page)
+    app.router.add_get("/record", record_page)
     app.router.add_get("/health", health)
     app.router.add_get("/api/setup/state", setup_state)
     app.router.add_get("/api/runtime/state", runtime_state)
+    app.router.add_post("/api/runtime/interrupt-probe", runtime_interrupt_probe)
+    app.router.add_post("/api/runtime/speak", runtime_speak)
+    app.router.add_get("/api/windows-client/status", windows_client_status)
+    app.router.add_post("/api/windows-client/status", update_windows_client_status)
     app.router.add_post("/api/setup/validate-gateway", validate_gateway)
     app.router.add_post("/api/setup/validate-stt", validate_stt)
     app.router.add_post("/api/setup/validate-tts", validate_tts)

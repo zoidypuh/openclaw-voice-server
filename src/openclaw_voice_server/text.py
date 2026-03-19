@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 
+from .catalog import ELEVENLABS_PRESETS
+
 _COMMON_NOISE = {
     "vielen dank",
     "danke",
@@ -14,11 +16,17 @@ _COMMON_NOISE = {
     "bis zum naechsten mal",
     "bis zum nächsten mal",
 }
-_CANCEL_WORDS = {"stop", "stopp"}
+_INTERRUPT_WORDS = {"stop", "stopp"}
+_PAUSE_WORDS = {"pause", "pausieren"}
 _TRAILING_FILLERS = {"bitte", "danke", "jetzt", "okay", "ok", "mal", "kurz"}
+_LEADING_FILLERS = {"hey", "ok", "okay", "bitte", "bonnie", "clyde"}
 
 _SENTENCE_BOUNDARY_RE = re.compile(r"[.!?—](?:\s|$)")
 _EARLY_BREAK_RE = re.compile(r"[,;:](?:\s|$)")
+_VOICE_STYLE_RE = re.compile(
+    r"^\s*\[(?:voice\s*[:=]\s*)?(?P<style>" + "|".join(ELEVENLABS_PRESETS.keys()) + r")\]\s*",
+    re.IGNORECASE,
+)
 
 
 def strip_markdown(text: str) -> str:
@@ -33,26 +41,99 @@ def strip_markdown(text: str) -> str:
     return text.strip()
 
 
+def extract_voice_style_directive(text: str) -> tuple[str | None, str, bool]:
+    match = _VOICE_STYLE_RE.match(text)
+    if match:
+        style = match.group("style").lower()
+        return style, text[match.end() :], False
+
+    stripped = text.lstrip()
+    if stripped.startswith("[") and "]" not in stripped and len(stripped) < 48:
+        return None, text, True
+    return None, text, False
+
+
 def normalize_voice_text(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", text.lower())).strip()
 
 
-def should_drop_stt_false_positive(text: str, duration: float, silence_threshold: float) -> bool:
+def _trim_control_fillers(words: list[str]) -> list[str]:
+    trimmed = list(words)
+    while trimmed and trimmed[0] in _LEADING_FILLERS:
+        trimmed.pop(0)
+    while trimmed and trimmed[-1] in _TRAILING_FILLERS:
+        trimmed.pop()
+    return trimmed
+
+
+def should_drop_stt_false_positive(text: str, duration: float, min_duration: float) -> bool:
     normalized = normalize_voice_text(text)
     if not normalized:
         return True
 
-    words = normalized.split()
-    if normalized in _COMMON_NOISE and (duration < silence_threshold or len(words) <= 4):
+    words = _trim_control_fillers(normalized.split())
+    if not words:
+        return True
+    if normalized in _COMMON_NOISE and (duration < min_duration or len(words) <= 4):
         return True
     return False
 
 
-def should_cancel_voice_input(text: str) -> bool:
+def should_drop_voice_transcript(
+    text: str,
+    duration: float,
+    *,
+    min_duration: float = 0.5,
+    min_words: int = 1,
+) -> bool:
+    if detect_voice_control_command(text):
+        return False
+
+    if should_drop_stt_false_positive(text, duration, min_duration):
+        return True
+
+    normalized = normalize_voice_text(text)
+    words = _trim_control_fillers(normalized.split())
+    if not words:
+        return True
+    return len(words) < max(1, min_words)
+
+
+def has_probable_voice_transcript(
+    text: str,
+    duration: float,
+    *,
+    min_duration: float = 0.2,
+) -> bool:
     normalized = normalize_voice_text(text)
     if not normalized:
         return False
-    return normalized in _CANCEL_WORDS and len(normalized.split()) <= 3
+
+    words = _trim_control_fillers(normalized.split())
+    if not words:
+        return False
+
+    if should_drop_stt_false_positive(text, duration, min_duration):
+        return False
+    return True
+
+
+def detect_voice_control_command(text: str) -> str | None:
+    normalized = normalize_voice_text(text)
+    if not normalized:
+        return None
+    words = _trim_control_fillers(normalized.split())
+    if not words or len(words) > 3:
+        return None
+    if any(word in _PAUSE_WORDS for word in words):
+        return "pause"
+    if any(word in _INTERRUPT_WORDS for word in words):
+        return "interrupt"
+    return None
+
+
+def should_cancel_voice_input(text: str) -> bool:
+    return detect_voice_control_command(text) == "interrupt"
 
 
 def _within_edit_distance_one(source: str, target: str) -> bool:
@@ -97,14 +178,20 @@ def split_send_phrase(text: str, send_phrase: str) -> tuple[str, bool]:
         normalized_words.pop()
         raw_words.pop()
 
-    target = normalize_voice_text(send_phrase)
-    if not normalized_words:
+    target_words = normalize_voice_text(send_phrase).split()
+    if not normalized_words or not target_words or len(normalized_words) < len(target_words):
         return stripped, False
 
-    last_word = normalized_words[-1]
-    if last_word == target or _within_edit_distance_one(last_word, target):
-        if len(raw_words) > 1:
-            kept = " ".join(raw_words[:-1])
+    suffix_words = normalized_words[-len(target_words) :]
+    prefix_words = suffix_words[:-1]
+    target_prefix = target_words[:-1]
+    suffix_last = suffix_words[-1]
+    target_last = target_words[-1]
+
+    if prefix_words == target_prefix and (suffix_last == target_last or _within_edit_distance_one(suffix_last, target_last)):
+        kept_words = raw_words[:-len(target_words)]
+        if kept_words:
+            kept = " ".join(kept_words)
             return kept.rstrip(" \t\r\n,.;:!?-"), True
         return "", True
     return stripped, False
@@ -148,4 +235,3 @@ def pop_early_chunk(
     chunk = buf[:cutoff]
     remainder = buf[cutoff:]
     return (chunk if chunk.strip() else None), remainder
-

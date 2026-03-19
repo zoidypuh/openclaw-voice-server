@@ -44,11 +44,102 @@
   #setup-link:hover {
     color: #d0d0d0;
   }
+  body[data-shell="tauri"] #setup-link {
+    top: 14px;
+    left: 14px;
+    padding: 0.36rem 0.7rem;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 999px;
+    background: rgba(255,255,255,0.05);
+    color: #b8b8b8;
+    font-size: 0.8rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  body[data-shell="tauri"] #setup-link:hover {
+    color: #ececec;
+    border-color: rgba(255,255,255,0.24);
+    background: rgba(255,255,255,0.1);
+  }
   main {
     width: min(72vw, 360px);
     display: grid;
     gap: 18px;
     justify-items: center;
+  }
+  #controls {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  #command-hint {
+    width: 100%;
+    text-align: center;
+    color: #7f7f7f;
+    font-size: 0.72rem;
+    line-height: 1.35;
+    letter-spacing: 0.04em;
+  }
+  #utility-bar {
+    width: 100%;
+    display: flex;
+    justify-content: flex-end;
+  }
+  .control-btn {
+    appearance: none;
+    border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(255,255,255,0.06);
+    color: #d5d5d5;
+    border-radius: 999px;
+    padding: 0.78rem 1rem;
+    font: inherit;
+    letter-spacing: 0.04em;
+    text-transform: lowercase;
+    cursor: pointer;
+    transition: background 120ms ease, border-color 120ms ease, color 120ms ease, opacity 120ms ease;
+  }
+  .control-btn:hover:enabled {
+    background: rgba(255,255,255,0.1);
+    border-color: rgba(255,255,255,0.22);
+  }
+  .control-btn:disabled {
+    opacity: 0.42;
+    cursor: default;
+  }
+  .control-btn.active {
+    background: rgba(109,226,255,0.14);
+    border-color: rgba(109,226,255,0.35);
+    color: #bfefff;
+  }
+  .mini-btn {
+    appearance: none;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.04);
+    color: #a8a8a8;
+    border-radius: 999px;
+    padding: 0.34rem 0.72rem;
+    font: inherit;
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  }
+  .mini-btn:hover {
+    background: rgba(255,255,255,0.09);
+    border-color: rgba(255,255,255,0.2);
+    color: #d8d8d8;
+  }
+  .mini-btn.active {
+    color: #86c8ff;
+    border-color: rgba(134,200,255,0.3);
+    background: rgba(134,200,255,0.08);
+  }
+  body[data-state="paused"] #crab {
+    opacity: 0.72;
+    filter: saturate(0.85);
   }
   #status {
     width: 100%;
@@ -81,6 +172,61 @@
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.04em;
   }
+  #tuning-panel {
+    width: 100%;
+    display: grid;
+    gap: 10px;
+    padding: 0.85rem 0.95rem;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 18px;
+    background: rgba(255,255,255,0.035);
+    position: relative;
+  }
+  #tuning-title {
+    color: #a7a7a7;
+    font-size: 0.76rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .tuning-row {
+    display: grid;
+    gap: 0.38rem;
+  }
+  .tuning-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.8rem;
+    color: #cfcfcf;
+    font-size: 0.88rem;
+    line-height: 1.2;
+  }
+  .tuning-value {
+    color: #86c8ff;
+    font-variant-numeric: tabular-nums;
+  }
+  .tuning-hint {
+    color: #8a8a8a;
+    font-size: 0.74rem;
+    line-height: 1.25;
+  }
+  .tuning-slider {
+    width: 100%;
+    margin: 0;
+    accent-color: #86c8ff;
+  }
+  #tuning-close {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 1.7rem;
+    height: 1.7rem;
+    padding: 0;
+    border-radius: 999px;
+    font-size: 0.92rem;
+    line-height: 1;
+  }
   .hidden {
     display: none !important;
   }
@@ -96,8 +242,26 @@
 <a id="setup-link" href="./setup">setup</a>
 <div id="version">v0.04 <span class="alpha">ALPHA</span></div>
 <main>
+  <div id="command-hint">hey go - end speech · hey stop - interrupt agent · hey pause - toggle pause</div>
   <div id="status">listening</div>
+  <div id="controls">
+    <button id="pause-btn" class="control-btn" type="button">pause</button>
+  </div>
+  <div id="utility-bar">
+    <button id="sliders-toggle" class="mini-btn active" type="button">threshold</button>
+  </div>
   <div id="level" aria-hidden="true"><div id="level-bar"></div></div>
+  <section id="tuning-panel" aria-label="voice tuning">
+    <button id="tuning-close" class="mini-btn" type="button" aria-label="hide threshold">x</button>
+    <div id="tuning-title">live tuning</div>
+    <label class="tuning-row" for="turn-end-threshold">
+      <span class="tuning-label">
+        <span>voice threshold</span>
+        <span id="turn-end-threshold-value" class="tuning-value"></span>
+      </span>
+      <input id="turn-end-threshold" class="tuning-slider" type="range" min="0" max="100" step="1">
+    </label>
+  </section>
   <div id="thinking-timer" class="hidden"></div>
   <img id="crab" src="" alt="">
 </main>
@@ -109,11 +273,32 @@ function resolveAppBase() {
 
 const APP_BASE = resolveAppBase();
 const appUrl = (path) => new URL(path, APP_BASE).toString();
+const SHELL_STATUS_ID = new URLSearchParams(window.location.search).get('shell_id') || '';
 const CRAB_IMAGES = {
   listening: [appUrl('static/media/listening_transparent.png')],
+  paused: [appUrl('static/media/listening_transparent.png')],
   thinking: [appUrl('static/media/thinking_transparent.png')],
+  interrupting: [appUrl('static/media/thinking_transparent.png')],
+  reconnecting: [appUrl('static/media/listening_transparent.png')],
   speaking: [appUrl('static/media/speaking1_transparent.png'), appUrl('static/media/speaking2_transparent.png')],
 };
+
+function isTauriShell() {
+  return (navigator.userAgent || '').includes('Tauri');
+}
+
+function configureSetupLink() {
+  const setupLink = document.getElementById('setup-link');
+  if (!setupLink || !isTauriShell()) {
+    return;
+  }
+  document.body.dataset.shell = 'tauri';
+  setupLink.href = appUrl('setup');
+  setupLink.target = '_blank';
+  setupLink.rel = 'noopener noreferrer';
+  setupLink.textContent = 'browser settings';
+  setupLink.title = 'open setup in your browser';
+}
 
 let ws = null;
 let audioCtx = null;
@@ -126,19 +311,78 @@ let speechStart = null;
 let hasSpeech = false;
 let busy = false;
 let pendingIdle = false;
-let currentState = 'listening';
+let paused = true;
+let interruptPending = false;
+let currentState = 'paused';
+let replyActive = false;
 let speakingTimer = null;
 let speakingFrame = 0;
 let audioQueue = [];
 let currentAudio = null;
+let currentAudioUrl = null;
 let currentLevelWidth = 0;
 let thinkingStartedAt = null;
 let transientStatusTimer = null;
+let shellStatusTimer = null;
+let lastPublishedShellState = '';
+let interruptCooldownUntil = 0;
+let speechGateHoldUntil = 0;
+let interruptProbeChunks = [];
+let interruptProbeSpeechMs = 0;
+let interruptProbeSilenceMs = 0;
+let interruptProbePending = false;
+let bargeInChunks = [];
+let bargeInSpeechMs = 0;
+let bargeInSilenceMs = 0;
+let bargeInProbePending = false;
+let bargeInPending = false;
+let playbackSoftPaused = false;
+let playbackSessionStarted = false;
+let bargeInGraceUntil = 0;
+let pendingBargeInAudio = null;
+let manualFinishProbePending = false;
+let manualFinishProbeCooldownUntil = 0;
 let settings = {
-  silence_threshold: 0.015,
-  silence_ms: 2000,
   min_speech_ms: 500,
 };
+
+const TUNING_STORAGE_KEY = 'openclaw.voice.tuning.v1';
+const TUNING_PANEL_STORAGE_KEY = 'openclaw.voice.tuning-panel.v1';
+const DEFAULT_TUNING = {
+  endOfTurnBarThreshold: 10,
+};
+const END_OF_TURN_SILENCE_MS = 1700;
+const MANUAL_FINISH_SILENCE_MS = 1700;
+const TURN_COMMIT_MIN_SPEECH_MS = 650;
+const DISPLAY_LEVEL_RMS_SCALE = 1180;
+const SPEECH_ZCR_MIN = 0.008;
+const SPEECH_ZCR_MAX = 0.24;
+const SPEECH_CREST_MAX = 8.0;
+const INTERRUPT_RMS_MIN = 0.0045;
+const INTERRUPT_ZCR_MIN = 0.003;
+const INTERRUPT_ZCR_MAX = 0.34;
+const INTERRUPT_CREST_MAX = 14.0;
+const SPEECH_GATE_HOLD_MS = 220;
+const ACTIVE_COMMAND_THRESHOLD_MULTIPLIER = 0.62;
+const COMMAND_THRESHOLD_MAX = 6.8;
+const INTERRUPT_PROBE_MIN_SPEECH_MS = 180;
+const INTERRUPT_PROBE_SILENCE_MS = 260;
+const INTERRUPT_PROBE_MAX_MS = 2800;
+const INTERRUPT_COOLDOWN_MS = 900;
+const PAUSED_COMMAND_THRESHOLD_MULTIPLIER = 0.58;
+const PAUSED_COMMAND_MIN_SPEECH_MS = 180;
+const PAUSED_COMMAND_MAX_MS = 2800;
+const BARGE_IN_THRESHOLD_MULTIPLIER = 0.58;
+const BARGE_IN_THRESHOLD_MAX = 6.2;
+const PLAYBACK_NO_BARGE_IN_MS = 800;
+const BARGE_IN_MIN_SPEECH_MS = 180;
+const BARGE_IN_SILENCE_MS = 280;
+const BARGE_IN_MAX_MS = 3000;
+const MANUAL_FINISH_PROBE_MIN_SILENCE_MS = 260;
+const MANUAL_FINISH_PROBE_COOLDOWN_MS = 900;
+let tuning = { ...DEFAULT_TUNING };
+let tuningPanelVisible = true;
+const manualFinishEnabled = true;
 
 function setLevelBar(width) {
   currentLevelWidth = Math.max(0, Math.min(100, width));
@@ -147,6 +391,88 @@ function setLevelBar(width) {
 
 function setStatusText(text) {
   document.getElementById('status').textContent = text;
+}
+
+function clampNumber(value, min, max, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function loadTuning() {
+  try {
+    const raw = localStorage.getItem(TUNING_STORAGE_KEY);
+    if (!raw) {
+      return;
+    }
+    const parsed = JSON.parse(raw);
+    tuning = {
+      endOfTurnBarThreshold: clampNumber(
+        parsed.endOfTurnBarThreshold,
+        0,
+        100,
+        DEFAULT_TUNING.endOfTurnBarThreshold,
+      ),
+    };
+  } catch (_) {}
+}
+
+function saveTuning() {
+  localStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify(tuning));
+}
+
+function loadTuningPanelVisibility() {
+  try {
+    const raw = localStorage.getItem(TUNING_PANEL_STORAGE_KEY);
+    if (raw === 'hidden') {
+      tuningPanelVisible = false;
+    }
+  } catch (_) {}
+}
+
+function saveTuningPanelVisibility() {
+  localStorage.setItem(TUNING_PANEL_STORAGE_KEY, tuningPanelVisible ? 'visible' : 'hidden');
+}
+
+function renderTuningControls() {
+  const turnEndSlider = document.getElementById('turn-end-threshold');
+  turnEndSlider.value = String(tuning.endOfTurnBarThreshold);
+  document.getElementById('turn-end-threshold-value').textContent = `${tuning.endOfTurnBarThreshold}%`;
+  document.getElementById('tuning-panel').classList.toggle('hidden', !tuningPanelVisible);
+  document.getElementById('sliders-toggle').classList.toggle('active', tuningPanelVisible);
+}
+
+function configureTuningControls() {
+  loadTuning();
+  loadTuningPanelVisibility();
+  renderTuningControls();
+
+  document.getElementById('turn-end-threshold').addEventListener('input', (event) => {
+    tuning.endOfTurnBarThreshold = clampNumber(
+      event.target.value,
+      0,
+      100,
+      DEFAULT_TUNING.endOfTurnBarThreshold,
+    );
+    resetInterruptSpeechDetection();
+    resetInterruptProbeCapture();
+    renderTuningControls();
+    saveTuning();
+  });
+
+  document.getElementById('sliders-toggle').addEventListener('click', () => {
+    tuningPanelVisible = !tuningPanelVisible;
+    renderTuningControls();
+    saveTuningPanelVisibility();
+  });
+
+  document.getElementById('tuning-close').addEventListener('click', () => {
+    tuningPanelVisible = false;
+    renderTuningControls();
+    saveTuningPanelVisibility();
+  });
 }
 
 function scheduleListeningStatusRestore() {
@@ -158,6 +484,57 @@ function scheduleListeningStatusRestore() {
     if (!busy && currentState === 'listening') {
       setStatusText('listening');
     }
+  }, 4000);
+}
+
+function updateControlStates() {
+  const pauseBtn = document.getElementById('pause-btn');
+  pauseBtn.textContent = paused ? 'resume' : 'pause';
+  pauseBtn.classList.toggle('active', paused);
+}
+
+function resolveShellState() {
+  if (!SHELL_STATUS_ID) {
+    return '';
+  }
+  if (paused || currentState === 'paused') {
+    return 'paused';
+  }
+  if (!ws || ws.readyState !== WebSocket.OPEN || currentState === 'reconnecting') {
+    return 'reconnecting';
+  }
+  if (currentState === 'speaking' || currentAudio || audioQueue.length > 0) {
+    return 'speaking';
+  }
+  if (currentState === 'thinking' || currentState === 'interrupting' || interruptPending || busy) {
+    return 'thinking';
+  }
+  return 'listening';
+}
+
+function syncShellState({ force = false } = {}) {
+  const state = resolveShellState();
+  if (!state || (!force && state === lastPublishedShellState)) {
+    return;
+  }
+  lastPublishedShellState = state;
+  fetch(appUrl('api/windows-client/status'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      shell_id: SHELL_STATUS_ID,
+      state,
+    }),
+  }).catch(() => {});
+}
+
+function startShellStatusHeartbeat() {
+  if (!SHELL_STATUS_ID || shellStatusTimer) {
+    return;
+  }
+  syncShellState({ force: true });
+  shellStatusTimer = setInterval(() => {
+    syncShellState({ force: true });
   }, 4000);
 }
 
@@ -189,6 +566,7 @@ function updateIndicatorVisibility(state) {
 
 function setState(state) {
   currentState = state;
+  document.body.dataset.state = state;
   setStatusText(state);
   if (state === 'thinking') {
     if (thinkingStartedAt === null) {
@@ -205,6 +583,8 @@ function setState(state) {
       speakingTimer = null;
     }
     crab.src = CRAB_IMAGES[state][0];
+    updateControlStates();
+    syncShellState();
     return;
   }
   speakingFrame = 0;
@@ -214,6 +594,8 @@ function setState(state) {
     speakingFrame = speakingFrame === 0 ? 1 : 0;
     crab.src = CRAB_IMAGES.speaking[speakingFrame];
   }, 240);
+  updateControlStates();
+  syncShellState();
 }
 
 function flattenAudio(chunks) {
@@ -228,36 +610,499 @@ function flattenAudio(chunks) {
 }
 
 function maybeReturnToListening() {
+  if (paused) {
+    pendingIdle = false;
+    setReplyActive(false);
+    setState('paused');
+    return;
+  }
   if (pendingIdle && !currentAudio && audioQueue.length === 0) {
     pendingIdle = false;
+    rearmVoiceInterrupt();
+    resetPlaybackSession();
+    setReplyActive(false);
     setState('listening');
   }
 }
 
+function resetCaptureBuffer() {
+  audioChunks = [];
+  silenceStart = null;
+  speechStart = null;
+  hasSpeech = false;
+}
+
+function resetInterruptSpeechDetection() {
+  interruptCooldownUntil = 0;
+  speechGateHoldUntil = 0;
+}
+
+function resetInterruptProbeCapture() {
+  interruptProbeChunks = [];
+  interruptProbeSpeechMs = 0;
+  interruptProbeSilenceMs = 0;
+}
+
+function resetBargeInCapture() {
+  bargeInChunks = [];
+  bargeInSpeechMs = 0;
+  bargeInSilenceMs = 0;
+  bargeInProbePending = false;
+  bargeInPending = false;
+}
+
+function resetPlaybackSession() {
+  playbackSessionStarted = false;
+  bargeInGraceUntil = 0;
+}
+
+function startPlaybackSession() {
+  if (playbackSessionStarted) {
+    return;
+  }
+  playbackSessionStarted = true;
+  bargeInGraceUntil = performance.now() + PLAYBACK_NO_BARGE_IN_MS;
+}
+
+function rearmVoiceInterrupt() {
+  resetInterruptSpeechDetection();
+  resetInterruptProbeCapture();
+  resetBargeInCapture();
+  manualFinishProbeCooldownUntil = 0;
+}
+
+function setReplyActive(active) {
+  replyActive = active;
+}
+
+function isInterruptibleAudioState() {
+  return Boolean(
+    ws
+    && ws.readyState === WebSocket.OPEN
+    && !paused
+    && !interruptPending
+    && (replyActive || currentAudio || audioQueue.length > 0),
+  );
+}
+
+function isVoiceCommandProbeState() {
+  return Boolean(
+    ws
+    && ws.readyState === WebSocket.OPEN
+    && !interruptPending
+    && (
+      paused
+      || (!busy && !replyActive && !currentAudio && audioQueue.length === 0)
+    ),
+  );
+}
+
+function isBargeInState() {
+  return Boolean(
+    ws
+    && ws.readyState === WebSocket.OPEN
+    && !paused
+    && !interruptPending
+    && (replyActive || currentAudio || audioQueue.length > 0),
+  );
+}
+
+function flattenInt16Chunks(chunks) {
+  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const merged = new Int16Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return merged.buffer;
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const slice = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...slice);
+  }
+  return btoa(binary);
+}
+
+async function probeVoiceCommand(audioBuffer, { allowSendPhrase = false } = {}) {
+  if ((interruptProbePending && !allowSendPhrase) || (manualFinishProbePending && allowSendPhrase) || !ws || ws.readyState !== WebSocket.OPEN) {
+    return { action: '', heard: '', usableSpeech: false };
+  }
+  if (allowSendPhrase) {
+    manualFinishProbePending = true;
+  } else {
+    interruptProbePending = true;
+  }
+  try {
+    const response = await fetch(appUrl('api/runtime/interrupt-probe'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        audio_b64: arrayBufferToBase64(audioBuffer),
+        allow_send_phrase: allowSendPhrase,
+        send_phrase: allowSendPhrase ? 'hey go' : '',
+      }),
+    });
+    if (!response.ok) {
+      return { action: '', heard: '', usableSpeech: false };
+    }
+    const payload = await response.json();
+    return {
+      action: String(payload.action || ''),
+      heard: String(payload.heard || ''),
+      usableSpeech: Boolean(payload.usable_speech),
+    };
+  } catch (_) {
+    return { action: '', heard: '', usableSpeech: false };
+  } finally {
+    if (allowSendPhrase) {
+      manualFinishProbePending = false;
+    } else {
+      interruptProbePending = false;
+    }
+  }
+}
+
+function maybeProbeManualFinish(now, speechDuration, silenceDuration) {
+  if (
+    !manualFinishEnabled
+    || paused
+    || busy
+    || interruptPending
+    || !hasSpeech
+    || !silenceStart
+    || manualFinishProbePending
+    || now < manualFinishProbeCooldownUntil
+  ) {
+    return false;
+  }
+  const minSpeechDuration = Math.max(settings.min_speech_ms, TURN_COMMIT_MIN_SPEECH_MS);
+  if (speechDuration < minSpeechDuration || silenceDuration < MANUAL_FINISH_PROBE_MIN_SILENCE_MS) {
+    return false;
+  }
+  const bufferedAudio = flattenAudio(audioChunks);
+  manualFinishProbeCooldownUntil = now + MANUAL_FINISH_PROBE_COOLDOWN_MS;
+  void probeVoiceCommand(bufferedAudio, { allowSendPhrase: true }).then((result) => {
+    if (result.action !== 'send' || !ws || ws.readyState !== WebSocket.OPEN || busy || paused || interruptPending) {
+      return;
+    }
+    busy = true;
+    pendingIdle = false;
+    setState('thinking');
+    ws.send(bufferedAudio);
+    resetCaptureBuffer();
+  });
+  return true;
+}
+
+function maybeCaptureVoiceCommandProbe(pcm, displayedLevel, speechLike, frameMs, now) {
+  if (!isVoiceCommandProbeState()) {
+    resetInterruptSpeechDetection();
+    resetInterruptProbeCapture();
+    return false;
+  }
+  if (interruptProbePending || now < interruptCooldownUntil) {
+    return false;
+  }
+
+  const commandThreshold = Math.min(
+    paused
+      ? tuning.endOfTurnBarThreshold * PAUSED_COMMAND_THRESHOLD_MULTIPLIER
+      : tuning.endOfTurnBarThreshold * ACTIVE_COMMAND_THRESHOLD_MULTIPLIER,
+    COMMAND_THRESHOLD_MAX,
+  );
+  const minSpeechMs = paused ? PAUSED_COMMAND_MIN_SPEECH_MS : INTERRUPT_PROBE_MIN_SPEECH_MS;
+  const maxProbeMs = paused ? PAUSED_COMMAND_MAX_MS : INTERRUPT_PROBE_MAX_MS;
+  const aboveThreshold = speechLike && displayedLevel >= commandThreshold;
+  const hasCapture = interruptProbeChunks.length > 0;
+  if (!hasCapture && !aboveThreshold) {
+    return false;
+  }
+
+  interruptProbeChunks.push(pcm.slice());
+  if (aboveThreshold) {
+    interruptProbeSpeechMs += frameMs;
+    interruptProbeSilenceMs = 0;
+  } else {
+    interruptProbeSilenceMs += frameMs;
+  }
+
+  const totalMs = interruptProbeSpeechMs + interruptProbeSilenceMs;
+  const shouldProbe = (
+    interruptProbeSpeechMs >= minSpeechMs
+    && (
+      interruptProbeSilenceMs >= INTERRUPT_PROBE_SILENCE_MS
+      || totalMs >= maxProbeMs
+    )
+  );
+
+  if (!shouldProbe) {
+    return false;
+  }
+
+  const probeBuffer = flattenInt16Chunks(interruptProbeChunks);
+  resetInterruptProbeCapture();
+  interruptCooldownUntil = now + INTERRUPT_COOLDOWN_MS;
+  void probeVoiceCommand(probeBuffer).then(async (result) => {
+    if (result.action === 'interrupt' && isInterruptibleAudioState()) {
+      requestInterrupt({ keepPaused: false });
+      return;
+    }
+    if (result.action === 'pause') {
+      if (paused) {
+        await setPausedState(false);
+        return;
+      }
+      await setPausedState(true, { forceInterrupt: true });
+    }
+  });
+  return true;
+}
+
+function pausePlaybackForBargeIn() {
+  if (playbackSoftPaused) {
+    return;
+  }
+  playbackSoftPaused = true;
+  if (currentAudio && !currentAudio.paused) {
+    currentAudio.pause();
+  }
+  if (!paused && !interruptPending) {
+    setState('listening');
+  }
+}
+
+function resumePlaybackAfterBargeIn() {
+  if (!playbackSoftPaused) {
+    return;
+  }
+  playbackSoftPaused = false;
+  resetBargeInCapture();
+  if (paused || interruptPending) {
+    return;
+  }
+  if (currentAudio) {
+    currentAudio.play().then(() => {
+      if (!paused && !interruptPending) {
+        setState('speaking');
+      }
+    }).catch(() => {
+      currentAudio = null;
+      playNextAudio();
+    });
+    return;
+  }
+  if (audioQueue.length > 0) {
+    setState('speaking');
+    playNextAudio();
+    return;
+  }
+  maybeReturnToListening();
+}
+
+function promoteBargeIn(bufferedAudio) {
+  playbackSoftPaused = false;
+  pendingBargeInAudio = bufferedAudio;
+  requestInterrupt({ keepPaused: false });
+}
+
+function maybeCaptureBargeInProbe(pcm, displayedLevel, speechLike, frameMs, now) {
+  if (!isBargeInState()) {
+    if (playbackSoftPaused) {
+      playbackSoftPaused = false;
+    }
+    resetBargeInCapture();
+    return false;
+  }
+  if (now < bargeInGraceUntil) {
+    resetBargeInCapture();
+    return false;
+  }
+  if (bargeInProbePending) {
+    return true;
+  }
+
+  const bargeThreshold = Math.min(
+    tuning.endOfTurnBarThreshold * BARGE_IN_THRESHOLD_MULTIPLIER,
+    BARGE_IN_THRESHOLD_MAX,
+  );
+  const aboveThreshold = speechLike && displayedLevel >= bargeThreshold;
+  const hasCapture = bargeInChunks.length > 0;
+  if (!hasCapture && !aboveThreshold) {
+    return false;
+  }
+
+  if (!bargeInPending) {
+    bargeInPending = true;
+    pausePlaybackForBargeIn();
+  }
+
+  bargeInChunks.push(pcm.slice());
+  if (aboveThreshold) {
+    bargeInSpeechMs += frameMs;
+    bargeInSilenceMs = 0;
+  } else {
+    bargeInSilenceMs += frameMs;
+  }
+
+  const totalMs = bargeInSpeechMs + bargeInSilenceMs;
+  const shouldProbe = (
+    bargeInSpeechMs >= BARGE_IN_MIN_SPEECH_MS
+    && (
+      bargeInSilenceMs >= BARGE_IN_SILENCE_MS
+      || totalMs >= BARGE_IN_MAX_MS
+    )
+  );
+  if (!shouldProbe) {
+    return true;
+  }
+
+  const probeBuffer = flattenInt16Chunks(bargeInChunks);
+  bargeInProbePending = true;
+  void probeVoiceCommand(probeBuffer).then(async (result) => {
+    bargeInProbePending = false;
+    if (result.action === 'pause') {
+      resetBargeInCapture();
+      await setPausedState(true, { forceInterrupt: true });
+      return;
+    }
+    if (result.action === 'interrupt' || result.action === 'send' || result.usableSpeech) {
+      promoteBargeIn(probeBuffer);
+      resetBargeInCapture();
+      return;
+    }
+    resumePlaybackAfterBargeIn();
+  }).catch(() => {
+    bargeInProbePending = false;
+    resumePlaybackAfterBargeIn();
+  });
+  return true;
+}
+
+function stopPlayback() {
+  playbackSoftPaused = false;
+  resetPlaybackSession();
+  audioQueue = [];
+  if (!currentAudio) {
+    setReplyActive(false);
+    updateControlStates();
+    return;
+  }
+  currentAudio.onended = null;
+  currentAudio.onerror = null;
+  currentAudio.pause();
+  currentAudio.currentTime = 0;
+  if (currentAudioUrl) {
+    URL.revokeObjectURL(currentAudioUrl);
+    currentAudioUrl = null;
+  }
+  currentAudio = null;
+  setReplyActive(false);
+  updateControlStates();
+}
+
+function requestInterrupt({ keepPaused = paused } = {}) {
+  resetCaptureBuffer();
+  resetInterruptSpeechDetection();
+  resetBargeInCapture();
+  pendingBargeInAudio = null;
+  pendingIdle = false;
+  interruptPending = true;
+  setReplyActive(false);
+  stopPlayback();
+  if (keepPaused) {
+    setState('paused');
+  } else {
+    setState('interrupting');
+  }
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    interruptPending = false;
+    busy = false;
+    setState(keepPaused ? 'paused' : 'listening');
+    return;
+  }
+  ws.send(JSON.stringify({ type: 'interrupt' }));
+  updateControlStates();
+}
+
+function manualInterrupt() {
+  if (paused) {
+    return;
+  }
+  requestInterrupt({ keepPaused: false });
+}
+
+async function setPausedState(nextPaused, { forceInterrupt = false } = {}) {
+  paused = Boolean(nextPaused);
+  if (paused) {
+    pendingBargeInAudio = null;
+    setReplyActive(false);
+    requestInterrupt({ keepPaused: true });
+    return;
+  }
+  if (!audioCtx) {
+    await init();
+    return;
+  }
+  interruptPending = false;
+  busy = false;
+  pendingIdle = false;
+  pendingBargeInAudio = null;
+  if (forceInterrupt) {
+    stopPlayback();
+  }
+  setReplyActive(false);
+  resetCaptureBuffer();
+  resetInterruptSpeechDetection();
+  resetInterruptProbeCapture();
+  setState('listening');
+  updateControlStates();
+}
+
 function playNextAudio() {
-  if (currentAudio || audioQueue.length === 0) {
+  if (playbackSoftPaused || currentAudio || audioQueue.length === 0) {
     maybeReturnToListening();
     return;
   }
   const nextBuffer = audioQueue.shift();
   const blob = new Blob([nextBuffer], { type: 'audio/mpeg' });
-  const url = URL.createObjectURL(blob);
-  currentAudio = new Audio(url);
+  currentAudioUrl = URL.createObjectURL(blob);
+  const playbackUrl = currentAudioUrl;
+  currentAudio = new Audio(playbackUrl);
   currentAudio.onended = () => {
-    URL.revokeObjectURL(url);
+    URL.revokeObjectURL(playbackUrl);
+    if (currentAudioUrl === playbackUrl) {
+      currentAudioUrl = null;
+    }
     currentAudio = null;
+    updateControlStates();
     playNextAudio();
   };
   currentAudio.onerror = () => {
-    URL.revokeObjectURL(url);
+    URL.revokeObjectURL(playbackUrl);
+    if (currentAudioUrl === playbackUrl) {
+      currentAudioUrl = null;
+    }
     currentAudio = null;
+    updateControlStates();
     playNextAudio();
   };
+  startPlaybackSession();
   currentAudio.play().catch(() => {
-    URL.revokeObjectURL(url);
+    URL.revokeObjectURL(playbackUrl);
+    if (currentAudioUrl === playbackUrl) {
+      currentAudioUrl = null;
+    }
     currentAudio = null;
+    updateControlStates();
     playNextAudio();
   });
+  updateControlStates();
 }
 
 async function connect() {
@@ -265,14 +1110,35 @@ async function connect() {
   wsUrl.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(wsUrl);
   ws.binaryType = 'arraybuffer';
-  ws.onopen = () => setState('listening');
+  ws.onopen = () => {
+    setReplyActive(false);
+    rearmVoiceInterrupt();
+    setState(paused ? 'paused' : 'listening');
+    updateControlStates();
+    syncShellState({ force: true });
+  };
   ws.onclose = () => {
+    busy = false;
+    pendingIdle = false;
+    interruptPending = false;
+    pendingBargeInAudio = null;
+    setReplyActive(false);
+    stopPlayback();
+    setState('reconnecting');
+    updateControlStates();
+    syncShellState({ force: true });
     setTimeout(connect, 1500);
   };
-  ws.onmessage = (event) => {
+  ws.onmessage = async (event) => {
     if (event.data instanceof ArrayBuffer) {
+      if (paused || interruptPending) {
+        return;
+      }
+      setReplyActive(true);
       audioQueue.push(event.data);
-      setState('speaking');
+      if (!playbackSoftPaused) {
+        setState('speaking');
+      }
       playNextAudio();
       return;
     }
@@ -280,24 +1146,65 @@ async function connect() {
     if (data.error) {
       busy = false;
       pendingIdle = false;
-      setState('listening');
-      setStatusText(humanizeRuntimeError(data.error));
-      scheduleListeningStatusRestore();
+      interruptPending = false;
+      pendingBargeInAudio = null;
+      setReplyActive(false);
+      if (paused) {
+        setState('paused');
+      } else {
+        setState('listening');
+        setStatusText(humanizeRuntimeError(data.error));
+        scheduleListeningStatusRestore();
+      }
+      updateControlStates();
+      syncShellState();
+      return;
+    }
+    if (data.type === 'voice-command') {
+      if (data.action === 'pause') {
+        await setPausedState(!paused, { forceInterrupt: true });
+      } else if (data.action === 'interrupt' && !paused) {
+        requestInterrupt({ keepPaused: false });
+      }
+      updateControlStates();
+      syncShellState();
       return;
     }
     if (data.status === 'thinking') {
+      setReplyActive(true);
+      rearmVoiceInterrupt();
       busy = true;
       pendingIdle = false;
-      setState('thinking');
+      if (!paused && !interruptPending) {
+        setState('thinking');
+      }
     } else if (data.status === 'speaking') {
+      setReplyActive(true);
+      rearmVoiceInterrupt();
       busy = true;
       pendingIdle = false;
-      setState('speaking');
+      if (!paused && !interruptPending) {
+        setState('speaking');
+      }
     } else if (data.status === 'idle') {
+      setReplyActive(Boolean(currentAudio || audioQueue.length > 0));
+      rearmVoiceInterrupt();
       busy = false;
-      pendingIdle = true;
-      maybeReturnToListening();
+      interruptPending = false;
+      if (pendingBargeInAudio && !paused && ws && ws.readyState === WebSocket.OPEN) {
+        const bufferedAudio = pendingBargeInAudio;
+        pendingBargeInAudio = null;
+        busy = true;
+        pendingIdle = false;
+        setState('thinking');
+        ws.send(bufferedAudio);
+      } else {
+        pendingIdle = !paused;
+        maybeReturnToListening();
+      }
     }
+    updateControlStates();
+    syncShellState();
   };
 }
 
@@ -320,25 +1227,73 @@ function onAudioProcess(event) {
   if (
     !ws ||
     ws.readyState !== WebSocket.OPEN ||
-    busy ||
-    currentAudio ||
-    audioQueue.length > 0 ||
-    pendingIdle ||
-    currentState === 'speaking'
+    interruptPending
   ) {
+    resetInterruptSpeechDetection();
+    resetInterruptProbeCapture();
     return;
   }
   const input = event.inputBuffer.getChannelData(0);
   const pcm = new Int16Array(input.length);
-  let level = 0;
+  let peakLevel = 0;
+  let sumSquares = 0;
+  let zeroCrossings = 0;
+  let previousSample = input[0] || 0;
   for (let i = 0; i < input.length; i += 1) {
     const sample = Math.max(-1, Math.min(1, input[i]));
     pcm[i] = sample * 32767;
-    level = Math.max(level, Math.abs(sample));
+    const magnitude = Math.abs(sample);
+    peakLevel = Math.max(peakLevel, magnitude);
+    sumSquares += sample * sample;
+    if ((sample >= 0 && previousSample < 0) || (sample < 0 && previousSample >= 0)) {
+      zeroCrossings += 1;
+    }
+    previousSample = sample;
   }
-  setLevelBar(Math.max(level * 280, currentLevelWidth * 0.84));
+  const rmsLevel = Math.sqrt(sumSquares / input.length);
+  const zeroCrossingRate = zeroCrossings / input.length;
+  const crestFactor = peakLevel / Math.max(rmsLevel, 0.0001);
+  const speechLikeCurrent = Boolean(
+    rmsLevel >= 0.006
+    && zeroCrossingRate >= SPEECH_ZCR_MIN
+    && zeroCrossingRate <= SPEECH_ZCR_MAX
+    && crestFactor <= SPEECH_CREST_MAX
+  );
   const now = performance.now();
-  if (level > settings.silence_threshold) {
+  if (speechLikeCurrent) {
+    speechGateHoldUntil = now + SPEECH_GATE_HOLD_MS;
+  }
+  const speechLike = speechLikeCurrent || now < speechGateHoldUntil;
+  const interruptSpeechLike = Boolean(
+    speechLike
+    || (
+      rmsLevel >= INTERRUPT_RMS_MIN
+      && zeroCrossingRate >= INTERRUPT_ZCR_MIN
+      && zeroCrossingRate <= INTERRUPT_ZCR_MAX
+      && crestFactor <= INTERRUPT_CREST_MAX
+    )
+  );
+  const baseLevel = Math.min(100, rmsLevel * DISPLAY_LEVEL_RMS_SCALE);
+  const displayedLevel = Math.max(baseLevel, currentLevelWidth * (speechLike ? 0.93 : 0.84));
+  setLevelBar(displayedLevel);
+  const frameMs = (input.length / 16000) * 1000;
+  if (maybeCaptureBargeInProbe(pcm, displayedLevel, interruptSpeechLike, frameMs, now)) {
+    return;
+  }
+  if (maybeCaptureVoiceCommandProbe(pcm, displayedLevel, interruptSpeechLike, frameMs, now)) {
+    return;
+  }
+  if (paused) {
+    resetCaptureBuffer();
+    return;
+  }
+  if (busy || currentAudio || audioQueue.length > 0 || currentState === 'speaking') {
+    return;
+  }
+  const turnActiveThreshold = speechLike
+    ? tuning.endOfTurnBarThreshold * 0.72
+    : tuning.endOfTurnBarThreshold;
+  if (displayedLevel > turnActiveThreshold) {
     if (!speechStart) speechStart = now;
     silenceStart = null;
     hasSpeech = true;
@@ -350,15 +1305,17 @@ function onAudioProcess(event) {
   if (!silenceStart) silenceStart = now;
   const speechDuration = speechStart ? now - speechStart : 0;
   const silenceDuration = now - silenceStart;
-  if (speechDuration >= settings.min_speech_ms && silenceDuration >= settings.silence_ms) {
+  if (maybeProbeManualFinish(now, speechDuration, silenceDuration)) {
+    return;
+  }
+  const minSpeechDuration = Math.max(settings.min_speech_ms, TURN_COMMIT_MIN_SPEECH_MS);
+  const turnEndSilenceMs = manualFinishEnabled ? MANUAL_FINISH_SILENCE_MS : END_OF_TURN_SILENCE_MS;
+  if (speechDuration >= minSpeechDuration && silenceDuration >= turnEndSilenceMs) {
     busy = true;
     pendingIdle = false;
     setState('thinking');
     ws.send(flattenAudio(audioChunks));
-    audioChunks = [];
-    silenceStart = null;
-    speechStart = null;
-    hasSpeech = false;
+    resetCaptureBuffer();
   }
 }
 
@@ -368,7 +1325,7 @@ async function init() {
     settings = runtimeState.audio;
     await ensureAudio();
     await connect();
-    setState('listening');
+    setState(paused ? 'paused' : 'listening');
   } catch (error) {
     console.error(error);
   }
@@ -393,14 +1350,20 @@ function animateLevelDecay() {
 }
 
 document.getElementById('crab').addEventListener('click', () => {
-  if (!audioCtx) {
-    init();
-  }
+  document.getElementById('pause-btn').click();
 });
 
-setState('listening');
+document.getElementById('pause-btn').addEventListener('click', async () => {
+  await setPausedState(!paused);
+});
+
+setState('paused');
+configureSetupLink();
+configureTuningControls();
+window.__openclawManualInterrupt = manualInterrupt;
+window.__openclawToggleVoiceInterrupt = () => true;
+startShellStatusHeartbeat();
 animateLevelDecay();
-init();
 </script>
 </body>
 </html>

@@ -8,6 +8,7 @@ from .catalog import (
     APP_VERSION_LABEL,
     DEFAULT_LOCAL_GATEWAY_URL,
     DEFAULT_VOICE_SESSION_KEY,
+    ELEVENLABS_PRESETS,
     SUPPORTED_STT_BACKENDS,
     SUPPORTED_TTS_PROVIDERS,
 )
@@ -18,6 +19,7 @@ from .installer import module_available
 from .providers import (
     list_edge_voices,
     list_elevenlabs_voices,
+    normalize_elevenlabs_preset,
     normalize_stt_device,
     validate_edge_voice,
     validate_elevenlabs_api_key as validate_elevenlabs_api_key_step,
@@ -55,10 +57,56 @@ class SetupService:
             return self._snapshot_matches(current, legacy_snapshot)
         return False
 
+    def _stt_runtime_ready(self, settings: dict[str, Any]) -> bool:
+        stt = settings["stt"]
+        backend_id = str(stt.get("default_backend") or "").strip()
+        enabled_backends = stt.get("enabled_backends") or []
+        if not backend_id or backend_id not in enabled_backends:
+            return False
+        backend = SUPPORTED_STT_BACKENDS.get(backend_id)
+        if backend is None:
+            return False
+        if backend_id == "whisper" and str(stt.get("whisper_endpoint_url") or "").strip():
+            return True
+        return module_available(backend["import_name"])
+
+    def _tts_runtime_ready(self, settings: dict[str, Any]) -> bool:
+        tts = settings["tts"]
+        provider_id = str(tts.get("default_provider") or "").strip()
+        enabled_providers = tts.get("enabled_providers") or []
+        if not provider_id or provider_id not in enabled_providers:
+            return False
+        provider = SUPPORTED_TTS_PROVIDERS.get(provider_id)
+        if provider is None:
+            return False
+        if provider["import_name"] and not module_available(provider["import_name"]):
+            return False
+        if provider_id == "edge":
+            return bool(str(tts.get("edge_voice") or "").strip())
+        if provider_id == "elevenlabs":
+            return bool(
+                str(settings["secrets"].get("elevenlabs_api_key") or "").strip()
+                and str(tts.get("elevenlabs_voice_id") or "").strip()
+                and str(tts.get("elevenlabs_model") or "").strip()
+            )
+        return False
+
+    def _gateway_runtime_ready(self, settings: dict[str, Any]) -> bool:
+        gateway = settings["gateway"]
+        secrets = settings["secrets"]
+        return bool(
+            str(gateway.get("url") or "").strip()
+            and str(gateway.get("model") or "").strip()
+            and str(secrets.get("gateway_token") or "").strip()
+        )
+
     def _status(self, settings: dict[str, Any]) -> dict[str, bool]:
         validation = settings["validation"]
         stt_modules_ready = all(
-            module_available(SUPPORTED_STT_BACKENDS[backend_id]["import_name"])
+            (
+                backend_id == "whisper" and bool(str(settings["stt"].get("whisper_endpoint_url") or "").strip())
+            )
+            or module_available(SUPPORTED_STT_BACKENDS[backend_id]["import_name"])
             for backend_id in settings["stt"]["enabled_backends"]
             if backend_id in SUPPORTED_STT_BACKENDS
         )
@@ -68,6 +116,8 @@ class SetupService:
             "language": settings["stt"]["language"],
             "device": settings["stt"]["device"],
             "compute_type": settings["stt"]["compute_type"],
+            "whisper_endpoint_url": settings["stt"].get("whisper_endpoint_url", ""),
+            "whisper_endpoint_model": settings["stt"].get("whisper_endpoint_model", ""),
             "backend_models": settings["stt"]["backend_models"],
         }
         stt_ready = bool(
@@ -108,6 +158,7 @@ class SetupService:
         eleven_voice_snapshot = {
             "voice_id": settings["tts"]["elevenlabs_voice_id"],
             "model_id": settings["tts"]["elevenlabs_model"],
+            "preset": settings["tts"]["elevenlabs_preset"],
         }
         eleven_voice_ready = "elevenlabs" not in settings["tts"]["enabled_providers"] or bool(
             api_key_fingerprint
@@ -130,12 +181,9 @@ class SetupService:
 
         runtime_ready = all(
             [
-                gateway_ready,
-                stt_ready,
-                tts_selection_ready,
-                edge_ready,
-                eleven_key_ready,
-                eleven_voice_ready,
+                self._gateway_runtime_ready(settings),
+                self._stt_runtime_ready(settings),
+                self._tts_runtime_ready(settings),
             ]
         )
         return {
@@ -162,6 +210,10 @@ class SetupService:
             "catalog": {
                 "stt_backends": list(SUPPORTED_STT_BACKENDS.values()),
                 "tts_providers": list(SUPPORTED_TTS_PROVIDERS.values()),
+                "elevenlabs_presets": [
+                    {"id": preset_id, "label": preset["label"]}
+                    for preset_id, preset in ELEVENLABS_PRESETS.items()
+                ],
             },
             "hints": {
                 "default_voice_session_key": DEFAULT_VOICE_SESSION_KEY,
@@ -228,6 +280,16 @@ class SetupService:
             "language": str(payload.get("language") or current["language"]).strip(),
             "device": normalize_stt_device(str(payload.get("device") or current["device"]).strip()),
             "compute_type": str(payload.get("compute_type") or current["compute_type"]).strip(),
+            "whisper_endpoint_url": str(
+                payload.get("whisper_endpoint_url")
+                if "whisper_endpoint_url" in payload
+                else current.get("whisper_endpoint_url", "")
+            ).strip(),
+            "whisper_endpoint_model": str(
+                payload.get("whisper_endpoint_model")
+                if "whisper_endpoint_model" in payload
+                else current.get("whisper_endpoint_model", "")
+            ).strip(),
             "backend_models": backend_models,
         }
         result = validate_stt_selection_step(settings)
@@ -316,10 +378,14 @@ class SetupService:
         api_key = settings["secrets"]["elevenlabs_api_key"]
         voice_id = str(payload.get("voice_id") or "").strip()
         model_id = str(payload.get("model_id") or settings["tts"]["elevenlabs_model"]).strip()
+        preset_name = normalize_elevenlabs_preset(
+            str(payload.get("preset_name") or settings["tts"]["elevenlabs_preset"]).strip()
+        )
         result = await validate_elevenlabs_voice_step(
             api_key=api_key,
             voice_id=voice_id,
             model_id=model_id,
+            preset_name=preset_name,
         )
         self.store.update_config(
             {
@@ -327,10 +393,13 @@ class SetupService:
                     "elevenlabs_voice_id": voice_id,
                     "elevenlabs_voice_name": result["voice_name"],
                     "elevenlabs_model": model_id,
+                    "elevenlabs_preset": preset_name,
                 },
                 "validation": {
                     "eleven_voice": {
-                        "config_hash": self._config_hash({"voice_id": voice_id, "model_id": model_id}),
+                        "config_hash": self._config_hash(
+                            {"voice_id": voice_id, "model_id": model_id, "preset": preset_name}
+                        ),
                         "api_key_fingerprint": self._fingerprint_secret(api_key),
                     }
                 },

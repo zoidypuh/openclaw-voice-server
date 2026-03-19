@@ -30,6 +30,7 @@ tts-edge = [
 
 [project.scripts]
 openclaw-voice-server = "openclaw_voice_server.app:main"
+openclaw-calibrate-command = "openclaw_voice_server.calibrate_commands:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/openclaw_voice_server"]

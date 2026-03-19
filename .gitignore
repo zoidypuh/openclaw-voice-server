@@ -11,5 +11,9 @@ config.json
 .env
 AGENTS.md
 config.pre-setup-reset.json
+.vscode/
+SESSION_HANDOFF_*.md
 *.Zone.Identifier
 *:Zone.Identifier
+clients/windows/node_modules/
+clients/windows/src-tauri/target/
