@@ -342,6 +342,7 @@ let bargeInGraceUntil = 0;
 let pendingBargeInAudio = null;
 let manualFinishProbePending = false;
 let manualFinishProbeCooldownUntil = 0;
+let runtimeStatePromise = null;
 let settings = {
   min_speech_ms: 500,
 };
@@ -545,6 +546,70 @@ function humanizeRuntimeError(message) {
     return 'session interrupted';
   }
   return text;
+}
+
+function audioContextConstructor() {
+  return window.AudioContext || window.webkitAudioContext || null;
+}
+
+function describeResumeError(error) {
+  const text = String(error?.message || error || '').trim();
+  if (!text) {
+    return 'resume failed';
+  }
+  const lower = text.toLowerCase();
+  if (lower.includes('permission')) {
+    return 'microphone permission blocked';
+  }
+  if (lower.includes('notallowederror')) {
+    return 'microphone permission blocked';
+  }
+  if (lower.includes('notfounderror')) {
+    return 'no microphone available';
+  }
+  if (lower.includes('secure context')) {
+    return 'microphone requires https';
+  }
+  return text;
+}
+
+function handleResumeFailure(error) {
+  console.error(error);
+  paused = true;
+  busy = false;
+  pendingIdle = false;
+  interruptPending = false;
+  pendingBargeInAudio = null;
+  setReplyActive(false);
+  stopPlayback();
+  resetCaptureBuffer();
+  rearmVoiceInterrupt();
+  setState('paused');
+  setStatusText(describeResumeError(error));
+  updateControlStates();
+  syncShellState({ force: true });
+}
+
+async function loadRuntimeState() {
+  if (runtimeStatePromise) {
+    return runtimeStatePromise;
+  }
+  runtimeStatePromise = fetch(appUrl('api/runtime/state'))
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`runtime state request failed (${response.status})`);
+      }
+      return response.json();
+    })
+    .then((runtimeState) => {
+      settings = runtimeState.audio;
+      return runtimeState;
+    })
+    .catch((error) => {
+      runtimeStatePromise = null;
+      throw error;
+    });
+  return runtimeStatePromise;
 }
 
 function formatThinkingElapsed(ms) {
@@ -1045,8 +1110,16 @@ async function setPausedState(nextPaused, { forceInterrupt = false } = {}) {
     requestInterrupt({ keepPaused: true });
     return;
   }
-  if (!audioCtx) {
-    await init();
+  try {
+    if (!audioCtx || !ws || ws.readyState === WebSocket.CLOSING || ws.readyState === WebSocket.CLOSED) {
+      await init();
+      return;
+    }
+    if (audioCtx.state === 'suspended') {
+      await audioCtx.resume();
+    }
+  } catch (error) {
+    handleResumeFailure(error);
     return;
   }
   interruptPending = false;
@@ -1074,6 +1147,8 @@ function playNextAudio() {
   currentAudioUrl = URL.createObjectURL(blob);
   const playbackUrl = currentAudioUrl;
   currentAudio = new Audio(playbackUrl);
+  currentAudio.playsInline = true;
+  currentAudio.preload = 'auto';
   currentAudio.onended = () => {
     URL.revokeObjectURL(playbackUrl);
     if (currentAudioUrl === playbackUrl) {
@@ -1106,6 +1181,9 @@ function playNextAudio() {
 }
 
 async function connect() {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
   const wsUrl = new URL('ws/voice', APP_BASE);
   wsUrl.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(wsUrl);
@@ -1209,10 +1287,29 @@ async function connect() {
 }
 
 async function ensureAudio() {
-  if (audioCtx) return;
-  stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  audioCtx = new AudioContext({ sampleRate: 16000 });
-  await audioCtx.resume();
+  if (audioCtx) {
+    if (audioCtx.state === 'suspended') {
+      await audioCtx.resume();
+    }
+    return;
+  }
+  const getUserMedia = navigator.mediaDevices?.getUserMedia?.bind(navigator.mediaDevices);
+  if (!getUserMedia) {
+    throw new Error('This browser does not support microphone capture.');
+  }
+  const AudioContextClass = audioContextConstructor();
+  if (!AudioContextClass) {
+    throw new Error('This browser does not support Web Audio.');
+  }
+  stream = await getUserMedia({ audio: true });
+  try {
+    audioCtx = new AudioContextClass({ sampleRate: 16000 });
+  } catch (_) {
+    audioCtx = new AudioContextClass();
+  }
+  if (audioCtx.state === 'suspended') {
+    await audioCtx.resume();
+  }
   const source = audioCtx.createMediaStreamSource(stream);
   analyser = audioCtx.createAnalyser();
   analyser.fftSize = 2048;
@@ -1320,15 +1417,10 @@ function onAudioProcess(event) {
 }
 
 async function init() {
-  try {
-    const runtimeState = await fetch(appUrl('api/runtime/state')).then((response) => response.json());
-    settings = runtimeState.audio;
-    await ensureAudio();
-    await connect();
-    setState(paused ? 'paused' : 'listening');
-  } catch (error) {
-    console.error(error);
-  }
+  await ensureAudio();
+  await loadRuntimeState();
+  await connect();
+  setState(paused ? 'paused' : 'listening');
 }
 
 function animateLevelDecay() {
