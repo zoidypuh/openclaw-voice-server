@@ -1,6 +1,8 @@
 # OpenClaw Voice Server
 
-`openclaw-voice-server` is an alpha browser voice client for a direct OpenClaw agent session.
+![OpenClaw voice runtime screenshot](image.png)
+
+`openclaw-voice-server` is an alpha browser voice client for an existing OpenClaw gateway session.
 
 It is provided as-is. It works well in the tested path, but it can still break, regress, or have rough edges.
 
@@ -91,8 +93,23 @@ git clone <repo-url>
 cd openclaw-voice-server
 python3 -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade pip
 pip install -e .[dev]
+cp .env.example .env
 ```
+
+Edit `.env` and set at least:
+
+```dotenv
+OPENCLAW_VOICE_GATEWAY_TOKEN=your-openclaw-gateway-token
+```
+
+Add `OPENCLAW_VOICE_ELEVENLABS_API_KEY=...` only if you plan to use ElevenLabs.
+
+Important runtime detail:
+
+- start `openclaw-voice-server` from the repo root unless you also set `OPENCLAW_VOICE_CONFIG_FILE` and `OPENCLAW_VOICE_ENV_FILE`
+- by default the server reads `config.json` and `.env` from the current working directory
 
 Optional extras, depending on the providers you actually want to use:
 
@@ -114,6 +131,14 @@ Health check:
 curl http://127.0.0.1:8765/health
 ```
 
+Finish setup in the browser:
+
+1. Open `http://127.0.0.1:8765/setup`.
+2. Validate one STT backend.
+3. Validate one TTS provider and voice.
+4. Validate the OpenClaw gateway URL, model, session key, and token.
+5. Open `http://127.0.0.1:8765/voice`.
+
 ### Windows Client
 
 Use this only if you want the Windows tray/Tauri wrapper. It does not replace the Python backend.
@@ -128,7 +153,7 @@ Prerequisites:
 Install and run the client from Windows:
 
 ```powershell
-cd C:\dev\openclaw-voice-server\clients\windows
+cd C:\path\to\openclaw-voice-server\clients\windows
 npm install
 npm run tauri:dev
 ```
@@ -136,7 +161,7 @@ npm run tauri:dev
 Build a Windows bundle:
 
 ```powershell
-cd C:\dev\openclaw-voice-server\clients\windows
+cd C:\path\to\openclaw-voice-server\clients\windows
 npm install
 npm run tauri:build
 ```
@@ -246,7 +271,7 @@ Tested successfully in the main path:
 - ElevenLabs TTS
 - OpenClaw local gateway on `127.0.0.1:18789`
 - proxied `/voice/` route behind the existing OpenClaw/Tailscale setup
-- Windows Tauri tray shell with local WSL backend in the current developer setup
+- Windows Tauri tray shell with a local WSL backend
 
 ## Not Yet Tested
 
@@ -284,7 +309,7 @@ Example:
 ```bash
 curl -X POST http://127.0.0.1:8765/api/runtime/speak \
   -H 'content-type: application/json' \
-  -d '{"text":"[voice:expressive]Bonnie says hello."}'
+  -d '{"text":"[voice:expressive]Hello from OpenClaw voice."}'
 ```
 
 Notes:

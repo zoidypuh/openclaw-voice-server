@@ -8,7 +8,7 @@ from openclaw_voice_server.gateway import (
 
 
 def test_resolve_voice_session_key_keeps_configured_value():
-    assert resolve_voice_session_key("voice-bonnie") == "voice-bonnie"
+    assert resolve_voice_session_key("voice-session") == "voice-session"
 
 
 def test_resolve_voice_session_key_defaults_to_stable_voice_chat_key_when_blank():
@@ -74,7 +74,7 @@ def test_validate_gateway_connection_includes_session_key_header(monkeypatch):
     result = asyncio.run(
         validate_gateway_connection(
             url="http://127.0.0.1:18789",
-            token="bonnie",
+            token="test-token",
             model="openclaw:main",
             session_key="agent:main:voice-chat-main",
         )

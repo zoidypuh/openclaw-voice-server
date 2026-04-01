@@ -42,7 +42,7 @@ openclaw-voice-server
 Then from this folder on Windows:
 
 ```powershell
-cd C:\dev\openclaw-voice-server\clients\windows
+cd C:\path\to\openclaw-voice-server\clients\windows
 npm install
 npm run tauri:dev
 ```
@@ -52,7 +52,7 @@ npm run tauri:dev
 From this folder on Windows:
 
 ```powershell
-cd C:\dev\openclaw-voice-server\clients\windows
+cd C:\path\to\openclaw-voice-server\clients\windows
 npm install
 npm run tauri:build
 ```

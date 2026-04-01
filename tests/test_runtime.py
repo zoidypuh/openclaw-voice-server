@@ -78,7 +78,7 @@ def test_handle_ws_interrupts_active_stream_and_rejects_overlap(monkeypatch):
         def transcribe(self, audio_bytes):
             nonlocal transcribe_calls
             transcribe_calls += 1
-            return type("Result", (), {"text": "hello there bonnie", "duration_seconds": 1.0})()
+            return type("Result", (), {"text": "hello there assistant", "duration_seconds": 1.0})()
 
     class FakeSynthesizer:
         async def synthesize(self, text, *, preset_name=None):
@@ -139,7 +139,7 @@ def test_handle_ws_applies_reply_style_directive_once(monkeypatch):
 
     class FakeTranscriber:
         def transcribe(self, audio_bytes):
-            return type("Result", (), {"text": "hello there bonnie", "duration_seconds": 1.0})()
+            return type("Result", (), {"text": "hello there assistant", "duration_seconds": 1.0})()
 
     class FakeSynthesizer:
         async def synthesize(self, text, *, preset_name=None):
@@ -389,11 +389,11 @@ def test_speak_text_pushes_server_side_audio_to_active_client(monkeypatch):
 
     class FakeTranscriber:
         def transcribe(self, audio_bytes):
-            return type("Result", (), {"text": "hello there bonnie", "duration_seconds": 1.0})()
+            return type("Result", (), {"text": "hello there assistant", "duration_seconds": 1.0})()
 
     class FakeSynthesizer:
         async def synthesize(self, text, *, preset_name=None):
-            assert text == "Bonnie says hello."
+            assert text == "Hello from OpenClaw voice."
             assert preset_name == "expressive"
             return b"audio"
 
@@ -418,7 +418,7 @@ def test_speak_text_pushes_server_side_audio_to_active_client(monkeypatch):
             await asyncio.sleep(0)
         ws = FakeWebSocketResponse.created[-1]
 
-        result = await runtime.speak_text("[voice:expressive]Bonnie says hello.")
+        result = await runtime.speak_text("[voice:expressive]Hello from OpenClaw voice.")
         await ws.messages.put(FakeWebSocketResponse.STOP)
         await handler_task
         return result, ws
@@ -427,7 +427,7 @@ def test_speak_text_pushes_server_side_audio_to_active_client(monkeypatch):
 
     assert result == {
         "ok": True,
-        "spoken_text": "Bonnie says hello.",
+        "spoken_text": "Hello from OpenClaw voice.",
         "preset_name": "expressive",
         "audio_bytes": 5,
     }
