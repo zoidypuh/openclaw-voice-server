@@ -16,20 +16,20 @@ def test_should_cancel_voice_input_accepts_simple_stop_words():
 def test_should_cancel_voice_input_accepts_short_stop_phrases():
     assert should_cancel_voice_input("stop bitte") is True
     assert should_cancel_voice_input("hey stop") is True
-    assert should_cancel_voice_input("bonnie stopp jetzt") is True
+    assert should_cancel_voice_input("assistant stopp jetzt") is True
 
 
 def test_detect_voice_control_command_accepts_pause_phrases():
     assert detect_voice_control_command("hey pause") == "pause"
     assert detect_voice_control_command("pause bitte") == "pause"
-    assert detect_voice_control_command("bonnie pausieren jetzt") == "pause"
+    assert detect_voice_control_command("assistant pausieren jetzt") == "pause"
 
 
 def test_detect_voice_control_command_respects_selected_language():
     assert detect_voice_control_command("hey stop", language="en") == "interrupt"
     assert detect_voice_control_command("hey stop", language="de") is None
-    assert detect_voice_control_command("bonnie stopp jetzt", language="de") == "interrupt"
-    assert detect_voice_control_command("bonnie stopp jetzt", language="en") is None
+    assert detect_voice_control_command("assistant stopp jetzt", language="de") == "interrupt"
+    assert detect_voice_control_command("assistant stopp jetzt", language="en") is None
 
 
 def test_command_send_phrases_follow_selected_language():
@@ -47,7 +47,7 @@ def test_should_cancel_voice_input_rejects_long_or_non_cancel_phrases():
 
 def test_should_drop_voice_transcript_keeps_short_real_speech():
     assert should_drop_voice_transcript("hello there", 0.9) is False
-    assert should_drop_voice_transcript("okay bonnie", 0.9) is True
+    assert should_drop_voice_transcript("okay assistant", 0.9) is True
 
 
 def test_should_drop_voice_transcript_keeps_short_control_commands():
@@ -55,8 +55,8 @@ def test_should_drop_voice_transcript_keeps_short_control_commands():
     assert should_drop_voice_transcript("hey pause", 0.3) is False
 
 
-def test_should_drop_voice_transcript_filters_known_noise_phrases():
-    assert should_drop_voice_transcript("Vielen Dank", 0.2, min_duration=0.5) is True
+def test_should_drop_voice_transcript_does_not_use_hardcoded_phrase_filters():
+    assert should_drop_voice_transcript("Vielen Dank", 0.2, min_duration=0.5) is False
     assert should_drop_voice_transcript("what time is it", 1.2) is False
 
 
@@ -80,4 +80,4 @@ def test_has_probable_voice_transcript_accepts_short_real_speech():
 def test_has_probable_voice_transcript_rejects_empty_and_fillers():
     assert has_probable_voice_transcript("", 0.3) is False
     assert has_probable_voice_transcript("hey", 0.3) is False
-    assert has_probable_voice_transcript("Vielen Dank", 0.2, min_duration=0.5) is False
+    assert has_probable_voice_transcript("Vielen Dank", 0.2, min_duration=0.5) is True

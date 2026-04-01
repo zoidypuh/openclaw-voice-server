@@ -4,18 +4,7 @@ import re
 
 from .catalog import ELEVENLABS_PRESETS
 
-_COMMON_NOISE = {
-    "vielen dank",
-    "danke",
-    "danke schoen",
-    "danke schön",
-    "you tschuess",
-    "you tschuss",
-    "you tschüss",
-    "untertitel im auftrag des zdf",
-    "bis zum naechsten mal",
-    "bis zum nächsten mal",
-}
+_COMMON_NOISE = set()
 _COMMAND_KEYWORDS = {
     "de": {
         "interrupt": {"stopp"},
@@ -29,7 +18,7 @@ _COMMAND_KEYWORDS = {
     },
 }
 _TRAILING_FILLERS = {"bitte", "danke", "jetzt", "okay", "ok", "mal", "kurz"}
-_LEADING_FILLERS = {"hey", "ok", "okay", "bitte", "bonnie", "clyde"}
+_LEADING_FILLERS = {"hey", "ok", "okay", "bitte", "assistant", "agent"}
 
 _SENTENCE_BOUNDARY_RE = re.compile(r"[.!?—](?:\s|$)")
 _EARLY_BREAK_RE = re.compile(r"[,;:](?:\s|$)")
