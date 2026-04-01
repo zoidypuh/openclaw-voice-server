@@ -139,6 +139,11 @@ Finish setup in the browser:
 4. Validate the OpenClaw gateway URL, model, session key, and token.
 5. Open `http://127.0.0.1:8765/voice`.
 
+Voice control tuning:
+
+- use the `threshold` control in the voice UI to dial in end-of-turn detection and barge-in behavior
+- there is no separate command-calibration workflow in this repo
+
 ### Windows Client
 
 Use this only if you want the Windows tray/Tauri wrapper. It does not replace the Python backend.
@@ -187,28 +192,6 @@ https://<machine>.ts.net/voice/
 ```
 
 Treat that as a remote access URL, not as a promise that every browser engine works. The current tested path is still Windows-first.
-
-## Command Calibration
-
-The voice runtime now includes a lightweight calibration workflow for spoken control phrases such as `hey go`, `hey stop`, and `hey pause`.
-
-Record browser samples at:
-
-```text
-http://127.0.0.1:8765/record
-```
-
-The recorder downloads `16kHz` mono WAV files that can be replayed through the configured STT backend with the bundled CLI:
-
-```bash
-uv run openclaw-calibrate-command samples/hey-go --expected-action send --send-phrase "hey go"
-```
-
-Useful flags:
-
-- `--expected-action interrupt`
-- `--expected-action pause`
-- `--send-phrase "hey go"`
 
 ## Configuration
 
@@ -296,7 +279,6 @@ Tested successfully in the main path:
 - `GET /` serves `/setup` until runtime config is valid, then serves `/voice`
 - `GET /setup` setup flow
 - `GET /voice` voice runtime
-- `GET /record` browser WAV recorder for command calibration
 - `GET /health` liveness/readiness
 - `GET /api/setup/state` setup state
 - `GET /api/runtime/state` runtime browser settings
