@@ -595,6 +595,11 @@ function allowsFreeformBargeIn() {
   return !isAppleVoiceClient();
 }
 
+function isAbortLikeError(error) {
+  const text = String(error?.message || error || '').trim().toLowerCase();
+  return text.includes('aborterror') || text.includes('operation was aborted') || text.includes('aborted');
+}
+
 function describeResumeError(error) {
   const text = String(error?.message || error || '').trim();
   if (!text) {
@@ -613,7 +618,58 @@ function describeResumeError(error) {
   if (lower.includes('secure context')) {
     return 'microphone requires https';
   }
+  if (isAbortLikeError(error)) {
+    return 'audio startup was interrupted, tap pause again';
+  }
   return text;
+}
+
+async function teardownAudioCapture() {
+  if (processor) {
+    processor.onaudioprocess = null;
+    try {
+      processor.disconnect();
+    } catch (_) {}
+    processor = null;
+  }
+  if (analyser) {
+    try {
+      analyser.disconnect();
+    } catch (_) {}
+    analyser = null;
+  }
+  if (stream) {
+    const tracks = typeof stream.getTracks === 'function' ? stream.getTracks() : [];
+    for (const track of tracks) {
+      try {
+        track.stop();
+      } catch (_) {}
+    }
+    stream = null;
+  }
+  if (audioCtx) {
+    try {
+      await audioCtx.close();
+    } catch (_) {}
+    audioCtx = null;
+  }
+}
+
+function resetPlaybackElement() {
+  if (currentAudioUrl) {
+    URL.revokeObjectURL(currentAudioUrl);
+    currentAudioUrl = null;
+  }
+  if (playbackAudio) {
+    try {
+      playbackAudio.pause();
+    } catch (_) {}
+    playbackAudio.removeAttribute('src');
+    playbackAudio.load();
+  }
+  playbackAudio = null;
+  currentAudio = null;
+  playbackUnlocked = false;
 }
 
 function handleResumeFailure(error) {
@@ -627,6 +683,8 @@ function handleResumeFailure(error) {
   stopPlayback();
   resetCaptureBuffer();
   rearmVoiceInterrupt();
+  void teardownAudioCapture();
+  resetPlaybackElement();
   setState('paused');
   setStatusText(describeResumeError(error));
   updateControlStates();
@@ -1206,7 +1264,7 @@ async function setPausedState(nextPaused, { forceInterrupt = false } = {}) {
   }
   try {
     if (!audioCtx || !ws || ws.readyState === WebSocket.CLOSING || ws.readyState === WebSocket.CLOSED) {
-      await init();
+      await initWithRetry();
       return;
     }
     if (audioCtx.state === 'suspended') {
@@ -1548,6 +1606,20 @@ async function init() {
   await loadRuntimeState();
   await connect();
   setState(paused ? 'paused' : 'listening');
+}
+
+async function initWithRetry() {
+  try {
+    await init();
+  } catch (error) {
+    if (!isAppleVoiceClient() || !isAbortLikeError(error)) {
+      throw error;
+    }
+    await teardownAudioCapture();
+    resetPlaybackElement();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    await init();
+  }
 }
 
 function animateLevelDecay() {

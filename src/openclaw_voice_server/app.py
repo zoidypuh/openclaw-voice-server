@@ -50,9 +50,6 @@ def create_app() -> web.Application:
     async def voice_page(request: web.Request) -> web.StreamResponse:
         return web.FileResponse(static_dir / "voice.html")
 
-    async def record_page(request: web.Request) -> web.StreamResponse:
-        return web.FileResponse(static_dir / "record.html")
-
     async def health(request: web.Request) -> web.Response:
         state = setup_service.state()
         return web.json_response(
@@ -151,7 +148,6 @@ def create_app() -> web.Application:
     app.router.add_get("/", root)
     app.router.add_get("/setup", setup_page)
     app.router.add_get("/voice", voice_page)
-    app.router.add_get("/record", record_page)
     app.router.add_get("/health", health)
     app.router.add_get("/api/setup/state", setup_state)
     app.router.add_get("/api/runtime/state", runtime_state)

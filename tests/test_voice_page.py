@@ -17,8 +17,13 @@ def test_voice_html_resumes_audio_before_fetching_runtime_state_for_safari():
 
     assert "window.AudioContext || window.webkitAudioContext" in voice_html
     assert "await ensureAudio();\n  await unlockPlaybackAudio();\n  await loadRuntimeState();\n  await connect();" in voice_html
+    assert "async function initWithRetry() {" in voice_html
+    assert "await initWithRetry();" in voice_html
     assert "await unlockPlaybackAudio();" in voice_html
     assert "playbackAudio = new Audio();" in voice_html
+    assert "function isAbortLikeError(error) {" in voice_html
+    assert "await teardownAudioCapture();" in voice_html
+    assert "resetPlaybackElement();" in voice_html
     assert "handleResumeFailure(error);" in voice_html
 
 
@@ -51,6 +56,8 @@ def test_voice_html_uses_persistent_unlocked_playback_audio():
 
     assert "function ensurePlaybackAudioElement()" in voice_html
     assert "function unlockPlaybackAudio()" in voice_html
+    assert "function resetPlaybackElement() {" in voice_html
     assert "currentAudio = ensurePlaybackAudioElement();" in voice_html
     assert "setStatusText('tap resume to enable audio');" in voice_html
     assert "setStatusText('audio playback failed');" in voice_html
+    assert "audio startup was interrupted, tap pause again" in voice_html
