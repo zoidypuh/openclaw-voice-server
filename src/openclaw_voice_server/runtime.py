@@ -277,6 +277,15 @@ class VoiceRuntime:
                 {"ok": True, "matched": False, "action": "", "heard": "", "content": "", "usable_speech": False}
             )
 
+        # Fast VAD-only mode for barge-in: if VAD says speech, that's enough
+        # to interrupt — no need for full Whisper transcription.  The captured
+        # audio becomes the prefix of the next turn anyway.
+        vad_only = bool(payload.get("vad_only"))
+        if vad_only:
+            return web.json_response(
+                {"ok": True, "matched": False, "action": "", "heard": "", "content": "", "usable_speech": True}
+            )
+
         transcriber = await self._get_interrupt_transcriber()
         command_language = self.store.load_runtime_settings()["stt"].get("language", "")
         loop = asyncio.get_running_loop()

@@ -1527,7 +1527,7 @@ function arrayBufferToBase64(buffer) {
   return btoa(binary);
 }
 
-async function probeVoiceCommand(audioBuffer, { allowSendPhrase = false } = {}) {
+async function probeVoiceCommand(audioBuffer, { allowSendPhrase = false, vadOnly = false } = {}) {
   if ((interruptProbePending && !allowSendPhrase) || (manualFinishProbePending && allowSendPhrase) || !ws || ws.readyState !== WebSocket.OPEN) {
     return { action: '', heard: '', content: '', usableSpeech: false };
   }
@@ -1544,6 +1544,7 @@ async function probeVoiceCommand(audioBuffer, { allowSendPhrase = false } = {}) 
         audio_b64: arrayBufferToBase64(audioBuffer),
         allow_send_phrase: allowSendPhrase,
         send_phrase: allowSendPhrase ? 'hey go' : '',
+        vad_only: vadOnly,
       }),
     });
     if (!response.ok) {
@@ -1770,7 +1771,7 @@ function maybeCaptureBargeInProbe(pcm, displayedLevel, speechLike, frameMs, now)
 
   const probeBuffer = flattenInt16Chunks(bargeInChunks);
   bargeInProbePending = true;
-  void probeVoiceCommand(probeBuffer).then(async (result) => {
+  void probeVoiceCommand(probeBuffer, { vadOnly: allowFreeformBargeIn }).then(async (result) => {
     bargeInProbePending = false;
     if (result.action === 'pause') {
       resetBargeInCapture();
