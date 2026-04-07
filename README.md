@@ -1,6 +1,8 @@
 # OpenClaw Voice Server
 
-`openclaw-voice-server` is an alpha browser voice client for a direct OpenClaw agent session.
+![OpenClaw voice runtime screenshot](image.png)
+
+`openclaw-voice-server` is an alpha browser voice client for a configured text agent plus local or remote STT/TTS backends.
 
 It is provided as-is. It works well in the tested path, but it can still break, regress, or have rough edges.
 
@@ -11,8 +13,8 @@ It is provided as-is. It works well in the tested path, but it can still break, 
 - records mic audio in the browser
 - detects end-of-utterance in the browser
 - sends speech to the Python server for transcription
-- sends the transcript to an OpenClaw gateway chat-completions endpoint
-- synthesizes the reply with Edge TTS or ElevenLabs
+- sends the transcript to the configured conversation agent
+- synthesizes the reply with Edge TTS, Piper, Chatterbox, ElevenLabs, or VibeVoice Realtime
 - streams reply audio back to the browser
 
 ## How It Works
@@ -22,7 +24,7 @@ High level flow:
 1. The browser captures microphone input.
 2. The browser decides when the user finished speaking.
 3. The Python server transcribes the audio with a Whisper-family backend.
-4. The server sends the transcript to OpenClaw through the local gateway.
+4. The server sends the transcript to the configured conversation backend.
 5. The server synthesizes the model reply with the selected TTS provider.
 6. The browser plays the streamed reply audio and returns to listening.
 
@@ -36,8 +38,7 @@ High level flow:
 ## Requirements
 
 - Python 3.11+
-- an existing OpenClaw installation
-- an OpenClaw gateway reachable locally from the same host, typically `http://127.0.0.1:18789`
+- one working conversation backend
 - one working STT backend
 - one working TTS backend
 - a supported voice client surface
@@ -48,6 +49,8 @@ Optional, depending on chosen providers:
 - CUDA if using GPU STT
 - ElevenLabs API key if using ElevenLabs
 - Edge TTS package if using Edge TTS
+- Chatterbox package and model weights if using Chatterbox
+- a local VibeVoice demo server if using VibeVoice Realtime
 
 Supported access paths right now:
 
@@ -65,18 +68,10 @@ Network model:
 
 - `127.0.0.1` is local to the machine running the service
 - the voice server itself runs locally on that machine
-- the browser can still reach it from other devices when your existing OpenClaw/Tailscale setup proxies `/voice/`
-- the voice server talks to the OpenClaw gateway locally on the same host
+- the browser can still reach it from other devices when your existing reverse proxy or Tailscale setup exposes `/voice/`
+- the voice server talks to whichever conversation backend you configured
 - Tailscale/MagicDNS is for browser access from other devices, not for the voice server's backend-to-backend gateway call
 - remote browser reachability does not imply the voice runtime will work correctly on iOS/macOS
-
-## Tests
-
-Run tests with:
-
-```bash
-PYTHONPATH=src python3 -m pytest
-```
 
 ## Install
 
@@ -91,14 +86,42 @@ git clone <repo-url>
 cd openclaw-voice-server
 python3 -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade pip
 pip install -e .[dev]
+cp .env.example .env
 ```
 
-Optional extras, depending on the providers you actually want to use:
+Edit `.env` and set at least:
+
+```dotenv
+OPENCLAW_VOICE_GATEWAY_TOKEN=your-agent-token
+```
+
+Add `OPENCLAW_VOICE_ELEVENLABS_API_KEY=...` only if you plan to use ElevenLabs.
+
+Important runtime detail:
+
+- start `openclaw-voice-server` from the repo root unless you also set `OPENCLAW_VOICE_CONFIG_FILE` and `OPENCLAW_VOICE_ENV_FILE`
+- by default the server reads `config.json` and `.env` from the current working directory
+
+Provider dependencies can be installed ahead of time:
 
 ```bash
-pip install -e .[dev,stt-faster-whisper,stt-whisper,tts-edge]
+pip install -e .[dev,stt-faster-whisper,stt-whisper,tts-edge,tts-piper,tts-chatterbox]
 ```
+
+Or you can let the setup flow install missing Python packages while validating STT and TTS.
+
+Optional VibeVoice dependency:
+
+- this repo talks to the existing VibeVoice demo server over HTTP/WebSocket
+- install and run VibeVoice in its own environment instead of adding its dependencies here
+
+Optional Chatterbox dependency:
+
+- this repo can run Chatterbox locally with the packaged built-in voice conditionals
+- the first validation/download can be large because model weights are fetched from Hugging Face
+- use the multilingual model for German and other non-English languages
 
 Run the backend:
 
@@ -114,6 +137,16 @@ Health check:
 curl http://127.0.0.1:8765/health
 ```
 
+Finish setup in the browser:
+
+1. Open `http://127.0.0.1:8765/setup`.
+2. Validate one STT path.
+3. Validate one TTS provider and voice.
+4. Validate the configured conversation backend, model, session key, and token.
+5. Open `http://127.0.0.1:8765/voice`.
+
+If setup is valid, `GET /` serves the voice runtime automatically.
+
 ### Windows Client
 
 Use this only if you want the Windows tray/Tauri wrapper. It does not replace the Python backend.
@@ -128,7 +161,7 @@ Prerequisites:
 Install and run the client from Windows:
 
 ```powershell
-cd C:\dev\openclaw-voice-server\clients\windows
+cd C:\path\to\openclaw-voice-server\clients\windows
 npm install
 npm run tauri:dev
 ```
@@ -136,7 +169,7 @@ npm run tauri:dev
 Build a Windows bundle:
 
 ```powershell
-cd C:\dev\openclaw-voice-server\clients\windows
+cd C:\path\to\openclaw-voice-server\clients\windows
 npm install
 npm run tauri:build
 ```
@@ -148,6 +181,14 @@ Startup order:
 3. Use the tray app or the window at `http://127.0.0.1:8765/voice`.
 
 For tray behavior, shortcuts, and Windows-specific verification notes, see [clients/windows/README.md](clients/windows/README.md).
+
+## Tests
+
+Run tests with:
+
+```bash
+PYTHONPATH=src python3 -m pytest
+```
 
 Default local bind:
 
@@ -162,6 +203,26 @@ https://<machine>.ts.net/voice/
 ```
 
 Treat that as a remote access URL, not as a promise that every browser engine works. The current tested path is still Windows-first.
+
+### VibeVoice Realtime Demo Server
+
+Use this if you want local preset voices instead of ElevenLabs.
+
+```bash
+git clone https://github.com/microsoft/VibeVoice.git
+cd VibeVoice
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .[streamingtts]
+python demo/vibevoice_realtime_demo.py --model_path microsoft/VibeVoice-Realtime-0.5B --device cuda --port 3000
+```
+
+Then in the OpenClaw setup UI:
+
+1. choose `VibeVoice Realtime` as the TTS provider
+2. set the server URL to `http://127.0.0.1:3000`
+3. load voices from the VibeVoice server
+4. validate and save one preset voice
 
 ## Command Calibration
 
@@ -204,7 +265,9 @@ Setup sections:
    If Edge is selected, choose and validate the voice.
 4. `ElevenLabs`
    If ElevenLabs is selected, validate the API key and voice.
-5. `Conversation Backend`
+5. `VibeVoice Realtime`
+   If VibeVoice is selected, point the app at the local VibeVoice demo server, load preset voices, and validate one preset.
+6. `Conversation Backend`
    Point the app at the local OpenClaw gateway and validate the session/model/token.
 
 Important gateway rule:
@@ -246,11 +309,12 @@ Tested successfully in the main path:
 - ElevenLabs TTS
 - OpenClaw local gateway on `127.0.0.1:18789`
 - proxied `/voice/` route behind the existing OpenClaw/Tailscale setup
-- Windows Tauri tray shell with local WSL backend in the current developer setup
+- Windows Tauri tray shell with a local WSL backend
 
 ## Not Yet Tested
 
 - Edge TTS
+- VibeVoice Realtime
 - OpenAI Whisper on CPU
 
 ## Not Supported Right Now
@@ -262,9 +326,9 @@ Tested successfully in the main path:
 ## TODO
 
 - test Edge TTS end to end
+- test VibeVoice Realtime end to end
 - test Whisper on CPU end to end
 - keep tuning spoken command detection for `hey stop` and `hey pause`
-- move desktop shortcut bindings into configuration instead of hardcoded defaults
 
 ## Routes
 
@@ -284,7 +348,7 @@ Example:
 ```bash
 curl -X POST http://127.0.0.1:8765/api/runtime/speak \
   -H 'content-type: application/json' \
-  -d '{"text":"[voice:expressive]Bonnie says hello."}'
+  -d '{"text":"[voice:expressive]Hello from OpenClaw voice."}'
 ```
 
 Notes:

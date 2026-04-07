@@ -1,8 +1,7 @@
-from ..stt import TranscriptionResult, build_transcriber, normalize_stt_device, validate_stt_selection
-from ..tts import (
-    build_synthesizer,
+from .backends import (
     CHATTERBOX_SUPPORTED_DEVICES,
     CHATTERBOX_SUPPORTED_MODELS,
+    build_synthesizer,
     default_piper_config_path,
     list_local_chatterbox_voices,
     list_edge_voices,
@@ -23,13 +22,14 @@ from ..tts import (
     validate_piper_voice,
     validate_vibevoice_voice,
 )
+from .base import BaseSynthesizer, Synthesizer
 
 __all__ = [
-    "TranscriptionResult",
-    "build_transcriber",
-    "build_synthesizer",
+    "BaseSynthesizer",
+    "Synthesizer",
     "CHATTERBOX_SUPPORTED_DEVICES",
     "CHATTERBOX_SUPPORTED_MODELS",
+    "build_synthesizer",
     "default_piper_config_path",
     "list_local_chatterbox_voices",
     "list_edge_voices",
@@ -41,7 +41,6 @@ __all__ = [
     "normalize_elevenlabs_preset",
     "normalize_piper_model_path",
     "normalize_piper_speaker",
-    "normalize_stt_device",
     "normalize_vibevoice_base_url",
     "resolve_chatterbox_voice",
     "validate_chatterbox_voice",
@@ -50,5 +49,4 @@ __all__ = [
     "validate_elevenlabs_voice",
     "validate_piper_voice",
     "validate_vibevoice_voice",
-    "validate_stt_selection",
 ]

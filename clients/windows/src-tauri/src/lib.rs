@@ -16,7 +16,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
-use tauri_plugin_global_shortcut::{Builder as GlobalShortcutBuilder, Code, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{Builder as GlobalShortcutBuilder, Shortcut, ShortcutState};
 use url::Url;
 
 const MAIN_WINDOW_LABEL: &str = "main";
@@ -26,8 +26,12 @@ const MENU_TOGGLE: &str = "toggle-window";
 const MENU_INTERRUPT: &str = "interrupt-now";
 const MENU_QUIT: &str = "quit";
 const VOICE_URL: &str = "http://127.0.0.1:8765/voice";
+const SETUP_STATE_URL: &str = "http://127.0.0.1:8765/api/setup/state";
 const STATUS_URL: &str = "http://127.0.0.1:8765/api/windows-client/status";
 const STATUS_POLL_INTERVAL: Duration = Duration::from_millis(1200);
+const DEFAULT_TOGGLE_WINDOW_SHORTCUT: &str = "Ctrl+Shift+Space";
+const DEFAULT_PAUSE_RESUME_SHORTCUT: &str = "Ctrl+Shift+P";
+const DEFAULT_INTERRUPT_SHORTCUT: &str = "Ctrl+Alt+A";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum TrayState {
@@ -74,6 +78,50 @@ impl TrayState {
 struct ShellStatusResponse {
     state: String,
     stale: bool,
+}
+
+#[derive(Clone, Debug)]
+struct ShortcutConfig {
+    toggle_window: String,
+    pause_resume: String,
+    interrupt: String,
+}
+
+impl Default for ShortcutConfig {
+    fn default() -> Self {
+        Self {
+            toggle_window: DEFAULT_TOGGLE_WINDOW_SHORTCUT.to_string(),
+            pause_resume: DEFAULT_PAUSE_RESUME_SHORTCUT.to_string(),
+            interrupt: DEFAULT_INTERRUPT_SHORTCUT.to_string(),
+        }
+    }
+}
+
+#[derive(Default, Deserialize)]
+struct SetupStateResponse {
+    saved: SavedSetupState,
+}
+
+#[derive(Default, Deserialize)]
+struct SavedSetupState {
+    #[serde(default)]
+    windows_client: SavedWindowsClient,
+}
+
+#[derive(Default, Deserialize)]
+struct SavedWindowsClient {
+    #[serde(default)]
+    shortcuts: SavedShortcuts,
+}
+
+#[derive(Default, Deserialize)]
+struct SavedShortcuts {
+    #[serde(default)]
+    toggle_window: String,
+    #[serde(default)]
+    pause_resume: String,
+    #[serde(default)]
+    interrupt: String,
 }
 
 fn generate_shell_id() -> String {
@@ -221,6 +269,143 @@ fn fetch_tray_state(client: &Client, shell_id: &str) -> Option<TrayState> {
         return Some(TrayState::Reconnecting);
     }
     Some(TrayState::from_wire(&payload.state))
+}
+
+fn load_shortcut_config() -> ShortcutConfig {
+    let client = match Client::builder().timeout(Duration::from_secs(2)).build() {
+        Ok(client) => client,
+        Err(error) => {
+            eprintln!("failed to build setup-state client: {error}");
+            return ShortcutConfig::default();
+        }
+    };
+
+    let response = match client.get(SETUP_STATE_URL).send().and_then(|response| response.error_for_status()) {
+        Ok(response) => response,
+        Err(error) => {
+            eprintln!("failed to load Windows shortcut config from backend: {error}");
+            return ShortcutConfig::default();
+        }
+    };
+
+    let payload: SetupStateResponse = match response.json() {
+        Ok(payload) => payload,
+        Err(error) => {
+            eprintln!("backend setup-state response was not valid JSON: {error}");
+            return ShortcutConfig::default();
+        }
+    };
+
+    let mut config = ShortcutConfig::default();
+    let saved = payload.saved.windows_client.shortcuts;
+    if !saved.toggle_window.trim().is_empty() {
+        config.toggle_window = saved.toggle_window;
+    }
+    if !saved.pause_resume.trim().is_empty() {
+        config.pause_resume = saved.pause_resume;
+    }
+    if !saved.interrupt.trim().is_empty() {
+        config.interrupt = saved.interrupt;
+    }
+    config
+}
+
+fn normalize_shortcut_key(token: &str) -> Option<String> {
+    let compact = token.trim().replace([' ', '_', '-'], "");
+    let lowered = compact.to_ascii_lowercase();
+    if lowered.starts_with("key") && compact.len() == 4 {
+        let ch = compact.chars().nth(3)?;
+        if ch.is_ascii_alphabetic() {
+            return Some(format!("Key{}", ch.to_ascii_uppercase()));
+        }
+    }
+    if lowered.starts_with("digit") && compact.len() == 6 {
+        let ch = compact.chars().nth(5)?;
+        if ch.is_ascii_digit() {
+            return Some(format!("Digit{ch}"));
+        }
+    }
+    if compact.len() == 1 {
+        let ch = compact.chars().next()?;
+        if ch.is_ascii_alphabetic() {
+            return Some(format!("Key{}", ch.to_ascii_uppercase()));
+        }
+        if ch.is_ascii_digit() {
+            return Some(format!("Digit{ch}"));
+        }
+    }
+    if lowered.starts_with('f') {
+        let number = compact[1..].parse::<u8>().ok()?;
+        if (1..=24).contains(&number) {
+            return Some(format!("F{number}"));
+        }
+    }
+    match lowered.as_str() {
+        "space" => Some("Space".to_string()),
+        "enter" | "return" => Some("Enter".to_string()),
+        "tab" => Some("Tab".to_string()),
+        "esc" | "escape" => Some("Escape".to_string()),
+        "backspace" => Some("Backspace".to_string()),
+        "delete" | "del" => Some("Delete".to_string()),
+        "insert" | "ins" => Some("Insert".to_string()),
+        "home" => Some("Home".to_string()),
+        "end" => Some("End".to_string()),
+        "pageup" | "pgup" => Some("PageUp".to_string()),
+        "pagedown" | "pgdown" => Some("PageDown".to_string()),
+        "up" | "arrowup" => Some("ArrowUp".to_string()),
+        "down" | "arrowdown" => Some("ArrowDown".to_string()),
+        "left" | "arrowleft" => Some("ArrowLeft".to_string()),
+        "right" | "arrowright" => Some("ArrowRight".to_string()),
+        _ => None,
+    }
+}
+
+fn shortcut_to_tauri_string(value: &str) -> Result<String, String> {
+    let tokens: Vec<_> = value
+        .split('+')
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+        .collect();
+    if tokens.len() < 2 {
+        return Err("shortcut must include at least one modifier and one key".to_string());
+    }
+
+    let mut modifiers = Vec::new();
+    for token in &tokens[..tokens.len() - 1] {
+        let compact = token.replace([' ', '_', '-'], "").to_ascii_lowercase();
+        let modifier = match compact.as_str() {
+            "ctrl" | "control" => "CONTROL",
+            "alt" | "option" => "ALT",
+            "shift" => "SHIFT",
+            "cmd" | "command" | "meta" | "super" | "win" | "windows" => "SUPER",
+            _ => return Err(format!("unsupported modifier '{token}'")),
+        };
+        if !modifiers.contains(&modifier) {
+            modifiers.push(modifier);
+        }
+    }
+
+    let key = normalize_shortcut_key(tokens[tokens.len() - 1])
+        .ok_or_else(|| format!("unsupported key '{}'", tokens[tokens.len() - 1]))?;
+    modifiers.push(&key);
+    Ok(modifiers.join("+"))
+}
+
+fn parse_shortcut_value(label: &str, configured: &str, fallback: &str) -> Shortcut {
+    match shortcut_to_tauri_string(configured)
+        .and_then(|normalized| normalized.parse::<Shortcut>().map_err(|error| error.to_string()))
+    {
+        Ok(shortcut) => shortcut,
+        Err(error) => {
+            eprintln!(
+                "invalid configured shortcut for {label} ({configured:?}): {error}. Falling back to {fallback}."
+            );
+            shortcut_to_tauri_string(fallback)
+                .expect("default shortcuts must normalize")
+                .parse::<Shortcut>()
+                .expect("default shortcuts must parse")
+        }
+    }
 }
 
 fn start_tray_status_poller<R: tauri::Runtime + 'static>(
@@ -453,10 +638,47 @@ pub fn run() {
 fn run_inner() -> tauri::Result<()> {
     let quitting = Arc::new(AtomicBool::new(false));
     let shell_id = generate_shell_id();
+    let shortcut_config = load_shortcut_config();
 
-    let show_hide_shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space);
-    let pause_shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyP);
-    let interrupt_shortcuts = vec![Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyA)];
+    let mut show_hide_shortcut = parse_shortcut_value(
+        "show/hide window",
+        &shortcut_config.toggle_window,
+        DEFAULT_TOGGLE_WINDOW_SHORTCUT,
+    );
+    let mut pause_shortcut = parse_shortcut_value(
+        "pause/resume",
+        &shortcut_config.pause_resume,
+        DEFAULT_PAUSE_RESUME_SHORTCUT,
+    );
+    let mut interrupt_shortcuts = vec![parse_shortcut_value(
+        "interrupt",
+        &shortcut_config.interrupt,
+        DEFAULT_INTERRUPT_SHORTCUT,
+    )];
+
+    let shortcut_ids = [
+        show_hide_shortcut.id(),
+        pause_shortcut.id(),
+        interrupt_shortcuts[0].id(),
+    ];
+    if shortcut_ids.iter().collect::<std::collections::HashSet<_>>().len() != shortcut_ids.len() {
+        eprintln!("duplicate Windows shortcut bindings detected in config. Falling back to defaults.");
+        show_hide_shortcut = parse_shortcut_value(
+            "show/hide window",
+            DEFAULT_TOGGLE_WINDOW_SHORTCUT,
+            DEFAULT_TOGGLE_WINDOW_SHORTCUT,
+        );
+        pause_shortcut = parse_shortcut_value(
+            "pause/resume",
+            DEFAULT_PAUSE_RESUME_SHORTCUT,
+            DEFAULT_PAUSE_RESUME_SHORTCUT,
+        );
+        interrupt_shortcuts = vec![parse_shortcut_value(
+            "interrupt",
+            DEFAULT_INTERRUPT_SHORTCUT,
+            DEFAULT_INTERRUPT_SHORTCUT,
+        )];
+    }
 
     let show_hide_shortcut_id = show_hide_shortcut.id();
     let pause_shortcut_id = pause_shortcut.id();

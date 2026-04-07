@@ -11,6 +11,8 @@ from .catalog import DEFAULT_LOCAL_GATEWAY_URL, DEFAULT_VOICE_SESSION_KEY
 from .errors import ValidationError
 from .text import pop_early_chunk, pop_sentence_chunk
 
+OPENCLAW_OPERATOR_SCOPES = "operator.write"
+
 
 def _collect_text_fragments(value: Any) -> list[str]:
     parts: list[str] = []
@@ -61,6 +63,7 @@ class DirectGatewayClient:
         headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
+            "X-OpenClaw-Scopes": OPENCLAW_OPERATOR_SCOPES,
         }
         if include_session and self.session_key:
             headers["X-OpenClaw-Session-Key"] = self.session_key
@@ -84,7 +87,7 @@ class DirectGatewayClient:
                 json=self._payload(text, stream=True),
             ) as response:
                 if response.status_code >= 400:
-                    raise ValidationError(_read_error(response))
+                    raise ValidationError(await _read_stream_error(response))
                 content_type = response.headers.get("content-type", "")
                 if "text/event-stream" not in content_type:
                     raw_body = (await response.aread()).decode("utf-8", errors="replace").strip()
@@ -153,17 +156,29 @@ def normalize_gateway_url(url: str) -> str:
     return urlunsplit(normalized)
 
 
-def _read_error(response: httpx.Response) -> str:
+def _parse_error_text(status_code: int, raw_body: str) -> str:
+    body = raw_body.strip()
+    if not body:
+        return f"HTTP {status_code}"
     try:
-        payload = response.json()
+        payload = json.loads(body)
     except ValueError:
-        return response.text.strip() or f"HTTP {response.status_code}"
+        return body or f"HTTP {status_code}"
     error = payload.get("error")
     if isinstance(error, dict) and error.get("message"):
         return str(error["message"])
     if isinstance(error, str):
         return error
-    return payload.get("message") or f"HTTP {response.status_code}"
+    return payload.get("message") or f"HTTP {status_code}"
+
+
+def _read_error(response: httpx.Response) -> str:
+    return _parse_error_text(response.status_code, response.text)
+
+
+async def _read_stream_error(response: httpx.Response) -> str:
+    raw_body = (await response.aread()).decode("utf-8", errors="replace")
+    return _parse_error_text(response.status_code, raw_body)
 
 
 def _friendly_connection_error(normalized_url: str, exc: httpx.HTTPError) -> str:
@@ -187,6 +202,7 @@ async def validate_gateway_connection(*, url: str, token: str, model: str, sessi
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
+        "X-OpenClaw-Scopes": OPENCLAW_OPERATOR_SCOPES,
     }
     if session_key.strip():
         headers["X-OpenClaw-Session-Key"] = session_key.strip()

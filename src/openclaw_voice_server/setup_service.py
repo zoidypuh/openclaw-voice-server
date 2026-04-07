@@ -2,13 +2,28 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+from pathlib import Path
+import socket
+import subprocess
 from typing import Any
 
+from .agents import validate_hermes_connection
 from .catalog import (
     APP_VERSION_LABEL,
+    CHATTERBOX_DEFAULT_DEVICE,
+    CHATTERBOX_DEFAULT_MODEL,
+    DEFAULT_HERMES_ROOT,
     DEFAULT_LOCAL_GATEWAY_URL,
+    DEFAULT_REMOTE_WHISPER_ENDPOINT_PATH,
+    DEFAULT_REMOTE_WHISPER_HOST_ALIAS,
+    DEFAULT_REMOTE_WHISPER_MODEL,
+    DEFAULT_REMOTE_WHISPER_PORT,
+    DEFAULT_VIBEVOICE_BASE_URL,
     DEFAULT_VOICE_SESSION_KEY,
+    DEFAULT_WINDOWS_SHORTCUTS,
     ELEVENLABS_PRESETS,
+    SUPPORTED_AGENT_BACKENDS,
     SUPPORTED_STT_BACKENDS,
     SUPPORTED_TTS_PROVIDERS,
 )
@@ -16,21 +31,145 @@ from .config_store import ConfigStore
 from .errors import ValidationError
 from .gateway import normalize_gateway_url, validate_gateway_connection
 from .installer import module_available
-from .providers import (
+from .stt import normalize_stt_device, validate_stt_selection as validate_stt_selection_step
+from .tts import (
+    CHATTERBOX_SUPPORTED_DEVICES,
+    CHATTERBOX_SUPPORTED_MODELS,
+    default_piper_config_path,
+    list_local_chatterbox_voices,
     list_edge_voices,
     list_elevenlabs_voices,
+    list_vibevoice_voices,
+    normalize_chatterbox_language,
+    normalize_chatterbox_model,
     normalize_elevenlabs_preset,
-    normalize_stt_device,
+    normalize_piper_model_path,
+    normalize_piper_speaker,
+    normalize_vibevoice_base_url,
+    resolve_chatterbox_voice,
+    validate_chatterbox_voice as validate_chatterbox_voice_step,
     validate_edge_voice,
     validate_elevenlabs_api_key as validate_elevenlabs_api_key_step,
     validate_elevenlabs_voice as validate_elevenlabs_voice_step,
-    validate_stt_selection as validate_stt_selection_step,
+    validate_piper_voice as validate_piper_voice_step,
+    validate_vibevoice_voice as validate_vibevoice_voice_step,
 )
 
 
 class SetupService:
     def __init__(self, store: ConfigStore):
         self.store = store
+
+    @staticmethod
+    def _resolve_ssh_hostname(alias: str) -> str:
+        text = str(alias or "").strip()
+        if not text:
+            return ""
+        try:
+            completed = subprocess.run(
+                ["ssh", "-G", text],
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=2,
+            )
+        except (FileNotFoundError, OSError, subprocess.SubprocessError):
+            return ""
+        if completed.returncode != 0:
+            return ""
+        for line in completed.stdout.splitlines():
+            key, _, value = line.partition(" ")
+            if key.lower() != "hostname":
+                continue
+            return value.strip()
+        return ""
+
+    @staticmethod
+    def _host_is_resolvable(host: str) -> bool:
+        text = str(host or "").strip()
+        if not text:
+            return False
+        try:
+            socket.getaddrinfo(text, None)
+        except socket.gaierror:
+            return False
+        return True
+
+    def _default_remote_whisper_hint(self, settings: dict[str, Any]) -> dict[str, str]:
+        env_url = str(
+            os.environ.get("OPENCLAW_VOICE_REMOTE_WHISPER_ENDPOINT_URL")
+            or os.environ.get("OPENCLAW_VOICE_MAC_WHISPER_ENDPOINT_URL")
+            or ""
+        ).strip()
+        env_model = str(
+            os.environ.get("OPENCLAW_VOICE_REMOTE_WHISPER_ENDPOINT_MODEL")
+            or os.environ.get("OPENCLAW_VOICE_MAC_WHISPER_ENDPOINT_MODEL")
+            or ""
+        ).strip()
+        host_alias = str(
+            os.environ.get("OPENCLAW_VOICE_REMOTE_WHISPER_HOST_ALIAS")
+            or os.environ.get("OPENCLAW_VOICE_MAC_WHISPER_SSH_ALIAS")
+            or DEFAULT_REMOTE_WHISPER_HOST_ALIAS
+        ).strip()
+        resolved_host = self._resolve_ssh_hostname(host_alias) if host_alias else ""
+        if resolved_host == host_alias and not self._host_is_resolvable(resolved_host):
+            resolved_host = ""
+        resolved_url = (
+            f"http://{resolved_host}:{DEFAULT_REMOTE_WHISPER_PORT}{DEFAULT_REMOTE_WHISPER_ENDPOINT_PATH}"
+            if resolved_host
+            else ""
+        )
+        saved_url = str(settings["stt"].get("whisper_endpoint_url") or "").strip()
+        saved_model = str(settings["stt"].get("whisper_endpoint_model") or "").strip()
+        return {
+            "url": env_url or resolved_url or saved_url,
+            "model": env_model or saved_model or DEFAULT_REMOTE_WHISPER_MODEL,
+            "host_alias": host_alias,
+        }
+
+    def _local_piper_voices(self, settings: dict[str, Any]) -> list[dict[str, str]]:
+        candidate_dirs = [
+            self.store.config_path.parent / "piper-voices",
+            Path.cwd() / "piper-voices",
+        ]
+        seen_dirs: set[str] = set()
+        voices: list[dict[str, str]] = []
+        seen_models: set[str] = set()
+        for directory in candidate_dirs:
+            resolved_dir = str(directory.resolve())
+            if resolved_dir in seen_dirs or not directory.is_dir():
+                continue
+            seen_dirs.add(resolved_dir)
+            for model_path in sorted(directory.glob("*.onnx")):
+                resolved_model_path = str(model_path.resolve())
+                if resolved_model_path in seen_models:
+                    continue
+                seen_models.add(resolved_model_path)
+                config_path = Path(default_piper_config_path(resolved_model_path))
+                voices.append(
+                    {
+                        "voice_name": model_path.name,
+                        "model_path": resolved_model_path,
+                        "config_path": str(config_path.resolve()) if config_path.is_file() else "",
+                        "source_dir": resolved_dir,
+                    }
+                )
+        return voices
+
+    @staticmethod
+    def _default_local_piper_voice(
+        settings: dict[str, Any],
+        voices: list[dict[str, str]],
+    ) -> dict[str, str] | None:
+        if not voices:
+            return None
+        language = str((settings.get("stt") or {}).get("language") or "").strip().lower()
+        if language and language != "auto":
+            prefix = f"{language}_"
+            for voice in voices:
+                if Path(voice["model_path"]).name.lower().startswith(prefix):
+                    return voice
+        return voices[0]
 
     @staticmethod
     def _fingerprint_secret(value: str) -> str:
@@ -56,6 +195,129 @@ class SetupService:
         if isinstance(legacy_snapshot, dict):
             return self._snapshot_matches(current, legacy_snapshot)
         return False
+
+    @staticmethod
+    def _normalize_shortcut(value: str) -> str:
+        text = str(value or "").strip()
+        if not text:
+            raise ValidationError("Shortcut values cannot be empty.")
+
+        modifier_aliases = {
+            "ctrl": "Ctrl",
+            "control": "Ctrl",
+            "alt": "Alt",
+            "option": "Alt",
+            "shift": "Shift",
+            "cmd": "Super",
+            "command": "Super",
+            "meta": "Super",
+            "super": "Super",
+            "win": "Super",
+            "windows": "Super",
+        }
+        key_aliases = {
+            "space": "Space",
+            "enter": "Enter",
+            "return": "Enter",
+            "tab": "Tab",
+            "esc": "Escape",
+            "escape": "Escape",
+            "backspace": "Backspace",
+            "delete": "Delete",
+            "del": "Delete",
+            "insert": "Insert",
+            "ins": "Insert",
+            "home": "Home",
+            "end": "End",
+            "pageup": "PageUp",
+            "pgup": "PageUp",
+            "pagedown": "PageDown",
+            "pgdown": "PageDown",
+            "up": "ArrowUp",
+            "arrowup": "ArrowUp",
+            "down": "ArrowDown",
+            "arrowdown": "ArrowDown",
+            "left": "ArrowLeft",
+            "arrowleft": "ArrowLeft",
+            "right": "ArrowRight",
+            "arrowright": "ArrowRight",
+        }
+        tokens = [part.strip() for part in text.split("+")]
+        if not tokens or any(not token for token in tokens):
+            raise ValidationError(
+                "Shortcut values must look like Ctrl+Shift+Space or Ctrl+Alt+A."
+            )
+
+        modifiers: set[str] = set()
+        key: str | None = None
+        for index, token in enumerate(tokens):
+            compact = token.replace(" ", "").replace("_", "").replace("-", "")
+            lowered = compact.lower()
+            if lowered in modifier_aliases:
+                if key is not None or index == len(tokens) - 1:
+                    raise ValidationError("Shortcut modifiers must come before the final key.")
+                modifiers.add(modifier_aliases[lowered])
+                continue
+
+            if index != len(tokens) - 1:
+                raise ValidationError("Shortcut values must end with exactly one key.")
+            if lowered.startswith("key") and len(compact) == 4 and compact[3].isalpha():
+                key = compact[3].upper()
+            elif lowered.startswith("digit") and len(compact) == 6 and compact[5].isdigit():
+                key = compact[5]
+            elif len(compact) == 1 and compact.isalpha():
+                key = compact.upper()
+            elif len(compact) == 1 and compact.isdigit():
+                key = compact
+            elif lowered in key_aliases:
+                key = key_aliases[lowered]
+            elif lowered.startswith("f") and compact[1:].isdigit() and 1 <= int(compact[1:]) <= 24:
+                key = f"F{int(compact[1:])}"
+            else:
+                raise ValidationError(
+                    f"Unsupported shortcut key '{token}'. Use keys like A, P, Space, Enter, ArrowUp, or F5."
+                )
+
+        if not modifiers:
+            raise ValidationError("Shortcut values must include at least one modifier key.")
+        if key is None:
+            raise ValidationError("Shortcut values must end with a key.")
+
+        ordered_modifiers = [
+            modifier for modifier in ("Ctrl", "Alt", "Shift", "Super") if modifier in modifiers
+        ]
+        return "+".join([*ordered_modifiers, key])
+
+    def validate_windows_client(self, payload: dict[str, Any]) -> dict[str, Any]:
+        current = self.store.load_config()["windows_client"]
+        current_shortcuts = dict(current.get("shortcuts") or {})
+        shortcuts = {
+            "toggle_window": self._normalize_shortcut(
+                str(payload.get("toggle_window") or current_shortcuts.get("toggle_window") or "")
+            ),
+            "pause_resume": self._normalize_shortcut(
+                str(payload.get("pause_resume") or current_shortcuts.get("pause_resume") or "")
+            ),
+            "interrupt": self._normalize_shortcut(
+                str(payload.get("interrupt") or current_shortcuts.get("interrupt") or "")
+            ),
+        }
+        if len(set(shortcuts.values())) != len(shortcuts):
+            raise ValidationError("Windows client shortcuts must be unique.")
+
+        self.store.update_config(
+            {
+                "windows_client": {
+                    "shortcuts": shortcuts,
+                },
+                "validation": {
+                    "windows_client": {
+                        "config_hash": self._config_hash(shortcuts),
+                    }
+                },
+            }
+        )
+        return {"ok": True, "shortcuts": shortcuts}
 
     def _stt_runtime_ready(self, settings: dict[str, Any]) -> bool:
         stt = settings["stt"]
@@ -89,6 +351,23 @@ class SetupService:
                 and str(tts.get("elevenlabs_voice_id") or "").strip()
                 and str(tts.get("elevenlabs_model") or "").strip()
             )
+        if provider_id == "piper":
+            return bool(
+                str(tts.get("piper_model_path") or "").strip()
+                and str(tts.get("piper_config_path") or "").strip()
+            )
+        if provider_id == "chatterbox":
+            return bool(
+                str(tts.get("chatterbox_model") or "").strip()
+                and str(tts.get("chatterbox_device") or "").strip()
+                and str(tts.get("chatterbox_language") or "").strip()
+                and str(tts.get("chatterbox_voice") or "").strip()
+            )
+        if provider_id == "vibevoice":
+            return bool(
+                str(tts.get("vibevoice_base_url") or "").strip()
+                and str(tts.get("vibevoice_voice") or "").strip()
+            )
         return False
 
     def _gateway_runtime_ready(self, settings: dict[str, Any]) -> bool:
@@ -99,6 +378,32 @@ class SetupService:
             and str(gateway.get("model") or "").strip()
             and str(secrets.get("gateway_token") or "").strip()
         )
+
+    def _hermes_runtime_ready(self, settings: dict[str, Any]) -> bool:
+        agent = settings.get("agent") or {}
+        hermes_root = Path(
+            str(agent.get("hermes_root") or DEFAULT_HERMES_ROOT).strip() or DEFAULT_HERMES_ROOT
+        ).expanduser()
+        if not hermes_root.exists():
+            return False
+        repo_marker_exists = (hermes_root / "run_agent.py").exists()
+        python_candidates = [
+            hermes_root / "venv" / "bin" / "python",
+            hermes_root / "venv" / "bin" / "python3",
+            hermes_root.parent / ".hermes" / "venv" / "bin" / "python",
+            hermes_root.parent / ".hermes" / "venv" / "bin" / "python3",
+            Path.home() / ".hermes" / "venv" / "bin" / "python",
+            Path.home() / ".hermes" / "venv" / "bin" / "python3",
+        ]
+        python_exists = any(candidate.exists() for candidate in python_candidates)
+        local_venv_exists = any(candidate.exists() for candidate in python_candidates[:2])
+        return python_exists and (repo_marker_exists or local_venv_exists)
+
+    def _conversation_runtime_ready(self, settings: dict[str, Any]) -> bool:
+        backend = str((settings.get("agent") or {}).get("backend") or "openclaw").strip().lower()
+        if backend == "hermes":
+            return self._hermes_runtime_ready(settings)
+        return self._gateway_runtime_ready(settings)
 
     def _status(self, settings: dict[str, Any]) -> dict[str, bool]:
         validation = settings["validation"]
@@ -165,6 +470,33 @@ class SetupService:
             and api_key_fingerprint == validation["eleven_voice"]["api_key_fingerprint"]
             and self._validated_config_matches(eleven_voice_snapshot, validation["eleven_voice"])
         )
+        piper_snapshot = {
+            "model_path": settings["tts"]["piper_model_path"],
+            "config_path": settings["tts"]["piper_config_path"],
+            "speaker": settings["tts"]["piper_speaker"],
+        }
+        piper_ready = "piper" not in settings["tts"]["enabled_providers"] or self._validated_config_matches(
+            piper_snapshot,
+            validation["piper"],
+        )
+        chatterbox_snapshot = {
+            "model": settings["tts"]["chatterbox_model"],
+            "device": settings["tts"]["chatterbox_device"],
+            "language": settings["tts"]["chatterbox_language"],
+            "voice": settings["tts"].get("chatterbox_voice") or "default",
+        }
+        chatterbox_ready = "chatterbox" not in settings["tts"]["enabled_providers"] or self._validated_config_matches(
+            chatterbox_snapshot,
+            validation["chatterbox"],
+        )
+        vibevoice_snapshot = {
+            "base_url": settings["tts"]["vibevoice_base_url"],
+            "voice": settings["tts"]["vibevoice_voice"],
+        }
+        vibevoice_ready = "vibevoice" not in settings["tts"]["enabled_providers"] or self._validated_config_matches(
+            vibevoice_snapshot,
+            validation["vibevoice"],
+        )
 
         gateway_token_fingerprint = self._fingerprint_secret(settings["secrets"]["gateway_token"])
         gateway_snapshot = {
@@ -178,26 +510,44 @@ class SetupService:
             and gateway_token_fingerprint == validation["gateway"]["token_fingerprint"]
             and self._validated_config_matches(gateway_snapshot, validation["gateway"])
         )
+        hermes_snapshot = {
+            "hermes_root": str(
+                (settings.get("agent") or {}).get("hermes_root") or DEFAULT_HERMES_ROOT
+            ).strip()
+            or DEFAULT_HERMES_ROOT,
+        }
+        hermes_ready = self._validated_config_matches(hermes_snapshot, validation["hermes"])
 
         runtime_ready = all(
             [
-                self._gateway_runtime_ready(settings),
+                self._conversation_runtime_ready(settings),
                 self._stt_runtime_ready(settings),
                 self._tts_runtime_ready(settings),
             ]
         )
         return {
             "gateway_ready": gateway_ready,
+            "hermes_ready": hermes_ready,
             "stt_ready": stt_ready,
             "tts_selection_ready": tts_selection_ready,
             "edge_ready": edge_ready,
             "eleven_key_ready": eleven_key_ready,
             "eleven_voice_ready": eleven_voice_ready,
+            "piper_ready": piper_ready,
+            "chatterbox_ready": chatterbox_ready,
+            "vibevoice_ready": vibevoice_ready,
             "runtime_ready": runtime_ready,
         }
 
     def state(self) -> dict[str, Any]:
         settings = self.store.load_runtime_settings()
+        remote_whisper_hint = self._default_remote_whisper_hint(settings)
+        local_piper_voices = self._local_piper_voices(settings)
+        local_chatterbox_voices = list_local_chatterbox_voices()
+        default_local_piper_voice = self._default_local_piper_voice(settings, local_piper_voices)
+        default_local_piper_source_dir = (
+            default_local_piper_voice["source_dir"] if default_local_piper_voice else ""
+        )
         return {
             "version_label": APP_VERSION_LABEL,
             "message": (
@@ -208,8 +558,19 @@ class SetupService:
             "saved": self.store.public_setup_state(),
             "status": self._status(settings),
             "catalog": {
+                "agent_backends": list(SUPPORTED_AGENT_BACKENDS.values()),
                 "stt_backends": list(SUPPORTED_STT_BACKENDS.values()),
                 "tts_providers": list(SUPPORTED_TTS_PROVIDERS.values()),
+                "chatterbox_models": [
+                    {"id": model_id, "label": label}
+                    for model_id, label in CHATTERBOX_SUPPORTED_MODELS.items()
+                ],
+                "chatterbox_devices": [
+                    {"id": device_id, "label": device_id.upper() if device_id != "auto" else "Auto"}
+                    for device_id in sorted(CHATTERBOX_SUPPORTED_DEVICES, key=lambda item: ("auto" != item, item))
+                ],
+                "chatterbox_voices": [{"id": "default", "label": "Built-In Default"}]
+                + [{"id": item["id"], "label": item["label"]} for item in local_chatterbox_voices],
                 "elevenlabs_presets": [
                     {"id": preset_id, "label": preset["label"]}
                     for preset_id, preset in ELEVENLABS_PRESETS.items()
@@ -217,22 +578,104 @@ class SetupService:
             },
             "hints": {
                 "default_voice_session_key": DEFAULT_VOICE_SESSION_KEY,
+                "default_windows_shortcuts": DEFAULT_WINDOWS_SHORTCUTS,
+                "default_hermes_root": DEFAULT_HERMES_ROOT,
                 "gpu_note": (
                     "GPU mode currently targets NVIDIA CUDA. "
                     "Use it only when the CUDA runtime and model dependencies are already working, "
                     "then validate before saving."
                 ),
                 "default_local_gateway_url": DEFAULT_LOCAL_GATEWAY_URL,
+                "default_remote_whisper_endpoint_url": remote_whisper_hint["url"],
+                "default_remote_whisper_endpoint_model": remote_whisper_hint["model"],
+                "remote_whisper_host_alias": remote_whisper_hint["host_alias"],
                 "gateway_note": (
                     f"On this machine the direct OpenClaw gateway usually runs at {DEFAULT_LOCAL_GATEWAY_URL}. "
                     "Use the public .ts.net URL to open the app in a browser, but use the local gateway URL here "
                     "because validation and voice turns run server-side."
                 ),
+                "hermes_note": (
+                    f"Hermes Agent is expected at {DEFAULT_HERMES_ROOT} by default. "
+                    "Point this field at the Hermes checkout root that contains run_agent.py. "
+                    "The runtime can use either a repo-local venv or ~/.hermes/venv."
+                ),
+                "windows_shortcuts_note": (
+                    "These shortcuts are used by the Windows tray client. "
+                    "Changes take effect the next time the Windows client starts."
+                ),
+                "default_vibevoice_base_url": DEFAULT_VIBEVOICE_BASE_URL,
+                "vibevoice_note": (
+                    f"Run the VibeVoice demo server locally, usually at {DEFAULT_VIBEVOICE_BASE_URL}, "
+                    "then choose one of the preset voices it exposes through /config."
+                ),
+                "piper_repo_url": "https://github.com/OHF-Voice/piper1-gpl",
+                "piper_voices_url": "https://huggingface.co/rhasspy/piper-voices",
+                "default_piper_model_path": (
+                    default_local_piper_voice["model_path"] if default_local_piper_voice else ""
+                ),
+                "default_piper_config_path": (
+                    default_local_piper_voice["config_path"] if default_local_piper_voice else ""
+                ),
+                "chatterbox_note": (
+                    "Chatterbox runs fully local. "
+                    "Use the multilingual model for German and other non-English languages, or the original model for English-only output. "
+                    "When Language is left blank in the UI, the validated STT language is used and falls back to English if STT is set to auto. "
+                    + (
+                        f"Detected {len(local_chatterbox_voices)} local Chatterbox voice file(s) in the workspace."
+                        if local_chatterbox_voices
+                        else "No local Chatterbox voice files were detected yet."
+                    )
+                ),
+                "default_chatterbox_model": CHATTERBOX_DEFAULT_MODEL,
+                "default_chatterbox_device": CHATTERBOX_DEFAULT_DEVICE,
+                "default_chatterbox_voice": "default",
+                "local_piper_voices": local_piper_voices,
+                "piper_note": (
+                    "Model Path must point to a Piper voice .onnx file, not the Piper install directory. "
+                    + (
+                        f"Detected local Piper voices in {default_local_piper_source_dir}. "
+                        "Choose one below or paste another .onnx path manually. "
+                        if default_local_piper_source_dir
+                        else "No local Piper voices were auto-detected next to the current config. "
+                    )
+                    + "Leave Config Path blank only when the matching <model>.onnx.json file sits next to the model file."
+                ),
             },
         }
 
-    async def validate_gateway(self, payload: dict[str, Any]) -> dict[str, Any]:
+    async def validate_agent(self, payload: dict[str, Any]) -> dict[str, Any]:
         settings = self.store.load_runtime_settings()
+        agent_settings = settings.get("agent") or {}
+        backend = str(payload.get("backend") or agent_settings.get("backend") or "openclaw").strip().lower()
+        if backend == "hermes":
+            hermes_root = str(payload.get("hermes_root") or agent_settings.get("hermes_root") or DEFAULT_HERMES_ROOT).strip()
+            gateway_settings = settings.get("gateway") or {}
+            gateway_secrets = settings.get("secrets") or {}
+            gateway_url = str(gateway_settings.get("url") or "").strip()
+            gateway_token = str(gateway_secrets.get("gateway_token") or "").strip()
+            gateway_model = str(gateway_settings.get("model") or "").strip()
+            result = await validate_hermes_connection(
+                project_root=hermes_root,
+                gateway_url=normalize_gateway_url(gateway_url) if gateway_url and gateway_token and gateway_model else None,
+                gateway_token=gateway_token or None,
+                gateway_model=gateway_model or None,
+            )
+            resolved_root = str(result["project_root"])
+            self.store.update_config(
+                {
+                    "agent": {"backend": "hermes", "hermes_root": resolved_root},
+                    "validation": {
+                        "hermes": {
+                            "config_hash": self._config_hash({"hermes_root": resolved_root}),
+                        }
+                    },
+                }
+            )
+            return {"ok": True, "backend": "hermes", **result}
+
+        if backend != "openclaw":
+            raise ValidationError("Unsupported conversation backend.")
+
         url = str(payload.get("url") or settings["gateway"]["url"]).strip()
         token = str(payload.get("token") or settings["secrets"]["gateway_token"]).strip()
         model = str(payload.get("model") or settings["gateway"]["model"]).strip()
@@ -255,6 +698,7 @@ class SetupService:
         )
         self.store.update_config(
             {
+                "agent": {"backend": "openclaw"},
                 "gateway": {"url": normalized_url, "model": model, "session_key": session_key},
                 "validation": {
                     "gateway": {
@@ -267,7 +711,12 @@ class SetupService:
             }
         )
         self.store.update_secrets({"OPENCLAW_VOICE_GATEWAY_TOKEN": token})
-        return {"ok": True, **summary}
+        return {"ok": True, "backend": "openclaw", **summary}
+
+    async def validate_gateway(self, payload: dict[str, Any]) -> dict[str, Any]:
+        gateway_payload = dict(payload)
+        gateway_payload["backend"] = "openclaw"
+        return await self.validate_agent(gateway_payload)
 
     def validate_stt(self, payload: dict[str, Any]) -> dict[str, Any]:
         current = self.store.load_config()["stt"]
@@ -314,6 +763,11 @@ class SetupService:
             raise ValidationError("Default TTS provider must be one of the selected providers.")
         if "edge" in enabled:
             await list_edge_voices()
+        if "piper" in enabled:
+            normalize_piper_speaker(self.store.load_config()["tts"].get("piper_speaker", 0))
+        if "chatterbox" in enabled:
+            normalize_chatterbox_model(self.store.load_config()["tts"].get("chatterbox_model", CHATTERBOX_DEFAULT_MODEL))
+            resolve_chatterbox_voice(self.store.load_config()["tts"].get("chatterbox_voice", "default"))
         self.store.update_config(
             {
                 "tts": {"enabled_providers": enabled, "default_provider": default_provider},
@@ -373,6 +827,109 @@ class SetupService:
         voices = await list_elevenlabs_voices(settings["secrets"]["elevenlabs_api_key"])
         return {"ok": True, "voices": voices}
 
+    async def validate_piper(self, payload: dict[str, Any]) -> dict[str, Any]:
+        settings = self.store.load_runtime_settings()
+        current_tts = settings["tts"]
+        model_path = normalize_piper_model_path(
+            str(payload.get("model_path") or current_tts.get("piper_model_path") or "").strip()
+        )
+        config_path = str(
+            payload.get("config_path")
+            if "config_path" in payload
+            else current_tts.get("piper_config_path", "")
+        ).strip()
+        speaker = normalize_piper_speaker(
+            payload.get("speaker")
+            if "speaker" in payload
+            else current_tts.get("piper_speaker", 0)
+        )
+        result = await validate_piper_voice_step(
+            model_path=model_path,
+            config_path=config_path,
+            speaker=speaker,
+        )
+        saved_tts = {
+            "piper_model_path": result["model_path"],
+            "piper_config_path": result["config_path"] or default_piper_config_path(result["model_path"]),
+            "piper_speaker": result["speaker"],
+        }
+        self.store.update_config(
+            {
+                "tts": saved_tts,
+                "validation": {
+                    "piper": {
+                        "config_hash": self._config_hash(
+                            {
+                                "model_path": saved_tts["piper_model_path"],
+                                "config_path": saved_tts["piper_config_path"],
+                                "speaker": saved_tts["piper_speaker"],
+                            }
+                        ),
+                    }
+                },
+            }
+        )
+        return result
+
+    async def validate_chatterbox(self, payload: dict[str, Any]) -> dict[str, Any]:
+        settings = self.store.load_runtime_settings()
+        current_tts = settings["tts"]
+        stt_language = str((settings.get("stt") or {}).get("language") or "").strip().lower()
+        model = normalize_chatterbox_model(
+            str(payload.get("model") or current_tts.get("chatterbox_model") or CHATTERBOX_DEFAULT_MODEL).strip()
+        )
+        requested_language = str(
+            payload.get("language")
+            if "language" in payload
+            else current_tts.get("chatterbox_language", "")
+        ).strip()
+        if not requested_language and model == "multilingual":
+            requested_language = stt_language if stt_language and stt_language != "auto" else "en"
+        device = str(payload.get("device") or current_tts.get("chatterbox_device") or CHATTERBOX_DEFAULT_DEVICE).strip()
+        voice = resolve_chatterbox_voice(
+            str(payload.get("voice") if "voice" in payload else current_tts.get("chatterbox_voice", "default")).strip()
+        )
+        resolved_language = normalize_chatterbox_language(requested_language, model=model)
+        result = await validate_chatterbox_voice_step(
+            model=model,
+            device=device,
+            language=resolved_language,
+            voice=voice,
+        )
+        saved_tts = {
+            "chatterbox_model": result["model"],
+            "chatterbox_device": result["device"],
+            "chatterbox_language": result["language"],
+            "chatterbox_voice": result["voice"],
+        }
+        self.store.update_config(
+            {
+                "tts": saved_tts,
+                "validation": {
+                    "chatterbox": {
+                        "config_hash": self._config_hash(
+                            {
+                                "model": saved_tts["chatterbox_model"],
+                                "device": saved_tts["chatterbox_device"],
+                                "language": saved_tts["chatterbox_language"],
+                                "voice": saved_tts["chatterbox_voice"],
+                            }
+                        ),
+                    }
+                },
+            }
+        )
+        return result
+
+    async def vibevoice_voices(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        settings = self.store.load_runtime_settings()
+        submitted = payload or {}
+        base_url = normalize_vibevoice_base_url(
+            str(submitted.get("base_url") or settings["tts"]["vibevoice_base_url"]).strip()
+        )
+        voices = await list_vibevoice_voices(base_url)
+        return {"ok": True, "base_url": base_url, "voices": voices}
+
     async def validate_elevenlabs_voice(self, payload: dict[str, Any]) -> dict[str, Any]:
         settings = self.store.load_runtime_settings()
         api_key = settings["secrets"]["elevenlabs_api_key"]
@@ -401,6 +958,30 @@ class SetupService:
                             {"voice_id": voice_id, "model_id": model_id, "preset": preset_name}
                         ),
                         "api_key_fingerprint": self._fingerprint_secret(api_key),
+                    }
+                },
+            }
+        )
+        return result
+
+    async def validate_vibevoice(self, payload: dict[str, Any]) -> dict[str, Any]:
+        settings = self.store.load_runtime_settings()
+        base_url = normalize_vibevoice_base_url(
+            str(payload.get("base_url") or settings["tts"]["vibevoice_base_url"]).strip()
+        )
+        voice = str(payload.get("voice") or settings["tts"]["vibevoice_voice"]).strip()
+        result = await validate_vibevoice_voice_step(base_url=base_url, voice=voice)
+        self.store.update_config(
+            {
+                "tts": {
+                    "vibevoice_base_url": base_url,
+                    "vibevoice_voice": result["voice_id"],
+                },
+                "validation": {
+                    "vibevoice": {
+                        "config_hash": self._config_hash(
+                            {"base_url": base_url, "voice": result["voice_id"]}
+                        ),
                     }
                 },
             }

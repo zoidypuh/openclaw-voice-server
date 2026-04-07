@@ -52,6 +52,10 @@ def _set_nested(data: dict[str, Any], path: tuple[str, ...], value: Any) -> None
     node[path[-1]] = value
 
 
+def _has_explicit_nested_value(data: dict[str, Any], path: tuple[str, ...]) -> bool:
+    return _get_nested(data, path) not in (None, "", [])
+
+
 def _split_env_line(line: str) -> tuple[str, str] | None:
     stripped = line.strip()
     if not stripped or stripped.startswith("#") or "=" not in stripped:
@@ -98,9 +102,11 @@ class ConfigStore:
 
     def load_config(self) -> dict[str, Any]:
         config = default_config()
+        raw_config: dict[str, Any] = {}
         if self.config_path.exists():
             raw = json.loads(self.config_path.read_text(encoding="utf-8"))
             if isinstance(raw, dict):
+                raw_config = raw
                 _deep_merge(config, raw)
 
         env_values = self.load_env_values()
@@ -108,8 +114,7 @@ class ConfigStore:
             env_value = env_values.get(env_key)
             if env_value is None:
                 continue
-            existing = _get_nested(config, path)
-            if existing not in (None, "", []):
+            if _has_explicit_nested_value(raw_config, path):
                 continue
             _set_nested(config, path, _parse_scalar(env_value))
 
@@ -182,10 +187,12 @@ class ConfigStore:
                 "session_key": settings["gateway"]["session_key"],
                 "token_present": bool(settings["secrets"]["gateway_token"]),
             },
+            "agent": settings["agent"],
             "stt": settings["stt"],
             "tts": {
                 **settings["tts"],
                 "elevenlabs_api_key_present": bool(settings["secrets"]["elevenlabs_api_key"]),
             },
             "audio": settings["audio"],
+            "windows_client": settings["windows_client"],
         }

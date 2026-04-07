@@ -17,3 +17,10 @@ SESSION_HANDOFF_*.md
 *:Zone.Identifier
 clients/windows/node_modules/
 clients/windows/src-tauri/target/
+tts-eleven/
+piper-voices/
+chatterbox-voices/
+samples/
+image.png
+netsh
+.codex

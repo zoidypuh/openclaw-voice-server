@@ -35,32 +35,32 @@
     position: fixed;
     top: 16px;
     left: 18px;
-    color: #9a9a9a;
-    font-size: 1.8rem;
-    font-weight: 600;
-    letter-spacing: 0.02em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.34rem 0.72rem;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 999px;
+    background: rgba(255,255,255,0.04);
+    color: #a8a8a8;
+    font-size: 0.78rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
     text-decoration: none;
+    text-transform: uppercase;
+    transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
   }
   #setup-link:hover {
-    color: #d0d0d0;
+    background: rgba(255,255,255,0.09);
+    border-color: rgba(255,255,255,0.2);
+    color: #d8d8d8;
   }
   body[data-shell="tauri"] #setup-link {
     top: 14px;
     left: 14px;
-    padding: 0.36rem 0.7rem;
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 999px;
-    background: rgba(255,255,255,0.05);
-    color: #b8b8b8;
-    font-size: 0.8rem;
-    font-weight: 500;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
   }
   body[data-shell="tauri"] #setup-link:hover {
     color: #ececec;
-    border-color: rgba(255,255,255,0.24);
-    background: rgba(255,255,255,0.1);
   }
   main {
     width: min(72vw, 360px);
@@ -68,11 +68,10 @@
     gap: 18px;
     justify-items: center;
   }
-  #controls {
+  #top-bar {
     width: 100%;
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 10px;
+    display: flex;
+    justify-content: center;
   }
   #utility-bar {
     width: 100%;
@@ -130,6 +129,12 @@
     border-color: rgba(134,200,255,0.3);
     background: rgba(134,200,255,0.08);
   }
+  #pause-btn {
+    min-width: 7.2rem;
+    padding: 0.58rem 1.12rem;
+    font-size: 0.9rem;
+    letter-spacing: 0.06em;
+  }
   #mute-btn {
     min-width: 5.2rem;
   }
@@ -146,7 +151,23 @@
     min-height: 1.3em;
     text-transform: lowercase;
   }
+  #status-hint {
+    width: 100%;
+    min-height: 1.1em;
+    margin-top: -0.5rem;
+    text-align: center;
+    color: #7f7f7f;
+    font-size: 0.73rem;
+    letter-spacing: 0.04em;
+  }
+  #level-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
   #level {
+    flex: 1 1 auto;
     width: 100%;
     height: 8px;
     background: rgba(255,255,255,0.08);
@@ -159,6 +180,18 @@
     background: linear-gradient(90deg, #ff735c, #6de2ff);
     transition: width 50ms linear;
   }
+  #level-value {
+    flex: 0 0 4.25rem;
+    text-align: right;
+    color: #8e8e8e;
+    font-size: 0.82rem;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.04em;
+    transition: color 180ms ease;
+  }
+  #level-value.peak-held {
+    color: #ffb067;
+  }
   #thinking-timer {
     width: 100%;
     min-height: 1.1em;
@@ -168,7 +201,7 @@
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.04em;
   }
-  #tuning-panel {
+  .popup-panel {
     width: 100%;
     display: grid;
     gap: 10px;
@@ -178,12 +211,15 @@
     background: rgba(255,255,255,0.035);
     position: relative;
   }
-  #tuning-title {
-    color: #a7a7a7;
-    font-size: 0.76rem;
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
+  .panel-title {
+    color: #cfcfcf;
+    font-size: 0.88rem;
+    line-height: 1.2;
+  }
+  .panel-button-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
   }
   .tuning-row {
     display: grid;
@@ -212,17 +248,6 @@
     margin: 0;
     accent-color: #86c8ff;
   }
-  #tuning-close {
-    position: absolute;
-    top: 0.5rem;
-    right: 0.5rem;
-    width: 1.7rem;
-    height: 1.7rem;
-    padding: 0;
-    border-radius: 999px;
-    font-size: 0.92rem;
-    line-height: 1;
-  }
   .hidden {
     display: none !important;
   }
@@ -238,24 +263,43 @@
 <a id="setup-link" href="./setup">setup</a>
 <div id="version">v0.04 <span class="alpha">ALPHA</span></div>
 <main>
-  <div id="status">listening</div>
-  <div id="controls">
+  <div id="top-bar">
     <button id="pause-btn" class="control-btn" type="button">pause</button>
   </div>
+  <div id="status">listening</div>
+  <div id="status-hint"></div>
   <div id="utility-bar">
+    <button id="interrupt-btn" class="mini-btn" type="button">interrupt</button>
     <button id="mute-btn" class="mini-btn" type="button">mute</button>
     <button id="sliders-toggle" class="mini-btn active" type="button">threshold</button>
   </div>
-  <div id="level" aria-hidden="true"><div id="level-bar"></div></div>
-  <section id="tuning-panel" aria-label="voice tuning">
-    <button id="tuning-close" class="mini-btn" type="button" aria-label="hide threshold">x</button>
-    <div id="tuning-title">live tuning</div>
+  <div id="level-row">
+    <div id="level" aria-hidden="true"><div id="level-bar"></div></div>
+    <div id="level-value" aria-live="off">-60 dB</div>
+  </div>
+  <section id="interrupt-panel" class="popup-panel hidden" aria-label="interrupt mode">
+    <div class="panel-title">interrupt mode</div>
+    <div class="panel-button-row">
+      <button id="interrupt-mode-off" class="mini-btn" type="button">off</button>
+      <button id="interrupt-mode-barge" class="mini-btn" type="button">barge-in</button>
+      <button id="interrupt-mode-keyword" class="mini-btn" type="button">keyword</button>
+    </div>
+    <div class="tuning-hint">`off` disables voice interruption while reply audio is playing. `barge-in` lets you cut in naturally. `keyword` only interrupts on `halt`.</div>
+  </section>
+  <section id="tuning-panel" class="popup-panel" aria-label="voice tuning">
+    <label class="tuning-row" for="wait-after-speak">
+      <span class="tuning-label">
+        <span>wait after speak</span>
+        <span id="wait-after-speak-value" class="tuning-value"></span>
+      </span>
+      <input id="wait-after-speak" class="tuning-slider" type="range" min="250" max="4000" step="50">
+    </label>
     <label class="tuning-row" for="turn-end-threshold">
       <span class="tuning-label">
-        <span>voice threshold</span>
+        <span>voice input threshold</span>
         <span id="turn-end-threshold-value" class="tuning-value"></span>
       </span>
-      <input id="turn-end-threshold" class="tuning-slider" type="range" min="0" max="100" step="1">
+      <input id="turn-end-threshold" class="tuning-slider" type="range" min="-60" max="0" step="1">
     </label>
   </section>
   <div id="thinking-timer" class="hidden"></div>
@@ -319,6 +363,9 @@ let audioQueue = [];
 let currentAudio = null;
 let currentAudioUrl = null;
 let currentLevelWidth = 0;
+let currentLevelDb = -60;
+let heldPeakLevelDb = -60;
+let heldPeakUntil = 0;
 let thinkingStartedAt = null;
 let transientStatusTimer = null;
 let shellStatusTimer = null;
@@ -338,23 +385,44 @@ let playbackSoftPaused = false;
 let playbackSessionStarted = false;
 let bargeInGraceUntil = 0;
 let pendingBargeInAudio = null;
+let pendingBargeInPrefixText = '';
+let holdContinuationActive = false;
+let heldTurnPrefixText = '';
 let manualFinishProbePending = false;
 let manualFinishProbeCooldownUntil = 0;
 let runtimeStatePromise = null;
 let playbackUnlocked = false;
+let pendingServerSpeakRequestId = '';
+let pendingAudioMimeType = 'audio/mpeg';
+let lastAudioProcessAt = 0;
+let audioRecoveryPromise = null;
+let captureWatchdogTimer = null;
+let audioRecoveryHooksBound = false;
+let windowsClientShortcuts = {
+  pause_resume: '',
+  interrupt: '',
+};
 let settings = {
+  silence_ms: 1700,
+  silence_threshold: 0.015,
   min_speech_ms: 500,
 };
 
 const TUNING_STORAGE_KEY = 'openclaw.voice.tuning.v1';
 const TUNING_PANEL_STORAGE_KEY = 'openclaw.voice.tuning-panel.v1';
+const INTERRUPT_MODE_STORAGE_KEY = 'openclaw.voice.interrupt-mode.v1';
+const INTERRUPT_PANEL_STORAGE_KEY = 'openclaw.voice.interrupt-panel.v1';
 const DEFAULT_TUNING = {
-  endOfTurnBarThreshold: 10,
+  inputThresholdDb: -41,
+  waitAfterSpeakMs: 1700,
 };
-const END_OF_TURN_SILENCE_MS = 1700;
-const MANUAL_FINISH_SILENCE_MS = 1700;
 const TURN_COMMIT_MIN_SPEECH_MS = 650;
-const DISPLAY_LEVEL_RMS_SCALE = 1180;
+const LEVEL_DB_FLOOR = -60;
+const LEVEL_DB_CEILING = 0;
+const LEVEL_PEAK_HOLD_MS = 5000;
+const WAIT_AFTER_SPEAK_MIN_MS = 250;
+const WAIT_AFTER_SPEAK_MAX_MS = 4000;
+const TARGET_CAPTURE_SAMPLE_RATE = 16000;
 const SPEECH_ZCR_MIN = 0.008;
 const SPEECH_ZCR_MAX = 0.24;
 const SPEECH_CREST_MAX = 8.0;
@@ -363,40 +431,179 @@ const INTERRUPT_ZCR_MIN = 0.003;
 const INTERRUPT_ZCR_MAX = 0.34;
 const INTERRUPT_CREST_MAX = 14.0;
 const SPEECH_GATE_HOLD_MS = 220;
-const ACTIVE_COMMAND_THRESHOLD_MULTIPLIER = 0.62;
-const COMMAND_THRESHOLD_MAX = 6.8;
-const INTERRUPT_PROBE_MIN_SPEECH_MS = 180;
-const INTERRUPT_PROBE_SILENCE_MS = 260;
-const INTERRUPT_PROBE_MAX_MS = 2800;
-const INTERRUPT_COOLDOWN_MS = 900;
-const PAUSED_COMMAND_THRESHOLD_MULTIPLIER = 0.58;
-const PAUSED_COMMAND_MIN_SPEECH_MS = 180;
-const PAUSED_COMMAND_MAX_MS = 2800;
-const BARGE_IN_THRESHOLD_MULTIPLIER = 0.58;
-const BARGE_IN_THRESHOLD_MAX = 6.2;
+const INTERRUPT_PROBE_MIN_SPEECH_MS = 220;
+const INTERRUPT_PROBE_SILENCE_MS = 220;
+const INTERRUPT_PROBE_MAX_MS = 1200;
+const INTERRUPT_COOLDOWN_MS = 300;
+const PAUSED_COMMAND_MIN_SPEECH_MS = 220;
+const PAUSED_COMMAND_MAX_MS = 1200;
 const PLAYBACK_NO_BARGE_IN_MS = 800;
-const BARGE_IN_MIN_SPEECH_MS = 180;
-const BARGE_IN_SILENCE_MS = 280;
-const BARGE_IN_MAX_MS = 3000;
+const BARGE_IN_MIN_SPEECH_MS = 450;
+const BARGE_IN_SILENCE_MS = 220;
+const BARGE_IN_MAX_MS = 1600;
 const APPLE_PLAYBACK_NO_BARGE_IN_MS = 1800;
-const APPLE_BARGE_IN_THRESHOLD_MULTIPLIER = 0.92;
-const APPLE_BARGE_IN_THRESHOLD_MAX = 10.5;
-const APPLE_BARGE_IN_MIN_SPEECH_MS = 420;
-const APPLE_BARGE_IN_SILENCE_MS = 420;
-const APPLE_BARGE_IN_MAX_MS = 2600;
+const APPLE_BARGE_IN_MIN_SPEECH_MS = 220;
+const APPLE_BARGE_IN_SILENCE_MS = 220;
+const APPLE_BARGE_IN_MAX_MS = 1200;
 const MANUAL_FINISH_PROBE_MIN_SILENCE_MS = 260;
 const MANUAL_FINISH_PROBE_COOLDOWN_MS = 900;
+const AUDIO_CAPTURE_STALL_MS = 2600;
+const AUDIO_WATCHDOG_INTERVAL_MS = 1000;
 let tuning = { ...DEFAULT_TUNING };
 let tuningPanelVisible = true;
+let interruptPanelVisible = false;
+let tuningStorageState = {
+  inputThresholdDb: false,
+  waitAfterSpeakMs: false,
+};
 const manualFinishEnabled = true;
+let interruptMode = 'barge-in';
 
-function setLevelBar(width) {
-  currentLevelWidth = Math.max(0, Math.min(100, width));
+function amplitudeToDb(amplitude) {
+  return 20 * Math.log10(Math.max(Number(amplitude) || 0, 0.000001));
+}
+
+function legacyLevelToDb(level) {
+  const normalized = clampNumber(level, 0, 100, 0);
+  if (normalized <= 0) {
+    return LEVEL_DB_FLOOR;
+  }
+  return clampNumber(
+    amplitudeToDb(normalized / 1180),
+    LEVEL_DB_FLOOR,
+    LEVEL_DB_CEILING,
+    DEFAULT_TUNING.inputThresholdDb,
+  );
+}
+
+function gainMultiplierToDb(multiplier) {
+  return 20 * Math.log10(Math.max(Number(multiplier) || 0, 0.000001));
+}
+
+function resampleFloatBuffer(buffer, inputSampleRate, outputSampleRate) {
+  const sourceRate = Math.max(Number(inputSampleRate) || 0, 1);
+  const targetRate = Math.max(Number(outputSampleRate) || 0, 1);
+  if (!buffer.length || sourceRate === targetRate) {
+    return buffer;
+  }
+  if (targetRate < sourceRate) {
+    const sampleRateRatio = sourceRate / targetRate;
+    const newLength = Math.max(1, Math.round(buffer.length / sampleRateRatio));
+    const result = new Float32Array(newLength);
+    let offsetResult = 0;
+    let offsetBuffer = 0;
+    while (offsetResult < result.length) {
+      const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+      let accum = 0;
+      let count = 0;
+      for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i += 1) {
+        accum += buffer[i];
+        count += 1;
+      }
+      result[offsetResult] = count ? accum / count : 0;
+      offsetResult += 1;
+      offsetBuffer = nextOffsetBuffer;
+    }
+    return result;
+  }
+  const sampleRateRatio = sourceRate / targetRate;
+  const newLength = Math.max(1, Math.round(buffer.length / sampleRateRatio));
+  const result = new Float32Array(newLength);
+  for (let i = 0; i < result.length; i += 1) {
+    const sourceIndex = i * sampleRateRatio;
+    const lowerIndex = Math.floor(sourceIndex);
+    const upperIndex = Math.min(lowerIndex + 1, buffer.length - 1);
+    const mix = sourceIndex - lowerIndex;
+    const lowerSample = buffer[lowerIndex] ?? 0;
+    const upperSample = buffer[upperIndex] ?? lowerSample;
+    result[i] = lowerSample + ((upperSample - lowerSample) * mix);
+  }
+  return result;
+}
+
+function floatTo16BitPCM(floatBuffer) {
+  const pcm = new Int16Array(floatBuffer.length);
+  for (let i = 0; i < floatBuffer.length; i += 1) {
+    const sample = Math.max(-1, Math.min(1, floatBuffer[i]));
+    pcm[i] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+  }
+  return pcm;
+}
+
+function inputBufferToPcm16(inputBuffer, inputSampleRate) {
+  const resampledInput = resampleFloatBuffer(
+    new Float32Array(inputBuffer),
+    inputSampleRate,
+    TARGET_CAPTURE_SAMPLE_RATE,
+  );
+  return floatTo16BitPCM(resampledInput);
+}
+
+function dbToMeterWidth(levelDb) {
+  const clamped = clampNumber(levelDb, LEVEL_DB_FLOOR, LEVEL_DB_CEILING, LEVEL_DB_FLOOR);
+  return ((clamped - LEVEL_DB_FLOOR) / (LEVEL_DB_CEILING - LEVEL_DB_FLOOR)) * 100;
+}
+
+function refreshLevelValue(now = performance.now()) {
+  const levelValue = document.getElementById('level-value');
+  const showPeak = (
+    currentState === 'listening'
+    && heldPeakUntil > now
+    && heldPeakLevelDb > currentLevelDb + 0.4
+  );
+  levelValue.textContent = formatDb(showPeak ? heldPeakLevelDb : currentLevelDb);
+  levelValue.classList.toggle('peak-held', showPeak);
+}
+
+function resetLevelPeakHold() {
+  heldPeakLevelDb = currentLevelDb;
+  heldPeakUntil = 0;
+  refreshLevelValue();
+}
+
+function setLevelDb(levelDb, { updatePeak = true } = {}) {
+  currentLevelDb = clampNumber(levelDb, LEVEL_DB_FLOOR, LEVEL_DB_CEILING, LEVEL_DB_FLOOR);
+  currentLevelWidth = dbToMeterWidth(currentLevelDb);
   document.getElementById('level-bar').style.width = `${currentLevelWidth}%`;
+  const now = performance.now();
+  if (updatePeak && currentState === 'listening') {
+    if (heldPeakUntil <= now) {
+      heldPeakLevelDb = currentLevelDb;
+      heldPeakUntil = now + LEVEL_PEAK_HOLD_MS;
+    } else if (currentLevelDb > heldPeakLevelDb + 0.1) {
+      heldPeakLevelDb = currentLevelDb;
+    }
+  }
+  refreshLevelValue(now);
 }
 
 function setStatusText(text) {
   document.getElementById('status').textContent = text;
+}
+
+function sendPlaybackAcceptance(requestId) {
+  if (!requestId || !ws || ws.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  ws.send(JSON.stringify({ type: 'playback-accepted', request_id: requestId }));
+}
+
+function sendPlaybackRejection(requestId, error) {
+  if (!requestId || !ws || ws.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  ws.send(JSON.stringify({
+    type: 'playback-rejected',
+    request_id: requestId,
+    error: String(error || 'The voice client could not accept playback.'),
+  }));
+}
+
+function sendTranscriptPrefix(prefixText) {
+  if (!prefixText || !ws || ws.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  ws.send(JSON.stringify({ type: 'set-transcript-prefix', prefix_text: prefixText }));
 }
 
 function clampNumber(value, min, max, fallback) {
@@ -414,14 +621,29 @@ function loadTuning() {
       return;
     }
     const parsed = JSON.parse(raw);
-    tuning = {
-      endOfTurnBarThreshold: clampNumber(
-        parsed.endOfTurnBarThreshold,
-        0,
-        100,
-        DEFAULT_TUNING.endOfTurnBarThreshold,
-      ),
-    };
+    if (parsed && typeof parsed === 'object') {
+      if (typeof parsed.inputThresholdDb !== 'undefined') {
+        tuning.inputThresholdDb = clampNumber(
+          parsed.inputThresholdDb,
+          LEVEL_DB_FLOOR,
+          LEVEL_DB_CEILING,
+          DEFAULT_TUNING.inputThresholdDb,
+        );
+        tuningStorageState.inputThresholdDb = true;
+      } else if (typeof parsed.endOfTurnBarThreshold !== 'undefined') {
+        tuning.inputThresholdDb = legacyLevelToDb(parsed.endOfTurnBarThreshold);
+        tuningStorageState.inputThresholdDb = true;
+      }
+      if (typeof parsed.waitAfterSpeakMs !== 'undefined') {
+        tuning.waitAfterSpeakMs = clampNumber(
+          parsed.waitAfterSpeakMs,
+          WAIT_AFTER_SPEAK_MIN_MS,
+          WAIT_AFTER_SPEAK_MAX_MS,
+          DEFAULT_TUNING.waitAfterSpeakMs,
+        );
+        tuningStorageState.waitAfterSpeakMs = true;
+      }
+    }
   } catch (_) {}
 }
 
@@ -442,10 +664,211 @@ function saveTuningPanelVisibility() {
   localStorage.setItem(TUNING_PANEL_STORAGE_KEY, tuningPanelVisible ? 'visible' : 'hidden');
 }
 
+function defaultInterruptMode() {
+  return isAppleVoiceClient() ? 'keyword' : 'barge-in';
+}
+
+function normalizeInterruptMode(mode) {
+  if (mode === 'off') {
+    return 'off';
+  }
+  return mode === 'keyword' ? 'keyword' : 'barge-in';
+}
+
+function loadInterruptMode() {
+  try {
+    const raw = localStorage.getItem(INTERRUPT_MODE_STORAGE_KEY);
+    if (raw) {
+      interruptMode = normalizeInterruptMode(raw);
+      return;
+    }
+  } catch (_) {}
+  interruptMode = defaultInterruptMode();
+}
+
+function saveInterruptMode() {
+  localStorage.setItem(INTERRUPT_MODE_STORAGE_KEY, interruptMode);
+}
+
+function loadInterruptPanelVisibility() {
+  try {
+    const raw = localStorage.getItem(INTERRUPT_PANEL_STORAGE_KEY);
+    if (raw === 'visible') {
+      interruptPanelVisible = true;
+    }
+  } catch (_) {}
+}
+
+function saveInterruptPanelVisibility() {
+  localStorage.setItem(INTERRUPT_PANEL_STORAGE_KEY, interruptPanelVisible ? 'visible' : 'hidden');
+}
+
+function formatDb(levelDb) {
+  return `${Math.round(levelDb)} dB`;
+}
+
+function formatWaitAfterSpeak(ms) {
+  if (ms >= 1000) {
+    const value = ms % 1000 === 0 ? (ms / 1000).toFixed(1) : (ms / 1000).toFixed(2);
+    return `${value}s`;
+  }
+  return `${Math.round(ms)} ms`;
+}
+
+function resolveWaitAfterSpeakMs() {
+  return clampNumber(
+    tuning.waitAfterSpeakMs,
+    WAIT_AFTER_SPEAK_MIN_MS,
+    WAIT_AFTER_SPEAK_MAX_MS,
+    DEFAULT_TUNING.waitAfterSpeakMs,
+  );
+}
+
+function usesKeywordInterruptOnly() {
+  return interruptMode === 'keyword';
+}
+
+function voiceInterruptDisabled() {
+  return interruptMode === 'off';
+}
+
+function normalizeTranscriptPrefix(text) {
+  return String(text || '').trim().replace(/\s+/g, ' ');
+}
+
+function applyRuntimeShortcuts(windowsClientSettings) {
+  const shortcuts = windowsClientSettings?.shortcuts || {};
+  windowsClientShortcuts = {
+    pause_resume: String(shortcuts.pause_resume || ''),
+    interrupt: String(shortcuts.interrupt || ''),
+  };
+  updateStatusHint();
+}
+
+function formatShortcutHint() {
+  const parts = [];
+  if (windowsClientShortcuts.pause_resume) {
+    parts.push(`pause ${windowsClientShortcuts.pause_resume}`);
+  }
+  if (windowsClientShortcuts.interrupt) {
+    parts.push(`interrupt ${windowsClientShortcuts.interrupt}`);
+  }
+  return parts.join(' · ');
+}
+
+function updateStatusHint() {
+  const hint = document.getElementById('status-hint');
+  const text = currentState === 'listening' ? formatShortcutHint() : '';
+  hint.textContent = text;
+  hint.classList.toggle('hidden', !text);
+}
+
+function combineTranscriptPrefix(prefixText, suffixText) {
+  const prefix = normalizeTranscriptPrefix(prefixText);
+  const suffix = normalizeTranscriptPrefix(suffixText);
+  if (!prefix) {
+    return suffix;
+  }
+  if (!suffix) {
+    return prefix;
+  }
+  return `${prefix} ${suffix}`;
+}
+
+function clearHeldTurnState() {
+  holdContinuationActive = false;
+  heldTurnPrefixText = '';
+}
+
+function armHeldTurn(prefixText) {
+  holdContinuationActive = true;
+  heldTurnPrefixText = combineTranscriptPrefix(heldTurnPrefixText, prefixText);
+  pendingIdle = false;
+  resetCaptureBuffer();
+  resetInterruptSpeechDetection();
+  resetInterruptProbeCapture();
+  resetBargeInCapture();
+  if (!paused && !interruptPending) {
+    setState('listening');
+  }
+}
+
+function isHeldTurnActive() {
+  return holdContinuationActive;
+}
+
+function queuePendingTurn(audioBuffer, { prefixText = '' } = {}) {
+  pendingBargeInAudio = audioBuffer;
+  pendingBargeInPrefixText = normalizeTranscriptPrefix(prefixText);
+  clearHeldTurnState();
+  requestInterrupt({ keepPaused: false, preservePendingInput: true });
+}
+
+function sendBufferedTurn(audioBuffer, { prefixText = '' } = {}) {
+  if (!audioBuffer || !ws || ws.readyState !== WebSocket.OPEN) {
+    return false;
+  }
+  const normalizedPrefix = normalizeTranscriptPrefix(prefixText);
+  if (
+    interruptPending
+    || busy
+    || replyActive
+    || currentAudio
+    || audioQueue.length > 0
+    || currentState === 'speaking'
+  ) {
+    queuePendingTurn(audioBuffer, { prefixText: normalizedPrefix });
+    return true;
+  }
+  if (normalizedPrefix) {
+    sendTranscriptPrefix(normalizedPrefix);
+  }
+  busy = true;
+  pendingIdle = false;
+  setState('thinking');
+  ws.send(audioBuffer);
+  clearHeldTurnState();
+  return true;
+}
+
+function applyRuntimeAudioSettings(audioSettings) {
+  settings = { ...settings, ...(audioSettings || {}) };
+  if (!tuningStorageState.waitAfterSpeakMs) {
+    tuning.waitAfterSpeakMs = clampNumber(
+      settings.silence_ms,
+      WAIT_AFTER_SPEAK_MIN_MS,
+      WAIT_AFTER_SPEAK_MAX_MS,
+      DEFAULT_TUNING.waitAfterSpeakMs,
+    );
+  }
+  if (!tuningStorageState.inputThresholdDb && Number(settings.silence_threshold) > 0) {
+    tuning.inputThresholdDb = clampNumber(
+      amplitudeToDb(settings.silence_threshold),
+      LEVEL_DB_FLOOR,
+      LEVEL_DB_CEILING,
+      DEFAULT_TUNING.inputThresholdDb,
+    );
+  }
+  renderTuningControls();
+}
+
+function renderInterruptControls() {
+  const interruptBtn = document.getElementById('interrupt-btn');
+  const interruptPanel = document.getElementById('interrupt-panel');
+  interruptBtn.classList.toggle('active', interruptPanelVisible);
+  interruptPanel.classList.toggle('hidden', !interruptPanelVisible);
+  document.getElementById('interrupt-mode-off').classList.toggle('active', interruptMode === 'off');
+  document.getElementById('interrupt-mode-barge').classList.toggle('active', interruptMode === 'barge-in');
+  document.getElementById('interrupt-mode-keyword').classList.toggle('active', interruptMode === 'keyword');
+}
+
 function renderTuningControls() {
+  const waitAfterSpeakSlider = document.getElementById('wait-after-speak');
   const turnEndSlider = document.getElementById('turn-end-threshold');
-  turnEndSlider.value = String(tuning.endOfTurnBarThreshold);
-  document.getElementById('turn-end-threshold-value').textContent = `${tuning.endOfTurnBarThreshold}%`;
+  waitAfterSpeakSlider.value = String(resolveWaitAfterSpeakMs());
+  turnEndSlider.value = String(tuning.inputThresholdDb);
+  document.getElementById('wait-after-speak-value').textContent = formatWaitAfterSpeak(resolveWaitAfterSpeakMs());
+  document.getElementById('turn-end-threshold-value').textContent = formatDb(tuning.inputThresholdDb);
   document.getElementById('tuning-panel').classList.toggle('hidden', !tuningPanelVisible);
   document.getElementById('sliders-toggle').classList.toggle('active', tuningPanelVisible);
 }
@@ -453,14 +876,28 @@ function renderTuningControls() {
 function configureTuningControls() {
   loadTuning();
   loadTuningPanelVisibility();
+  loadInterruptMode();
+  loadInterruptPanelVisibility();
+  renderInterruptControls();
   renderTuningControls();
 
-  document.getElementById('turn-end-threshold').addEventListener('input', (event) => {
-    tuning.endOfTurnBarThreshold = clampNumber(
+  document.getElementById('wait-after-speak').addEventListener('input', (event) => {
+    tuning.waitAfterSpeakMs = clampNumber(
       event.target.value,
-      0,
-      100,
-      DEFAULT_TUNING.endOfTurnBarThreshold,
+      WAIT_AFTER_SPEAK_MIN_MS,
+      WAIT_AFTER_SPEAK_MAX_MS,
+      DEFAULT_TUNING.waitAfterSpeakMs,
+    );
+    renderTuningControls();
+    saveTuning();
+  });
+
+  document.getElementById('turn-end-threshold').addEventListener('input', (event) => {
+    tuning.inputThresholdDb = clampNumber(
+      event.target.value,
+      LEVEL_DB_FLOOR,
+      LEVEL_DB_CEILING,
+      DEFAULT_TUNING.inputThresholdDb,
     );
     resetInterruptSpeechDetection();
     resetInterruptProbeCapture();
@@ -470,14 +907,36 @@ function configureTuningControls() {
 
   document.getElementById('sliders-toggle').addEventListener('click', () => {
     tuningPanelVisible = !tuningPanelVisible;
+    if (tuningPanelVisible) {
+      interruptPanelVisible = false;
+      saveInterruptPanelVisibility();
+      renderInterruptControls();
+    }
     renderTuningControls();
     saveTuningPanelVisibility();
   });
 
-  document.getElementById('tuning-close').addEventListener('click', () => {
-    tuningPanelVisible = false;
-    renderTuningControls();
-    saveTuningPanelVisibility();
+  document.getElementById('interrupt-btn').addEventListener('click', () => {
+    interruptPanelVisible = !interruptPanelVisible;
+    if (interruptPanelVisible) {
+      tuningPanelVisible = false;
+      saveTuningPanelVisibility();
+      renderTuningControls();
+    }
+    renderInterruptControls();
+    saveInterruptPanelVisibility();
+  });
+
+  document.getElementById('interrupt-mode-barge').addEventListener('click', () => {
+    setInterruptMode('barge-in');
+  });
+
+  document.getElementById('interrupt-mode-keyword').addEventListener('click', () => {
+    setInterruptMode('keyword');
+  });
+
+  document.getElementById('interrupt-mode-off').addEventListener('click', () => {
+    setInterruptMode('off');
   });
 }
 
@@ -500,6 +959,7 @@ function updateControlStates() {
   pauseBtn.classList.toggle('active', paused);
   muteBtn.textContent = muted ? 'unmute' : 'mute';
   muteBtn.classList.toggle('active', muted);
+  renderInterruptControls();
 }
 
 function applyMicMuteState() {
@@ -511,15 +971,49 @@ function applyMicMuteState() {
   }
 }
 
+function commitBufferedTurnNow() {
+  if (
+    !hasSpeech
+    || audioChunks.length === 0
+    || !ws
+    || ws.readyState !== WebSocket.OPEN
+    || (busy && !isHeldTurnActive())
+    || paused
+    || (!isHeldTurnActive() && (currentAudio || audioQueue.length > 0 || currentState === 'speaking'))
+  ) {
+    return false;
+  }
+  sendBufferedTurn(flattenAudio(audioChunks), { prefixText: heldTurnPrefixText });
+  resetCaptureBuffer();
+  return true;
+}
+
 function setMutedState(nextMuted) {
   muted = Boolean(nextMuted);
   applyMicMuteState();
-  resetCaptureBuffer();
+  if (!commitBufferedTurnNow()) {
+    resetCaptureBuffer();
+  }
   resetInterruptSpeechDetection();
   resetInterruptProbeCapture();
   resetBargeInCapture();
-  setLevelBar(0);
+  setLevelDb(LEVEL_DB_FLOOR);
   updateControlStates();
+}
+
+function setInterruptMode(nextMode) {
+  interruptMode = normalizeInterruptMode(nextMode);
+  saveInterruptMode();
+  if ((voiceInterruptDisabled() || usesKeywordInterruptOnly()) && playbackSoftPaused) {
+    resumePlaybackAfterBargeIn();
+  }
+  resetInterruptSpeechDetection();
+  resetInterruptProbeCapture();
+  if (!playbackSoftPaused) {
+    resetBargeInCapture();
+  }
+  updateControlStates();
+  return interruptMode;
 }
 
 function resolveShellState() {
@@ -592,7 +1086,12 @@ function isAppleVoiceClient() {
 }
 
 function allowsFreeformBargeIn() {
-  return !isAppleVoiceClient();
+  return !usesKeywordInterruptOnly();
+}
+
+function isAbortLikeError(error) {
+  const text = String(error?.message || error || '').trim().toLowerCase();
+  return text.includes('aborterror') || text.includes('operation was aborted') || text.includes('aborted');
 }
 
 function describeResumeError(error) {
@@ -613,7 +1112,156 @@ function describeResumeError(error) {
   if (lower.includes('secure context')) {
     return 'microphone requires https';
   }
+  if (isAbortLikeError(error)) {
+    return 'audio startup was interrupted, tap pause again';
+  }
   return text;
+}
+
+function isCaptureStreamHealthy() {
+  if (!stream) {
+    return false;
+  }
+  const tracks = stream.getAudioTracks();
+  if (tracks.length === 0) {
+    return false;
+  }
+  return tracks.some((track) => track.readyState === 'live');
+}
+
+function clearPlaybackSource() {
+  if (!playbackAudio) {
+    return;
+  }
+  playbackAudio.onended = null;
+  playbackAudio.onerror = null;
+  playbackAudio.pause();
+  playbackAudio.currentTime = 0;
+  playbackAudio.removeAttribute('src');
+  playbackAudio.load();
+}
+
+function resetPlaybackElement({ preserveUnlocked = false } = {}) {
+  clearPlaybackSource();
+  currentAudio = null;
+  if (currentAudioUrl) {
+    URL.revokeObjectURL(currentAudioUrl);
+    currentAudioUrl = null;
+  }
+  if (preserveUnlocked) {
+    return;
+  }
+  playbackAudio = null;
+  playbackUnlocked = false;
+}
+
+function teardownAudioCapture() {
+  if (processor) {
+    processor.onaudioprocess = null;
+    processor.disconnect();
+    processor = null;
+  }
+  if (analyser) {
+    analyser.disconnect();
+    analyser = null;
+  }
+  if (stream) {
+    for (const track of stream.getTracks()) {
+      track.onended = null;
+      track.stop();
+    }
+    stream = null;
+  }
+  if (audioCtx) {
+    audioCtx.onstatechange = null;
+    audioCtx.close().catch(() => {});
+    audioCtx = null;
+  }
+  lastAudioProcessAt = 0;
+}
+
+async function ensurePlaybackReady() {
+  if (audioCtx && audioCtx.state === 'suspended') {
+    await audioCtx.resume();
+  }
+  await unlockPlaybackAudio();
+}
+
+async function recoverAudioPipeline(reason) {
+  if (audioRecoveryPromise) {
+    return audioRecoveryPromise;
+  }
+  audioRecoveryPromise = (async () => {
+    console.warn(`recovering audio pipeline: ${reason}`);
+    teardownAudioCapture();
+    resetPlaybackElement({ preserveUnlocked: playbackUnlocked });
+    await ensureAudio();
+    try {
+      await ensurePlaybackReady();
+    } catch (_) {}
+  })().finally(() => {
+    audioRecoveryPromise = null;
+  });
+  return audioRecoveryPromise;
+}
+
+function bindAudioRecoveryHooks() {
+  if (audioRecoveryHooksBound) {
+    return;
+  }
+  audioRecoveryHooksBound = true;
+
+  navigator.mediaDevices?.addEventListener?.('devicechange', () => {
+    if (paused) {
+      return;
+    }
+    void recoverAudioPipeline('devicechange');
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden || paused) {
+      return;
+    }
+    void ensurePlaybackReady().catch(() => {});
+  });
+
+  window.addEventListener('focus', () => {
+    if (paused) {
+      return;
+    }
+    void ensurePlaybackReady().catch(() => {});
+  });
+
+  const handleUserActivation = () => {
+    if (paused) {
+      return;
+    }
+    void ensurePlaybackReady().catch(() => {});
+  };
+  document.addEventListener('pointerdown', handleUserActivation, { passive: true });
+  document.addEventListener('keydown', handleUserActivation);
+}
+
+function ensureCaptureWatchdog() {
+  if (captureWatchdogTimer) {
+    return;
+  }
+  captureWatchdogTimer = setInterval(() => {
+    if (paused || muted || document.hidden || !ws || ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    if (!audioCtx || !processor || !isCaptureStreamHealthy()) {
+      void recoverAudioPipeline('capture-unavailable');
+      return;
+    }
+    if (audioCtx.state === 'suspended') {
+      void recoverAudioPipeline('audio-context-suspended');
+      return;
+    }
+    if (lastAudioProcessAt > 0 && performance.now() - lastAudioProcessAt > AUDIO_CAPTURE_STALL_MS) {
+      void recoverAudioPipeline('capture-stalled');
+    }
+  }, AUDIO_WATCHDOG_INTERVAL_MS);
 }
 
 function handleResumeFailure(error) {
@@ -627,6 +1275,8 @@ function handleResumeFailure(error) {
   stopPlayback();
   resetCaptureBuffer();
   rearmVoiceInterrupt();
+  teardownAudioCapture();
+  resetPlaybackElement();
   setState('paused');
   setStatusText(describeResumeError(error));
   updateControlStates();
@@ -673,7 +1323,8 @@ async function loadRuntimeState() {
       return response.json();
     })
     .then((runtimeState) => {
-      settings = runtimeState.audio;
+      applyRuntimeAudioSettings(runtimeState.audio);
+      applyRuntimeShortcuts(runtimeState.windows_client);
       return runtimeState;
     })
     .catch((error) => {
@@ -688,7 +1339,7 @@ function formatThinkingElapsed(ms) {
 }
 
 function updateIndicatorVisibility(state) {
-  const level = document.getElementById('level');
+  const level = document.getElementById('level-row');
   const timer = document.getElementById('thinking-timer');
   level.classList.toggle('hidden', state !== 'listening');
   timer.classList.toggle('hidden', state !== 'thinking');
@@ -696,7 +1347,8 @@ function updateIndicatorVisibility(state) {
     timer.textContent = '';
   }
   if (state !== 'listening') {
-    setLevelBar(0);
+    setLevelDb(LEVEL_DB_FLOOR, { updatePeak: false });
+    resetLevelPeakHold();
   }
 }
 
@@ -704,6 +1356,7 @@ function setState(state) {
   currentState = state;
   document.body.dataset.state = state;
   setStatusText(state);
+  updateStatusHint();
   if (state === 'thinking') {
     if (thinkingStartedAt === null) {
       thinkingStartedAt = performance.now();
@@ -750,6 +1403,11 @@ function maybeReturnToListening() {
     pendingIdle = false;
     setReplyActive(false);
     setState('paused');
+    return;
+  }
+  if (isHeldTurnActive()) {
+    pendingIdle = false;
+    setState('listening');
     return;
   }
   if (pendingIdle && !currentAudio && audioQueue.length === 0) {
@@ -840,7 +1498,9 @@ function isBargeInState() {
     ws
     && ws.readyState === WebSocket.OPEN
     && !paused
+    && !voiceInterruptDisabled()
     && !interruptPending
+    && !isHeldTurnActive()
     && (replyActive || currentAudio || audioQueue.length > 0),
   );
 }
@@ -869,7 +1529,7 @@ function arrayBufferToBase64(buffer) {
 
 async function probeVoiceCommand(audioBuffer, { allowSendPhrase = false } = {}) {
   if ((interruptProbePending && !allowSendPhrase) || (manualFinishProbePending && allowSendPhrase) || !ws || ws.readyState !== WebSocket.OPEN) {
-    return { action: '', heard: '', usableSpeech: false };
+    return { action: '', heard: '', content: '', usableSpeech: false };
   }
   if (allowSendPhrase) {
     manualFinishProbePending = true;
@@ -887,16 +1547,17 @@ async function probeVoiceCommand(audioBuffer, { allowSendPhrase = false } = {}) 
       }),
     });
     if (!response.ok) {
-      return { action: '', heard: '', usableSpeech: false };
+      return { action: '', heard: '', content: '', usableSpeech: false };
     }
     const payload = await response.json();
     return {
       action: String(payload.action || ''),
       heard: String(payload.heard || ''),
+      content: String(payload.content || payload.heard || ''),
       usableSpeech: Boolean(payload.usable_speech),
     };
   } catch (_) {
-    return { action: '', heard: '', usableSpeech: false };
+    return { action: '', heard: '', content: '', usableSpeech: false };
   } finally {
     if (allowSendPhrase) {
       manualFinishProbePending = false;
@@ -910,7 +1571,7 @@ function maybeProbeManualFinish(now, speechDuration, silenceDuration) {
   if (
     !manualFinishEnabled
     || paused
-    || busy
+    || (busy && !isHeldTurnActive())
     || interruptPending
     || !hasSpeech
     || !silenceStart
@@ -926,13 +1587,17 @@ function maybeProbeManualFinish(now, speechDuration, silenceDuration) {
   const bufferedAudio = flattenAudio(audioChunks);
   manualFinishProbeCooldownUntil = now + MANUAL_FINISH_PROBE_COOLDOWN_MS;
   void probeVoiceCommand(bufferedAudio, { allowSendPhrase: true }).then((result) => {
-    if (result.action !== 'send' || !ws || ws.readyState !== WebSocket.OPEN || busy || paused || interruptPending) {
+    if (
+      result.action !== 'send'
+      || !ws
+      || ws.readyState !== WebSocket.OPEN
+      || ((busy && !isHeldTurnActive()))
+      || paused
+      || interruptPending
+    ) {
       return;
     }
-    busy = true;
-    pendingIdle = false;
-    setState('thinking');
-    ws.send(bufferedAudio);
+    sendBufferedTurn(bufferedAudio, { prefixText: heldTurnPrefixText });
     resetCaptureBuffer();
   });
   return true;
@@ -948,12 +1613,7 @@ function maybeCaptureVoiceCommandProbe(pcm, displayedLevel, speechLike, frameMs,
     return false;
   }
 
-  const commandThreshold = Math.min(
-    paused
-      ? tuning.endOfTurnBarThreshold * PAUSED_COMMAND_THRESHOLD_MULTIPLIER
-      : tuning.endOfTurnBarThreshold * ACTIVE_COMMAND_THRESHOLD_MULTIPLIER,
-    COMMAND_THRESHOLD_MAX,
-  );
+  const commandThreshold = tuning.inputThresholdDb;
   const minSpeechMs = paused ? PAUSED_COMMAND_MIN_SPEECH_MS : INTERRUPT_PROBE_MIN_SPEECH_MS;
   const maxProbeMs = paused ? PAUSED_COMMAND_MAX_MS : INTERRUPT_PROBE_MAX_MS;
   const aboveThreshold = speechLike && displayedLevel >= commandThreshold;
@@ -987,6 +1647,10 @@ function maybeCaptureVoiceCommandProbe(pcm, displayedLevel, speechLike, frameMs,
   resetInterruptProbeCapture();
   interruptCooldownUntil = now + INTERRUPT_COOLDOWN_MS;
   void probeVoiceCommand(probeBuffer).then(async (result) => {
+    if (result.action === 'hold' && !paused) {
+      armHeldTurn(result.content);
+      return;
+    }
     if (result.action === 'interrupt' && isInterruptibleAudioState()) {
       requestInterrupt({ keepPaused: false });
       return;
@@ -1046,6 +1710,7 @@ function resumePlaybackAfterBargeIn() {
 function promoteBargeIn(bufferedAudio) {
   playbackSoftPaused = false;
   pendingBargeInAudio = bufferedAudio;
+  pendingBargeInPrefixText = '';
   requestInterrupt({ keepPaused: false });
 }
 
@@ -1066,12 +1731,7 @@ function maybeCaptureBargeInProbe(pcm, displayedLevel, speechLike, frameMs, now)
   }
 
   const allowFreeformBargeIn = allowsFreeformBargeIn();
-  const bargeThreshold = Math.min(
-    tuning.endOfTurnBarThreshold * (
-      allowFreeformBargeIn ? BARGE_IN_THRESHOLD_MULTIPLIER : APPLE_BARGE_IN_THRESHOLD_MULTIPLIER
-    ),
-    allowFreeformBargeIn ? BARGE_IN_THRESHOLD_MAX : APPLE_BARGE_IN_THRESHOLD_MAX,
-  );
+  const bargeThreshold = tuning.inputThresholdDb;
   const requiredBargeInSpeechMs = allowFreeformBargeIn ? BARGE_IN_MIN_SPEECH_MS : APPLE_BARGE_IN_MIN_SPEECH_MS;
   const requiredBargeInSilenceMs = allowFreeformBargeIn ? BARGE_IN_SILENCE_MS : APPLE_BARGE_IN_SILENCE_MS;
   const allowedBargeInMaxMs = allowFreeformBargeIn ? BARGE_IN_MAX_MS : APPLE_BARGE_IN_MAX_MS;
@@ -1148,14 +1808,12 @@ function stopPlayback() {
   resetPlaybackSession();
   audioQueue = [];
   if (!currentAudio) {
+    clearPlaybackSource();
     setReplyActive(false);
     updateControlStates();
     return;
   }
-  currentAudio.onended = null;
-  currentAudio.onerror = null;
-  currentAudio.pause();
-  currentAudio.currentTime = 0;
+  clearPlaybackSource();
   if (currentAudioUrl) {
     URL.revokeObjectURL(currentAudioUrl);
     currentAudioUrl = null;
@@ -1165,11 +1823,15 @@ function stopPlayback() {
   updateControlStates();
 }
 
-function requestInterrupt({ keepPaused = paused } = {}) {
+function requestInterrupt({ keepPaused = paused, preservePendingInput = false } = {}) {
   resetCaptureBuffer();
   resetInterruptSpeechDetection();
   resetBargeInCapture();
-  pendingBargeInAudio = null;
+  if (!preservePendingInput) {
+    pendingBargeInAudio = null;
+    pendingBargeInPrefixText = '';
+    clearHeldTurnState();
+  }
   pendingIdle = false;
   interruptPending = true;
   setReplyActive(false);
@@ -1182,6 +1844,10 @@ function requestInterrupt({ keepPaused = paused } = {}) {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     interruptPending = false;
     busy = false;
+    if (!preservePendingInput) {
+      pendingBargeInAudio = null;
+      pendingBargeInPrefixText = '';
+    }
     setState(keepPaused ? 'paused' : 'listening');
     return;
   }
@@ -1200,13 +1866,15 @@ async function setPausedState(nextPaused, { forceInterrupt = false } = {}) {
   paused = Boolean(nextPaused);
   if (paused) {
     pendingBargeInAudio = null;
+    pendingBargeInPrefixText = '';
+    clearHeldTurnState();
     setReplyActive(false);
     requestInterrupt({ keepPaused: true });
     return;
   }
   try {
     if (!audioCtx || !ws || ws.readyState === WebSocket.CLOSING || ws.readyState === WebSocket.CLOSED) {
-      await init();
+      await initWithRetry();
       return;
     }
     if (audioCtx.state === 'suspended') {
@@ -1221,6 +1889,7 @@ async function setPausedState(nextPaused, { forceInterrupt = false } = {}) {
   busy = false;
   pendingIdle = false;
   pendingBargeInAudio = null;
+  pendingBargeInPrefixText = '';
   if (forceInterrupt) {
     stopPlayback();
   }
@@ -1228,6 +1897,7 @@ async function setPausedState(nextPaused, { forceInterrupt = false } = {}) {
   resetCaptureBuffer();
   resetInterruptSpeechDetection();
   resetInterruptProbeCapture();
+  clearHeldTurnState();
   setState('listening');
   updateControlStates();
 }
@@ -1237,8 +1907,14 @@ function playNextAudio() {
     maybeReturnToListening();
     return;
   }
-  const nextBuffer = audioQueue.shift();
-  const blob = new Blob([nextBuffer], { type: 'audio/mpeg' });
+  const nextItem = audioQueue.shift();
+  const nextBuffer = nextItem && typeof nextItem === 'object' && 'buffer' in nextItem
+    ? nextItem.buffer
+    : nextItem;
+  const mimeType = nextItem && typeof nextItem === 'object' && 'mimeType' in nextItem
+    ? nextItem.mimeType
+    : 'audio/mpeg';
+  const blob = new Blob([nextBuffer], { type: mimeType });
   currentAudioUrl = URL.createObjectURL(blob);
   const playbackUrl = currentAudioUrl;
   currentAudio = ensurePlaybackAudioElement();
@@ -1250,8 +1926,7 @@ function playNextAudio() {
     if (currentAudioUrl === playbackUrl) {
       currentAudioUrl = null;
     }
-    currentAudio.removeAttribute('src');
-    currentAudio.load();
+    clearPlaybackSource();
     currentAudio = null;
     updateControlStates();
     playNextAudio();
@@ -1261,9 +1936,7 @@ function playNextAudio() {
     if (currentAudioUrl === playbackUrl) {
       currentAudioUrl = null;
     }
-    currentAudio.removeAttribute('src');
-    currentAudio.load();
-    currentAudio = null;
+    resetPlaybackElement();
     setStatusText('audio playback failed');
     updateControlStates();
     playNextAudio();
@@ -1275,9 +1948,7 @@ function playNextAudio() {
     if (currentAudioUrl === playbackUrl) {
       currentAudioUrl = null;
     }
-    currentAudio.removeAttribute('src');
-    currentAudio.load();
-    currentAudio = null;
+    resetPlaybackElement();
     setStatusText('tap resume to enable audio');
     updateControlStates();
     playNextAudio();
@@ -1298,6 +1969,7 @@ async function connect() {
     rearmVoiceInterrupt();
     setState(paused ? 'paused' : 'listening');
     updateControlStates();
+    void ensurePlaybackReady().catch(() => {});
     syncShellState({ force: true });
   };
   ws.onclose = () => {
@@ -1305,6 +1977,8 @@ async function connect() {
     pendingIdle = false;
     interruptPending = false;
     pendingBargeInAudio = null;
+    pendingBargeInPrefixText = '';
+    clearHeldTurnState();
     setReplyActive(false);
     stopPlayback();
     setState('reconnecting');
@@ -1314,11 +1988,30 @@ async function connect() {
   };
   ws.onmessage = async (event) => {
     if (event.data instanceof ArrayBuffer) {
+      const serverSpeakRequestId = pendingServerSpeakRequestId;
+      pendingServerSpeakRequestId = '';
       if (paused || interruptPending) {
+        if (serverSpeakRequestId) {
+          sendPlaybackRejection(serverSpeakRequestId, paused ? 'The voice client is paused.' : 'Playback was interrupted before it could start.');
+        }
+        return;
+      }
+      try {
+        await ensurePlaybackReady();
+      } catch (error) {
+        if (serverSpeakRequestId) {
+          sendPlaybackRejection(serverSpeakRequestId, error?.message || error);
+        }
         return;
       }
       setReplyActive(true);
-      audioQueue.push(event.data);
+      audioQueue.push({
+        buffer: event.data,
+        mimeType: pendingAudioMimeType || 'audio/mpeg',
+      });
+      if (serverSpeakRequestId) {
+        sendPlaybackAcceptance(serverSpeakRequestId);
+      }
       if (!playbackSoftPaused) {
         setState('speaking');
       }
@@ -1331,6 +2024,8 @@ async function connect() {
       pendingIdle = false;
       interruptPending = false;
       pendingBargeInAudio = null;
+      pendingBargeInPrefixText = '';
+      clearHeldTurnState();
       setReplyActive(false);
       if (paused) {
         setState('paused');
@@ -1344,7 +2039,9 @@ async function connect() {
       return;
     }
     if (data.type === 'voice-command') {
-      if (data.action === 'pause') {
+      if (data.action === 'hold' && !paused) {
+        armHeldTurn(String(data.content || data.heard || ''));
+      } else if (data.action === 'pause') {
         await setPausedState(!paused, { forceInterrupt: true });
       } else if (data.action === 'interrupt' && !paused) {
         requestInterrupt({ keepPaused: false });
@@ -1353,20 +2050,29 @@ async function connect() {
       syncShellState();
       return;
     }
+    if (data.source === 'server_speak') {
+      if (data.status === 'speaking') {
+        pendingServerSpeakRequestId = String(data.request_id || '');
+        pendingAudioMimeType = String(data.audio_mime_type || pendingAudioMimeType || 'audio/mpeg');
+      } else if (data.status === 'idle') {
+        pendingServerSpeakRequestId = '';
+      }
+    }
     if (data.status === 'thinking') {
       setReplyActive(true);
       rearmVoiceInterrupt();
       busy = true;
       pendingIdle = false;
-      if (!paused && !interruptPending) {
+      if (!paused && !interruptPending && !isHeldTurnActive()) {
         setState('thinking');
       }
     } else if (data.status === 'speaking') {
+      pendingAudioMimeType = String(data.audio_mime_type || pendingAudioMimeType || 'audio/mpeg');
       setReplyActive(true);
       rearmVoiceInterrupt();
       busy = true;
       pendingIdle = false;
-      if (!paused && !interruptPending) {
+      if (!paused && !interruptPending && !isHeldTurnActive()) {
         setState('speaking');
       }
     } else if (data.status === 'idle') {
@@ -1376,13 +2082,18 @@ async function connect() {
       interruptPending = false;
       if (pendingBargeInAudio && !paused && ws && ws.readyState === WebSocket.OPEN) {
         const bufferedAudio = pendingBargeInAudio;
+        const prefixText = pendingBargeInPrefixText;
         pendingBargeInAudio = null;
+        pendingBargeInPrefixText = '';
+        if (prefixText) {
+          sendTranscriptPrefix(prefixText);
+        }
         busy = true;
         pendingIdle = false;
         setState('thinking');
         ws.send(bufferedAudio);
       } else {
-        pendingIdle = !paused;
+        pendingIdle = !paused && !isHeldTurnActive();
         maybeReturnToListening();
       }
     }
@@ -1392,7 +2103,9 @@ async function connect() {
 }
 
 async function ensureAudio() {
-  if (audioCtx) {
+  bindAudioRecoveryHooks();
+  ensureCaptureWatchdog();
+  if (audioCtx && processor && isCaptureStreamHealthy()) {
     if (audioCtx.state === 'suspended') {
       await audioCtx.resume();
     }
@@ -1415,7 +2128,7 @@ async function ensureAudio() {
     },
   });
   try {
-    audioCtx = new AudioContextClass({ sampleRate: 16000 });
+    audioCtx = new AudioContextClass({ sampleRate: TARGET_CAPTURE_SAMPLE_RATE });
   } catch (_) {
     audioCtx = new AudioContextClass();
   }
@@ -1433,10 +2146,24 @@ async function ensureAudio() {
   analyser.connect(processor);
   processor.connect(processorSink);
   processorSink.connect(audioCtx.destination);
+  audioCtx.onstatechange = () => {
+    if (!paused && audioCtx && audioCtx.state === 'suspended') {
+      void recoverAudioPipeline('audio-context-statechange');
+    }
+  };
+  for (const track of stream.getAudioTracks()) {
+    track.onended = () => {
+      if (!paused) {
+        void recoverAudioPipeline('mic-track-ended');
+      }
+    };
+  }
+  lastAudioProcessAt = performance.now();
   processor.onaudioprocess = onAudioProcess;
 }
 
 function onAudioProcess(event) {
+  lastAudioProcessAt = performance.now();
   if (
     !ws ||
     ws.readyState !== WebSocket.OPEN ||
@@ -1451,20 +2178,20 @@ function onAudioProcess(event) {
     resetInterruptSpeechDetection();
     resetInterruptProbeCapture();
     resetBargeInCapture();
-    if (currentLevelWidth !== 0) {
-      setLevelBar(0);
+    if (currentLevelDb !== LEVEL_DB_FLOOR) {
+      setLevelDb(LEVEL_DB_FLOOR);
     }
     return;
   }
   const input = event.inputBuffer.getChannelData(0);
-  const pcm = new Int16Array(input.length);
+  const inputSampleRate = Math.max(Number(audioCtx?.sampleRate) || TARGET_CAPTURE_SAMPLE_RATE, 1);
+  const pcm = inputBufferToPcm16(input, inputSampleRate);
   let peakLevel = 0;
   let sumSquares = 0;
   let zeroCrossings = 0;
   let previousSample = input[0] || 0;
   for (let i = 0; i < input.length; i += 1) {
     const sample = Math.max(-1, Math.min(1, input[i]));
-    pcm[i] = sample * 32767;
     const magnitude = Math.abs(sample);
     peakLevel = Math.max(peakLevel, magnitude);
     sumSquares += sample * sample;
@@ -1496,10 +2223,15 @@ function onAudioProcess(event) {
       && crestFactor <= INTERRUPT_CREST_MAX
     )
   );
-  const baseLevel = Math.min(100, rmsLevel * DISPLAY_LEVEL_RMS_SCALE);
-  const displayedLevel = Math.max(baseLevel, currentLevelWidth * (speechLike ? 0.93 : 0.84));
-  setLevelBar(displayedLevel);
-  const frameMs = (input.length / 16000) * 1000;
+  const baseLevel = clampNumber(
+    amplitudeToDb(rmsLevel),
+    LEVEL_DB_FLOOR,
+    LEVEL_DB_CEILING,
+    LEVEL_DB_FLOOR,
+  );
+  const displayedLevel = Math.max(baseLevel, currentLevelDb - (speechLike ? 1.2 : 2.8));
+  setLevelDb(displayedLevel);
+  const frameMs = (pcm.length / TARGET_CAPTURE_SAMPLE_RATE) * 1000;
   if (maybeCaptureBargeInProbe(pcm, displayedLevel, interruptSpeechLike, frameMs, now)) {
     return;
   }
@@ -1510,12 +2242,12 @@ function onAudioProcess(event) {
     resetCaptureBuffer();
     return;
   }
-  if (busy || currentAudio || audioQueue.length > 0 || currentState === 'speaking') {
+  if (!isHeldTurnActive() && (busy || currentAudio || audioQueue.length > 0 || currentState === 'speaking')) {
     return;
   }
   const turnActiveThreshold = speechLike
-    ? tuning.endOfTurnBarThreshold * 0.72
-    : tuning.endOfTurnBarThreshold;
+    ? tuning.inputThresholdDb + gainMultiplierToDb(0.72)
+    : tuning.inputThresholdDb;
   if (displayedLevel > turnActiveThreshold) {
     if (!speechStart) speechStart = now;
     silenceStart = null;
@@ -1532,22 +2264,39 @@ function onAudioProcess(event) {
     return;
   }
   const minSpeechDuration = Math.max(settings.min_speech_ms, TURN_COMMIT_MIN_SPEECH_MS);
-  const turnEndSilenceMs = manualFinishEnabled ? MANUAL_FINISH_SILENCE_MS : END_OF_TURN_SILENCE_MS;
+  const turnEndSilenceMs = resolveWaitAfterSpeakMs();
   if (speechDuration >= minSpeechDuration && silenceDuration >= turnEndSilenceMs) {
-    busy = true;
-    pendingIdle = false;
-    setState('thinking');
-    ws.send(flattenAudio(audioChunks));
+    sendBufferedTurn(flattenAudio(audioChunks), { prefixText: heldTurnPrefixText });
     resetCaptureBuffer();
   }
 }
 
 async function init() {
-  await ensureAudio();
-  await unlockPlaybackAudio();
+  if (isAppleVoiceClient()) {
+    await unlockPlaybackAudio();
+    await ensureAudio();
+  } else {
+    await ensureAudio();
+    await unlockPlaybackAudio();
+  }
   await loadRuntimeState();
   await connect();
   setState(paused ? 'paused' : 'listening');
+}
+
+async function initWithRetry() {
+  try {
+    await init();
+  } catch (error) {
+    if (!isAppleVoiceClient() || !isAbortLikeError(error)) {
+      throw error;
+    }
+    teardownAudioCapture();
+    // Keep the original user-activated media element alive for the Safari retry.
+    resetPlaybackElement({ preserveUnlocked: playbackUnlocked });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    await init();
+  }
 }
 
 function animateLevelDecay() {
@@ -1557,13 +2306,13 @@ function animateLevelDecay() {
     );
   }
   if (busy || currentState !== 'listening') {
-    if (currentLevelWidth !== 0) {
-      setLevelBar(0);
+    if (currentLevelDb !== LEVEL_DB_FLOOR) {
+      setLevelDb(LEVEL_DB_FLOOR);
     }
-  } else if (currentLevelWidth > 0.1) {
-    setLevelBar(currentLevelWidth * 0.88);
-  } else if (currentLevelWidth !== 0) {
-    setLevelBar(0);
+  } else if (currentLevelDb > LEVEL_DB_FLOOR + 0.1) {
+    setLevelDb(currentLevelDb - 2.2);
+  } else if (currentLevelDb !== LEVEL_DB_FLOOR) {
+    setLevelDb(LEVEL_DB_FLOOR);
   }
   requestAnimationFrame(animateLevelDecay);
 }
@@ -1583,8 +2332,11 @@ document.getElementById('mute-btn').addEventListener('click', () => {
 setState('paused');
 configureSetupLink();
 configureTuningControls();
+updateControlStates();
 window.__openclawManualInterrupt = manualInterrupt;
-window.__openclawToggleVoiceInterrupt = () => true;
+window.__openclawToggleVoiceInterrupt = () => setInterruptMode(
+  interruptMode === 'off' ? 'barge-in' : (interruptMode === 'barge-in' ? 'keyword' : 'off')
+);
 startShellStatusHeartbeat();
 animateLevelDecay();
 </script>

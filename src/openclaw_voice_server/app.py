@@ -20,8 +20,10 @@ LOGGER = logging.getLogger(__name__)
 def configure_logging() -> None:
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        format="%(asctime)s %(levelname)s %(message)s",
+        datefmt="%H:%M:%S",
     )
+    logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
 
 
 def _static_dir() -> Path:
@@ -75,6 +77,7 @@ def create_app() -> web.Application:
                 "version_label": APP_VERSION_LABEL,
                 "runtime_ready": state["status"]["runtime_ready"],
                 "audio": state["saved"]["audio"],
+                "windows_client": state["saved"]["windows_client"],
             }
         )
 
@@ -107,6 +110,16 @@ def create_app() -> web.Application:
         result = await setup_service.validate_gateway(payload)
         return web.json_response(result)
 
+    async def validate_agent(request: web.Request) -> web.Response:
+        payload = await parse_json(request)
+        result = await setup_service.validate_agent(payload)
+        return web.json_response(result)
+
+    async def validate_windows_client(request: web.Request) -> web.Response:
+        payload = await parse_json(request)
+        result = setup_service.validate_windows_client(payload)
+        return web.json_response(result)
+
     async def validate_stt(request: web.Request) -> web.Response:
         payload = await parse_json(request)
         result = setup_service.validate_stt(payload)
@@ -131,6 +144,16 @@ def create_app() -> web.Application:
         result = await setup_service.validate_elevenlabs_key(payload)
         return web.json_response(result)
 
+    async def validate_piper(request: web.Request) -> web.Response:
+        payload = await parse_json(request)
+        result = await setup_service.validate_piper(payload)
+        return web.json_response(result)
+
+    async def validate_chatterbox(request: web.Request) -> web.Response:
+        payload = await parse_json(request)
+        result = await setup_service.validate_chatterbox(payload)
+        return web.json_response(result)
+
     async def eleven_voices(request: web.Request) -> web.Response:
         result = await setup_service.elevenlabs_voices()
         return web.json_response(result)
@@ -138,6 +161,16 @@ def create_app() -> web.Application:
     async def validate_eleven_voice(request: web.Request) -> web.Response:
         payload = await parse_json(request)
         result = await setup_service.validate_elevenlabs_voice(payload)
+        return web.json_response(result)
+
+    async def vibevoice_voices(request: web.Request) -> web.Response:
+        payload = await parse_json(request)
+        result = await setup_service.vibevoice_voices(payload)
+        return web.json_response(result)
+
+    async def validate_vibevoice(request: web.Request) -> web.Response:
+        payload = await parse_json(request)
+        result = await setup_service.validate_vibevoice(payload)
         return web.json_response(result)
 
     @web.middleware
@@ -160,13 +193,20 @@ def create_app() -> web.Application:
     app.router.add_get("/api/windows-client/status", windows_client_status)
     app.router.add_post("/api/windows-client/status", update_windows_client_status)
     app.router.add_post("/api/setup/validate-gateway", validate_gateway)
+    app.router.add_post("/api/setup/validate-agent", validate_agent)
+    app.router.add_post("/api/setup/validate-windows-client", validate_windows_client)
     app.router.add_post("/api/setup/validate-stt", validate_stt)
     app.router.add_post("/api/setup/validate-tts", validate_tts)
     app.router.add_get("/api/setup/edge-voices", edge_voices)
     app.router.add_post("/api/setup/validate-edge", validate_edge)
     app.router.add_post("/api/setup/validate-eleven-key", validate_eleven_key)
+    app.router.add_post("/api/setup/validate-piper", validate_piper)
+    app.router.add_post("/api/setup/validate-chatterbox", validate_chatterbox)
     app.router.add_get("/api/setup/eleven-voices", eleven_voices)
     app.router.add_post("/api/setup/validate-eleven-voice", validate_eleven_voice)
+    app.router.add_get("/api/setup/vibevoice-voices", vibevoice_voices)
+    app.router.add_post("/api/setup/vibevoice-voices", vibevoice_voices)
+    app.router.add_post("/api/setup/validate-vibevoice", validate_vibevoice)
     app.router.add_get("/ws/voice", runtime.handle_ws)
     app.router.add_static("/static", static_dir)
     return app
@@ -177,7 +217,12 @@ def main() -> int:
     app = create_app()
     settings = ConfigStore().load_config()["server"]
     try:
-        web.run_app(app, host=settings["host"], port=int(settings["port"]))
+        web.run_app(
+            app,
+            host=settings["host"],
+            port=int(settings["port"]),
+            access_log=None,
+        )
     except KeyboardInterrupt:
         LOGGER.info("Shutting down voice server")
     return 0

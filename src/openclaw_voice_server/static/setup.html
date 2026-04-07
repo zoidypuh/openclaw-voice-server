@@ -110,6 +110,11 @@
     display: grid;
     gap: 8px;
   }
+  .button-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
   .check {
     display: flex;
     gap: 10px;
@@ -132,6 +137,11 @@
   button.primary {
     background: #f0f0f0;
     color: #050505;
+  }
+  button.active {
+    background: #f0f0f0;
+    color: #050505;
+    border-color: #f0f0f0;
   }
   button:disabled {
     opacity: 0.45;
@@ -182,6 +192,14 @@
         <p>Choose one Whisper-family backend, model, and device. This step must validate and save before the rest of setup appears.</p>
       </div>
       <div class="badge" id="stt-badge">Not checked</div>
+    </div>
+    <div class="option-group">
+      <span>Target</span>
+      <div class="button-row">
+        <button type="button" id="stt-target-remote">Remote Whisper</button>
+        <button type="button" id="stt-target-local-gpu">Local GPU Whisper</button>
+      </div>
+      <div class="note" id="stt-target-note">These buttons fill the fields below. You can still tweak backend, model, device, and endpoint manually.</div>
     </div>
     <div class="grid">
       <label>Backend
@@ -269,10 +287,47 @@
     <div class="result" id="edge-result"></div>
   </section>
 
+  <section class="section hidden" id="piper-section">
+    <div class="section-header">
+      <div class="section-title">
+        <h2>4. Piper</h2>
+        <p>Point Piper at a local voice `.onnx` model file, not the Piper install directory, then run one local synthesis test before saving.</p>
+      </div>
+      <div class="badge" id="piper-badge">Not checked</div>
+    </div>
+    <div class="grid">
+      <label>Detected Local Voice
+        <select id="piper-local-voice">
+          <option value="">No local Piper voices detected</option>
+        </select>
+      </label>
+      <label>Model Path
+        <input id="piper-model-path" type="text" placeholder="/path/to/voice.onnx or piper-voices/en_US-amy-medium.onnx">
+      </label>
+      <label>Config Path
+        <input id="piper-config-path" type="text" placeholder="Leave blank to use /path/to/voice.onnx.json">
+      </label>
+      <label>Speaker
+        <input id="piper-speaker" type="number" min="0" step="1" value="0">
+      </label>
+    </div>
+    <div class="note" id="piper-note"></div>
+    <div class="note">
+      <a id="piper-github-link" href="https://github.com/OHF-Voice/piper1-gpl" target="_blank" rel="noopener noreferrer">Piper GitHub</a>
+      ·
+      <a id="piper-voices-link" href="https://huggingface.co/rhasspy/piper-voices" target="_blank" rel="noopener noreferrer">Piper voices</a>
+    </div>
+    <div class="actions">
+      <button class="primary" id="validate-piper">Validate Piper Voice And Save</button>
+      <button id="continue-piper">Continue With Validated Piper</button>
+    </div>
+    <div class="result" id="piper-result"></div>
+  </section>
+
   <section class="section hidden" id="eleven-section">
     <div class="section-header">
       <div class="section-title">
-        <h2>4. ElevenLabs</h2>
+        <h2>5. ElevenLabs</h2>
         <p>Validate the API key first, then choose one of your saved account voices here or paste a voice ID manually before saving.</p>
       </div>
       <div class="badge" id="eleven-badge">Not checked</div>
@@ -299,7 +354,7 @@
         <select id="eleven-preset"></select>
       </label>
     </div>
-    <div class="note">Bonnie can override the default per reply by starting with <code>[voice:calm]</code>, <code>[voice:natural]</code>, <code>[voice:expressive]</code>, or <code>[voice:focused]</code>.</div>
+    <div class="note">You can override the default per reply by starting with <code>[voice:calm]</code>, <code>[voice:natural]</code>, <code>[voice:expressive]</code>, or <code>[voice:focused]</code>.</div>
     <div class="actions">
       <button class="primary" id="validate-eleven-key">Validate API Key And Save</button>
       <button id="load-eleven-voices">Load Saved Voices</button>
@@ -309,15 +364,80 @@
     <div class="result" id="eleven-result"></div>
   </section>
 
+  <section class="section hidden" id="chatterbox-section">
+    <div class="section-header">
+      <div class="section-title">
+        <h2>6. Chatterbox</h2>
+        <p>Run Chatterbox locally with its built-in voice conditionals, then validate one synthesis pass before saving.</p>
+      </div>
+      <div class="badge" id="chatterbox-badge">Not checked</div>
+    </div>
+    <div class="grid">
+      <label>Model
+        <select id="chatterbox-model"></select>
+      </label>
+      <label>Device
+        <select id="chatterbox-device"></select>
+      </label>
+      <label>Voice
+        <select id="chatterbox-voice"></select>
+      </label>
+      <label>Language
+        <input id="chatterbox-language" type="text" placeholder="Leave blank to use the validated STT language">
+      </label>
+    </div>
+    <div class="note" id="chatterbox-note"></div>
+    <div class="actions">
+      <button class="primary" id="validate-chatterbox">Validate Chatterbox And Save</button>
+      <button id="continue-chatterbox">Continue With Validated Chatterbox</button>
+    </div>
+    <div class="result" id="chatterbox-result"></div>
+  </section>
+
+  <section class="section hidden" id="vibevoice-section">
+    <div class="section-header">
+      <div class="section-title">
+        <h2>7. VibeVoice Realtime</h2>
+        <p>Connect to a local VibeVoice demo server, load its preset voices, and validate one preset before saving.</p>
+      </div>
+      <div class="badge" id="vibevoice-badge">Not checked</div>
+    </div>
+    <div class="grid">
+      <label>Server URL
+        <input id="vibevoice-base-url" type="text" placeholder="http://127.0.0.1:3000">
+      </label>
+      <label>Available preset voices
+        <select id="vibevoice-voice-select">
+          <option value="">Load voices from the server first</option>
+        </select>
+      </label>
+      <label>Voice preset
+        <input id="vibevoice-voice" type="text" placeholder="en-Carter_man">
+      </label>
+    </div>
+    <div class="note" id="vibevoice-note"></div>
+    <div class="actions">
+      <button class="primary" id="load-vibevoice-voices">Load VibeVoice Voices</button>
+      <button class="primary" id="validate-vibevoice">Validate VibeVoice Voice And Save</button>
+      <button id="continue-vibevoice">Continue With Validated VibeVoice</button>
+    </div>
+    <div class="result" id="vibevoice-result"></div>
+  </section>
+
   <section class="section hidden" id="gateway-section">
     <div class="section-header">
       <div class="section-title">
-        <h2>5. Conversation Backend</h2>
-        <p>Validate the direct-agent gateway before launch. This check runs from the local voice server, so use the local OpenClaw gateway URL instead of the public browser-facing .ts.net address. The app adds the chat completions API path automatically and reuses one stable agent session.</p>
+        <h2>8. Conversation Backend</h2>
+        <p>Select the chat agent and validate its backend before launch.</p>
       </div>
       <div class="badge" id="gateway-badge">Not checked</div>
     </div>
     <div class="grid">
+      <label>Conversation Agent
+        <select id="agent-backend"></select>
+      </label>
+    </div>
+    <div class="grid" id="openclaw-backend-fields">
       <label>Gateway URL
         <input id="gateway-url" type="text" placeholder="http://127.0.0.1:18789">
       </label>
@@ -331,12 +451,43 @@
         <input id="gateway-session-key" type="text" placeholder="agent:main:voice-chat-main">
       </label>
     </div>
+    <div class="grid hidden" id="hermes-backend-fields">
+      <label>Hermes Root
+        <input id="agent-hermes-root" type="text" placeholder="/home/gismar/.hermes/hermes-agent">
+      </label>
+    </div>
     <div class="note" id="gateway-note"></div>
     <div class="actions">
       <button class="primary" id="validate-gateway">Validate Gateway And Save</button>
       <button id="continue-gateway">Continue With Validated Gateway</button>
     </div>
     <div class="result" id="gateway-result"></div>
+  </section>
+
+  <section class="section hidden" id="windows-client-section">
+    <div class="section-header">
+      <div class="section-title">
+        <h2>8. Windows Client</h2>
+        <p>Configure the global keyboard shortcuts used by the Windows tray client.</p>
+      </div>
+      <div class="badge" id="windows-client-badge">Not saved</div>
+    </div>
+    <div class="grid">
+      <label>Show / Hide Window
+        <input id="shortcut-toggle-window" type="text" placeholder="Ctrl+Shift+Space">
+      </label>
+      <label>Pause / Resume
+        <input id="shortcut-pause-resume" type="text" placeholder="Ctrl+Shift+P">
+      </label>
+      <label>Interrupt Now
+        <input id="shortcut-interrupt" type="text" placeholder="Ctrl+Alt+A">
+      </label>
+    </div>
+    <div class="note" id="windows-shortcuts-note"></div>
+    <div class="actions">
+      <button class="primary" id="save-windows-shortcuts">Save Windows Shortcuts</button>
+    </div>
+    <div class="result" id="windows-client-result"></div>
   </section>
 
   <section class="section hidden" id="launch-section">
@@ -358,6 +509,13 @@
 let setupState = null;
 let edgeVoices = [];
 let elevenVoices = [];
+let localPiperVoices = [];
+let vibevoiceVoices = [];
+let rememberedRemoteStt = {
+  url: '',
+  model: '',
+};
+const REMOTE_STT_MEMORY_KEY = 'openclaw.voice.remote-stt.v1';
 const STT_LANGUAGES = [
   ["auto", "Auto Detect"],
   ["de", "German"],
@@ -379,6 +537,102 @@ function currentSttBackend() {
 
 function currentTtsProvider() {
   return document.getElementById('tts-default').value;
+}
+
+function currentAgentBackend() {
+  return document.getElementById('agent-backend').value || 'openclaw';
+}
+
+function ttsProviderSectionId(provider) {
+  if (provider === 'edge') {
+    return 'edge-section';
+  }
+  if (provider === 'piper') {
+    return 'piper-section';
+  }
+  if (provider === 'elevenlabs') {
+    return 'eleven-section';
+  }
+  if (provider === 'chatterbox') {
+    return 'chatterbox-section';
+  }
+  if (provider === 'vibevoice') {
+    return 'vibevoice-section';
+  }
+  return 'tts-section';
+}
+
+function renderConversationBackendControls() {
+  const backend = currentAgentBackend();
+  const isHermes = backend === 'hermes';
+  document.getElementById('openclaw-backend-fields').classList.toggle('hidden', isHermes);
+  document.getElementById('hermes-backend-fields').classList.toggle('hidden', !isHermes);
+  const note = document.getElementById('gateway-note');
+  const validateButton = document.getElementById('validate-gateway');
+  const continueButton = document.getElementById('continue-gateway');
+  if (isHermes) {
+    note.textContent = setupState?.hints?.hermes_note || '';
+    validateButton.textContent = 'Validate Hermes Agent And Save';
+    continueButton.textContent = 'Continue With Validated Hermes';
+    return;
+  }
+  const defaultSessionKey = setupState?.hints?.default_voice_session_key || '';
+  note.textContent = `${setupState?.hints?.gateway_note || ''} Default agent session: ${defaultSessionKey}`;
+  validateButton.textContent = 'Validate Gateway And Save';
+  continueButton.textContent = 'Continue With Validated Gateway';
+}
+
+function loadRememberedRemoteStt() {
+  try {
+    const raw = localStorage.getItem(REMOTE_STT_MEMORY_KEY);
+    if (!raw) {
+      return;
+    }
+    const parsed = JSON.parse(raw);
+    rememberedRemoteStt = {
+      url: String(parsed?.url || '').trim(),
+      model: String(parsed?.model || '').trim(),
+    };
+  } catch (_) {}
+}
+
+function saveRememberedRemoteStt() {
+  localStorage.setItem(REMOTE_STT_MEMORY_KEY, JSON.stringify(rememberedRemoteStt));
+}
+
+function rememberRemoteStt(url, model) {
+  const normalizedUrl = String(url || '').trim();
+  if (!normalizedUrl) {
+    return;
+  }
+  rememberedRemoteStt = {
+    url: normalizedUrl,
+    model: String(model || '').trim(),
+  };
+  saveRememberedRemoteStt();
+}
+
+function defaultRemoteWhisperEndpointUrl() {
+  return String(setupState?.hints?.default_remote_whisper_endpoint_url || '').trim();
+}
+
+function defaultRemoteWhisperEndpointModel() {
+  return String(setupState?.hints?.default_remote_whisper_endpoint_model || '').trim();
+}
+
+function syncRememberedRemoteSttFromInputs() {
+  rememberRemoteStt(
+    document.getElementById('whisper-endpoint-url').value,
+    document.getElementById('whisper-endpoint-model').value,
+  );
+}
+
+function currentWindowsShortcutValues() {
+  return {
+    toggle_window: document.getElementById('shortcut-toggle-window').value.trim(),
+    pause_resume: document.getElementById('shortcut-pause-resume').value.trim(),
+    interrupt: document.getElementById('shortcut-interrupt').value.trim(),
+  };
 }
 
 function updateDeviceNotes() {
@@ -430,12 +684,45 @@ function updateSelectOptions(select, values, labels = {}) {
   }
 }
 
+function resolveSttTarget() {
+  const backend = currentSttBackend();
+  const device = document.getElementById('stt-device').value;
+  const endpointUrl = document.getElementById('whisper-endpoint-url').value.trim();
+  if (backend === 'whisper' && endpointUrl) {
+    return 'remote';
+  }
+  if (backend === 'faster-whisper' && device === 'cuda' && !endpointUrl) {
+    return 'local-gpu';
+  }
+  return 'custom';
+}
+
+function renderSttTargetControls() {
+  const resolved = resolveSttTarget();
+  document.getElementById('stt-target-remote').classList.toggle('active', resolved === 'remote');
+  document.getElementById('stt-target-local-gpu').classList.toggle('active', resolved === 'local-gpu');
+  const note = document.getElementById('stt-target-note');
+  if (resolved === 'remote') {
+    const defaultEndpoint = defaultRemoteWhisperEndpointUrl();
+    const activeEndpoint = defaultEndpoint || rememberedRemoteStt.url;
+    const endpointLabel = activeEndpoint ? ` Endpoint: ${activeEndpoint}` : '';
+    note.textContent = `Remote Whisper uses an HTTP transcription endpoint instead of running Whisper in-process.${endpointLabel}`;
+    return;
+  }
+  if (resolved === 'local-gpu') {
+    note.textContent = 'Local GPU Whisper uses in-process faster-whisper on CUDA. No remote endpoint is used.';
+    return;
+  }
+  note.textContent = 'Custom STT settings. These buttons fill the fields below, but manual changes can move you off either preset.';
+}
+
 function updateBackendSpecificFields() {
   const backend = currentSttBackend();
   document.getElementById('model-group-faster-whisper').classList.toggle('hidden', backend !== 'faster-whisper');
   document.getElementById('model-group-whisper').classList.toggle('hidden', backend !== 'whisper');
   document.getElementById('whisper-endpoint-group').classList.toggle('hidden', backend !== 'whisper');
   document.getElementById('whisper-endpoint-model-group').classList.toggle('hidden', backend !== 'whisper');
+  renderSttTargetControls();
 }
 
 function recommendedComputeType() {
@@ -444,6 +731,42 @@ function recommendedComputeType() {
 
 function applyRecommendedComputeType() {
   document.getElementById('stt-compute-type').value = recommendedComputeType();
+}
+
+function applySttTarget(target) {
+  setResult('stt-result', '');
+  if (target === 'remote') {
+    const endpointUrl = defaultRemoteWhisperEndpointUrl()
+      || rememberedRemoteStt.url
+      || document.getElementById('whisper-endpoint-url').value.trim();
+    const endpointModel = defaultRemoteWhisperEndpointModel()
+      || rememberedRemoteStt.model
+      || document.getElementById('whisper-endpoint-model').value.trim();
+    if (!endpointUrl) {
+      const hostAlias = String(setupState?.hints?.remote_whisper_host_alias || '').trim();
+      const hostHint = hostAlias ? ` Configure the ${hostAlias} SSH host or enter the endpoint manually.` : ' Enter the endpoint manually.';
+      setResult('stt-result', `No remote Whisper endpoint is available yet.${hostHint}`, false);
+      return;
+    }
+    document.getElementById('stt-default').value = 'whisper';
+    document.getElementById('stt-device').value = 'cpu';
+    document.getElementById('stt-compute-type').value = 'int8';
+    document.getElementById('model-whisper').value = document.getElementById('model-whisper').value || 'large';
+    document.getElementById('whisper-endpoint-url').value = endpointUrl;
+    document.getElementById('whisper-endpoint-model').value = endpointModel;
+    rememberRemoteStt(endpointUrl, endpointModel);
+  } else if (target === 'local-gpu') {
+    syncRememberedRemoteSttFromInputs();
+    document.getElementById('stt-default').value = 'faster-whisper';
+    document.getElementById('stt-device').value = 'cuda';
+    document.getElementById('stt-compute-type').value = 'float16';
+    document.getElementById('model-faster-whisper').value = document.getElementById('model-faster-whisper').value || 'large-v3';
+    document.getElementById('whisper-endpoint-url').value = '';
+    document.getElementById('whisper-endpoint-model').value = '';
+  }
+  updateBackendSpecificFields();
+  updateDeviceNotes();
+  updateFlowVisibility();
 }
 
 function renderElevenVoiceOptions(voices) {
@@ -487,6 +810,71 @@ function syncElevenVoiceSelectionFromId() {
   }
 }
 
+function renderPiperVoiceOptions(voices) {
+  localPiperVoices = voices;
+  const select = document.getElementById('piper-local-voice');
+  const currentModelPath = document.getElementById('piper-model-path').value.trim();
+  select.innerHTML = '';
+
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = voices.length ? 'Choose one detected local voice' : 'No local Piper voices detected';
+  select.appendChild(placeholder);
+
+  for (const voice of voices) {
+    const option = document.createElement('option');
+    option.value = voice.model_path;
+    option.textContent = voice.voice_name || voice.model_path;
+    select.appendChild(option);
+  }
+
+  select.disabled = voices.length === 0;
+  if (currentModelPath && voices.some((voice) => voice.model_path === currentModelPath)) {
+    select.value = currentModelPath;
+  } else {
+    select.value = '';
+  }
+}
+
+function syncPiperSelectionFromInput() {
+  const modelPath = document.getElementById('piper-model-path').value.trim();
+  const select = document.getElementById('piper-local-voice');
+  const match = localPiperVoices.find((voice) => voice.model_path === modelPath);
+  select.value = match ? modelPath : '';
+}
+
+function renderVibeVoiceOptions(voices) {
+  vibevoiceVoices = voices;
+  const select = document.getElementById('vibevoice-voice-select');
+  const currentVoice = document.getElementById('vibevoice-voice').value.trim();
+  select.innerHTML = '';
+
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = voices.length ? 'Choose one preset voice' : 'No preset voices loaded';
+  select.appendChild(placeholder);
+
+  for (const voice of voices) {
+    const option = document.createElement('option');
+    option.value = voice.voice_id;
+    option.textContent = voice.name;
+    select.appendChild(option);
+  }
+
+  if (currentVoice && voices.some((voice) => voice.voice_id === currentVoice)) {
+    select.value = currentVoice;
+  } else {
+    select.value = '';
+  }
+}
+
+function syncVibeVoiceSelectionFromInput() {
+  const voice = document.getElementById('vibevoice-voice').value.trim();
+  const select = document.getElementById('vibevoice-voice-select');
+  const match = vibevoiceVoices.find((item) => item.voice_id === voice);
+  select.value = match ? voice : '';
+}
+
 function getEffectiveStatus() {
   const status = setupState?.status || {};
   const saved = setupState?.saved;
@@ -495,8 +883,12 @@ function getEffectiveStatus() {
       stt_ready: false,
       tts_ready: false,
       edge_ready: false,
+      piper_ready: false,
       eleven_ready: false,
+      vibevoice_ready: false,
       gateway_ready: false,
+      hermes_ready: false,
+      conversation_ready: false,
       runtime_ready: false,
     };
   }
@@ -534,6 +926,15 @@ function getEffectiveStatus() {
     && document.getElementById('edge-rate').value.trim() === ttsSaved.edge_rate
   );
 
+  const piperReady = Boolean(
+    ttsReady
+    && currentProvider === 'piper'
+    && status.piper_ready
+    && document.getElementById('piper-model-path').value.trim() === (ttsSaved.piper_model_path || '')
+    && document.getElementById('piper-config-path').value.trim() === (ttsSaved.piper_config_path || '')
+    && Number(document.getElementById('piper-speaker').value || 0) === Number(ttsSaved.piper_speaker || 0)
+  );
+
   const elevenReady = Boolean(
     ttsReady
     && currentProvider === 'elevenlabs'
@@ -545,24 +946,68 @@ function getEffectiveStatus() {
     && document.getElementById('eleven-preset').value === (ttsSaved.elevenlabs_preset || 'natural')
   );
 
+  const vibevoiceReady = Boolean(
+    ttsReady
+    && currentProvider === 'vibevoice'
+    && status.vibevoice_ready
+    && document.getElementById('vibevoice-base-url').value.trim() === (ttsSaved.vibevoice_base_url || '')
+    && document.getElementById('vibevoice-voice').value.trim() === (ttsSaved.vibevoice_voice || '')
+  );
+  const chatterboxReady = Boolean(
+    ttsReady
+    && currentProvider === 'chatterbox'
+    && status.chatterbox_ready
+    && document.getElementById('chatterbox-model').value === (ttsSaved.chatterbox_model || 'multilingual')
+    && document.getElementById('chatterbox-device').value === (ttsSaved.chatterbox_device || 'auto')
+    && document.getElementById('chatterbox-voice').value === (ttsSaved.chatterbox_voice || 'default')
+    && document.getElementById('chatterbox-language').value.trim() === (ttsSaved.chatterbox_language || '')
+  );
+
   const gatewaySaved = saved.gateway || {};
+  const agentSaved = saved.agent || {};
+  const currentAgentBackendVal = currentAgentBackend();
   const savedSessionKey = gatewaySaved.session_key || (setupState?.hints?.default_voice_session_key || '');
   const gatewayReady = Boolean(
-    (edgeReady || elevenReady)
+    (edgeReady || piperReady || elevenReady || chatterboxReady || vibevoiceReady)
+    && currentAgentBackendVal === 'openclaw'
+    && (agentSaved.backend || 'openclaw') === 'openclaw'
     && status.gateway_ready
     && document.getElementById('gateway-url').value.trim() === gatewaySaved.url
     && document.getElementById('gateway-model').value.trim() === gatewaySaved.model
     && document.getElementById('gateway-session-key').value.trim() === savedSessionKey
     && document.getElementById('gateway-token').value.trim() === ''
   );
+  const savedHermesRoot = (agentSaved.hermes_root || (setupState?.hints?.default_hermes_root || '')).trim();
+  const hermesReady = Boolean(
+    (edgeReady || piperReady || elevenReady || chatterboxReady || vibevoiceReady)
+    && currentAgentBackendVal === 'hermes'
+    && (agentSaved.backend || 'openclaw') === 'hermes'
+    && status.hermes_ready
+    && document.getElementById('agent-hermes-root').value.trim() === savedHermesRoot
+  );
+  const conversationReady = gatewayReady || hermesReady;
+
+  const savedWindowsShortcuts = saved.windows_client?.shortcuts || {};
+  const currentWindowsShortcuts = currentWindowsShortcutValues();
+  const windowsShortcutsSaved = Boolean(
+    currentWindowsShortcuts.toggle_window === (savedWindowsShortcuts.toggle_window || '')
+    && currentWindowsShortcuts.pause_resume === (savedWindowsShortcuts.pause_resume || '')
+    && currentWindowsShortcuts.interrupt === (savedWindowsShortcuts.interrupt || '')
+  );
 
   return {
     stt_ready: sttReady,
     tts_ready: ttsReady,
     edge_ready: edgeReady,
+    piper_ready: piperReady,
     eleven_ready: elevenReady,
+    chatterbox_ready: chatterboxReady,
+    vibevoice_ready: vibevoiceReady,
     gateway_ready: gatewayReady,
-    runtime_ready: gatewayReady,
+    hermes_ready: hermesReady,
+    conversation_ready: conversationReady,
+    windows_shortcuts_saved: windowsShortcutsSaved,
+    runtime_ready: conversationReady,
   };
 }
 
@@ -571,32 +1016,61 @@ function updateFlowVisibility() {
   const currentProvider = currentTtsProvider();
   const showTts = effective.stt_ready;
   const showEdge = showTts && effective.tts_ready && currentProvider === 'edge';
+  const showPiper = showTts && effective.tts_ready && currentProvider === 'piper';
   const showEleven = showTts && effective.tts_ready && currentProvider === 'elevenlabs';
+  const showChatterbox = showTts && effective.tts_ready && currentProvider === 'chatterbox';
+  const showVibeVoice = showTts && effective.tts_ready && currentProvider === 'vibevoice';
   const providerReady = showEdge
     ? effective.edge_ready
-    : showEleven
+    : showPiper
+      ? effective.piper_ready
+      : showEleven
       ? effective.eleven_ready
-      : false;
+      : showChatterbox
+        ? effective.chatterbox_ready
+      : showVibeVoice
+        ? effective.vibevoice_ready
+        : false;
   const showGateway = showTts && effective.tts_ready && providerReady;
-  const showLaunch = showGateway && effective.gateway_ready;
+  const showWindowsClient = showGateway;
+  const showLaunch = showGateway && effective.conversation_ready;
 
   document.getElementById('tts-section').classList.toggle('hidden', !showTts);
   document.getElementById('edge-section').classList.toggle('hidden', !showEdge);
+  document.getElementById('piper-section').classList.toggle('hidden', !showPiper);
   document.getElementById('eleven-section').classList.toggle('hidden', !showEleven);
+  document.getElementById('chatterbox-section').classList.toggle('hidden', !showChatterbox);
+  document.getElementById('vibevoice-section').classList.toggle('hidden', !showVibeVoice);
   document.getElementById('gateway-section').classList.toggle('hidden', !showGateway);
+  document.getElementById('windows-client-section').classList.toggle('hidden', !showWindowsClient);
   document.getElementById('launch-section').classList.toggle('hidden', !showLaunch);
 
   setBadge('stt-badge', effective.stt_ready ? 'Validated' : 'Needs validation', effective.stt_ready);
   setBadge('tts-badge', effective.tts_ready ? 'Validated' : 'Needs validation', effective.tts_ready);
   setBadge('edge-badge', effective.edge_ready ? 'Validated' : 'Needs validation', effective.edge_ready);
+  setBadge('piper-badge', effective.piper_ready ? 'Validated' : 'Needs validation', effective.piper_ready);
   setBadge('eleven-badge', effective.eleven_ready ? 'Validated' : 'Needs validation', effective.eleven_ready);
-  setBadge('gateway-badge', effective.gateway_ready ? 'Validated' : 'Needs validation', effective.gateway_ready);
+  setBadge('chatterbox-badge', effective.chatterbox_ready ? 'Validated' : 'Needs validation', effective.chatterbox_ready);
+  setBadge('vibevoice-badge', effective.vibevoice_ready ? 'Validated' : 'Needs validation', effective.vibevoice_ready);
+  setBadge(
+    'gateway-badge',
+    effective.conversation_ready ? 'Validated' : 'Needs validation',
+    effective.conversation_ready,
+  );
+  setBadge(
+    'windows-client-badge',
+    effective.windows_shortcuts_saved ? 'Saved' : 'Needs save',
+    effective.windows_shortcuts_saved,
+  );
   setBadge('launch-badge', effective.runtime_ready ? 'Ready' : 'Waiting', effective.runtime_ready);
   document.getElementById('continue-stt').disabled = !effective.stt_ready;
   document.getElementById('continue-tts').disabled = !effective.tts_ready;
   document.getElementById('continue-edge').disabled = !effective.edge_ready;
+  document.getElementById('continue-piper').disabled = !effective.piper_ready;
   document.getElementById('continue-eleven').disabled = !effective.eleven_ready;
-  document.getElementById('continue-gateway').disabled = !effective.gateway_ready;
+  document.getElementById('continue-chatterbox').disabled = !effective.chatterbox_ready;
+  document.getElementById('continue-vibevoice').disabled = !effective.vibevoice_ready;
+  document.getElementById('continue-gateway').disabled = !effective.conversation_ready;
   document.getElementById('launch-link').style.pointerEvents = effective.runtime_ready ? 'auto' : 'none';
   document.getElementById('launch-link').style.opacity = effective.runtime_ready ? '1' : '0.45';
   document.getElementById('launch-summary').textContent = effective.runtime_ready
@@ -634,6 +1108,7 @@ function scrollToSection(id) {
 
 function populateFromState(state) {
   setupState = state;
+  loadRememberedRemoteStt();
   document.getElementById('intro').textContent = state.message;
   document.getElementById('paths').textContent = '';
 
@@ -671,16 +1146,37 @@ function populateFromState(state) {
   document.getElementById('model-whisper').value = stt.backend_models.whisper;
   document.getElementById('whisper-endpoint-url').value = stt.whisper_endpoint_url || '';
   document.getElementById('whisper-endpoint-model').value = stt.whisper_endpoint_model || '';
+  if (stt.whisper_endpoint_url) {
+    rememberRemoteStt(stt.whisper_endpoint_url, stt.whisper_endpoint_model || '');
+  }
   document.getElementById('stt-default').value = stt.default_backend;
   updateBackendSpecificFields();
 
   const tts = state.saved.tts;
   const ttsLabels = Object.fromEntries(state.catalog.tts_providers.map((item) => [item.id, item.label]));
+  const chatterboxModelLabels = Object.fromEntries((state.catalog.chatterbox_models || []).map((item) => [item.id, item.label]));
+  const chatterboxDeviceLabels = Object.fromEntries((state.catalog.chatterbox_devices || []).map((item) => [item.id, item.label]));
+  const chatterboxVoiceLabels = Object.fromEntries((state.catalog.chatterbox_voices || []).map((item) => [item.id, item.label]));
   const presetLabels = Object.fromEntries((state.catalog.elevenlabs_presets || []).map((item) => [item.id, item.label]));
   updateSelectOptions(
     document.getElementById('tts-default'),
     state.catalog.tts_providers.map((item) => item.id),
     ttsLabels,
+  );
+  updateSelectOptions(
+    document.getElementById('chatterbox-model'),
+    (state.catalog.chatterbox_models || []).map((item) => item.id),
+    chatterboxModelLabels,
+  );
+  updateSelectOptions(
+    document.getElementById('chatterbox-device'),
+    (state.catalog.chatterbox_devices || []).map((item) => item.id),
+    chatterboxDeviceLabels,
+  );
+  updateSelectOptions(
+    document.getElementById('chatterbox-voice'),
+    (state.catalog.chatterbox_voices || []).map((item) => item.id),
+    chatterboxVoiceLabels,
   );
   updateSelectOptions(
     document.getElementById('eleven-preset'),
@@ -693,13 +1189,47 @@ function populateFromState(state) {
   document.getElementById('eleven-voice-id').value = tts.elevenlabs_voice_id;
   document.getElementById('eleven-voice-name').value = tts.elevenlabs_voice_name;
   document.getElementById('eleven-preset').value = tts.elevenlabs_preset || 'natural';
+  document.getElementById('piper-model-path').value = tts.piper_model_path || state.hints.default_piper_model_path || '';
+  document.getElementById('piper-config-path').value = tts.piper_config_path || state.hints.default_piper_config_path || '';
+  document.getElementById('piper-speaker').value = String(tts.piper_speaker ?? 0);
+  document.getElementById('piper-note').textContent = state.hints.piper_note || '';
+  document.getElementById('chatterbox-model').value = tts.chatterbox_model || state.hints.default_chatterbox_model || 'multilingual';
+  document.getElementById('chatterbox-device').value = tts.chatterbox_device || state.hints.default_chatterbox_device || 'auto';
+  document.getElementById('chatterbox-voice').value = tts.chatterbox_voice || state.hints.default_chatterbox_voice || 'default';
+  document.getElementById('chatterbox-language').value = tts.chatterbox_language || '';
+  document.getElementById('chatterbox-note').textContent = state.hints.chatterbox_note || '';
+  document.getElementById('piper-github-link').href = state.hints.piper_repo_url || 'https://github.com/OHF-Voice/piper1-gpl';
+  document.getElementById('piper-voices-link').href = state.hints.piper_voices_url || 'https://huggingface.co/rhasspy/piper-voices';
+  renderPiperVoiceOptions(state.hints.local_piper_voices || []);
+  document.getElementById('vibevoice-base-url').value = tts.vibevoice_base_url || state.hints.default_vibevoice_base_url || '';
+  document.getElementById('vibevoice-voice').value = tts.vibevoice_voice || '';
+  document.getElementById('vibevoice-note').textContent = state.hints.vibevoice_note || '';
   syncElevenVoiceSelectionFromId();
+  syncPiperSelectionFromInput();
+  syncVibeVoiceSelectionFromInput();
+
+  const agent = state.saved.agent || {};
+  const agentLabels = Object.fromEntries((state.catalog.agent_backends || []).map((item) => [item.id, item.label]));
+  updateSelectOptions(
+    document.getElementById('agent-backend'),
+    (state.catalog.agent_backends || []).map((item) => item.id),
+    agentLabels,
+  );
+  document.getElementById('agent-backend').value = agent.backend || 'openclaw';
+  document.getElementById('agent-hermes-root').value = agent.hermes_root || state.hints.default_hermes_root || '';
 
   const gateway = state.saved.gateway;
   document.getElementById('gateway-url').value = gateway.url;
   document.getElementById('gateway-model').value = gateway.model;
   document.getElementById('gateway-session-key').value = gateway.session_key || state.hints.default_voice_session_key;
-  document.getElementById('gateway-note').textContent = `${state.hints.gateway_note} Default agent session: ${state.hints.default_voice_session_key}`;
+  renderConversationBackendControls();
+
+  const windowsClient = state.saved.windows_client || {};
+  const shortcuts = windowsClient.shortcuts || state.hints.default_windows_shortcuts || {};
+  document.getElementById('shortcut-toggle-window').value = shortcuts.toggle_window || '';
+  document.getElementById('shortcut-pause-resume').value = shortcuts.pause_resume || '';
+  document.getElementById('shortcut-interrupt').value = shortcuts.interrupt || '';
+  document.getElementById('windows-shortcuts-note').textContent = state.hints.windows_shortcuts_note || '';
   updateDeviceNotes();
   document.getElementById('launch-link').href = appUrl('');
   updateFlowVisibility();
@@ -735,6 +1265,22 @@ async function loadElevenVoices() {
   syncElevenVoiceSelectionFromId();
   return payload;
 }
+
+async function loadVibeVoiceVoices() {
+  setResult('vibevoice-result', 'Loading VibeVoice preset voices...');
+  const payload = await fetchJson(appUrl('api/setup/vibevoice-voices'), {
+    method: 'POST',
+    body: JSON.stringify({
+      base_url: document.getElementById('vibevoice-base-url').value,
+    }),
+  });
+  document.getElementById('vibevoice-base-url').value = payload.base_url || document.getElementById('vibevoice-base-url').value;
+  renderVibeVoiceOptions(payload.voices || []);
+  syncVibeVoiceSelectionFromInput();
+  setResult('vibevoice-result', `Loaded ${payload.voices.length} VibeVoice voices.`, true);
+  updateFlowVisibility();
+  return payload;
+}
 document.getElementById('stt-default').addEventListener('change', () => {
   updateBackendSpecificFields();
   updateFlowVisibility();
@@ -743,33 +1289,93 @@ document.getElementById('stt-language').addEventListener('change', updateFlowVis
 document.getElementById('stt-device').addEventListener('change', () => {
   applyRecommendedComputeType();
   updateDeviceNotes();
+  renderSttTargetControls();
   updateFlowVisibility();
 });
 document.getElementById('stt-compute-type').addEventListener('change', updateFlowVisibility);
-document.getElementById('model-faster-whisper').addEventListener('change', updateFlowVisibility);
-document.getElementById('model-whisper').addEventListener('change', updateFlowVisibility);
-document.getElementById('whisper-endpoint-url').addEventListener('input', updateFlowVisibility);
-document.getElementById('whisper-endpoint-model').addEventListener('input', updateFlowVisibility);
+document.getElementById('model-faster-whisper').addEventListener('change', () => {
+  renderSttTargetControls();
+  updateFlowVisibility();
+});
+document.getElementById('model-whisper').addEventListener('change', () => {
+  renderSttTargetControls();
+  updateFlowVisibility();
+});
+document.getElementById('whisper-endpoint-url').addEventListener('input', () => {
+  syncRememberedRemoteSttFromInputs();
+  renderSttTargetControls();
+  updateFlowVisibility();
+});
+document.getElementById('whisper-endpoint-model').addEventListener('input', () => {
+  syncRememberedRemoteSttFromInputs();
+  renderSttTargetControls();
+  updateFlowVisibility();
+});
+document.getElementById('stt-target-remote').addEventListener('click', () => {
+  applySttTarget('remote');
+});
+document.getElementById('stt-target-local-gpu').addEventListener('click', () => {
+  applySttTarget('local-gpu');
+});
 document.getElementById('tts-default').addEventListener('change', updateFlowVisibility);
 document.getElementById('edge-voice').addEventListener('change', updateFlowVisibility);
 document.getElementById('edge-rate').addEventListener('input', updateFlowVisibility);
+document.getElementById('piper-local-voice').addEventListener('change', () => {
+  const selected = localPiperVoices.find((voice) => voice.model_path === document.getElementById('piper-local-voice').value);
+  if (selected) {
+    document.getElementById('piper-model-path').value = selected.model_path;
+    document.getElementById('piper-config-path').value = selected.config_path || '';
+  }
+  updateFlowVisibility();
+});
+document.getElementById('piper-model-path').addEventListener('input', () => {
+  syncPiperSelectionFromInput();
+  updateFlowVisibility();
+});
+document.getElementById('piper-config-path').addEventListener('input', () => {
+  syncPiperSelectionFromInput();
+  updateFlowVisibility();
+});
+document.getElementById('piper-speaker').addEventListener('input', updateFlowVisibility);
+document.getElementById('chatterbox-model').addEventListener('change', updateFlowVisibility);
+document.getElementById('chatterbox-device').addEventListener('change', updateFlowVisibility);
+document.getElementById('chatterbox-voice').addEventListener('change', updateFlowVisibility);
+document.getElementById('chatterbox-language').addEventListener('input', updateFlowVisibility);
 document.getElementById('eleven-api-key').addEventListener('input', updateFlowVisibility);
 document.getElementById('eleven-model').addEventListener('input', updateFlowVisibility);
 document.getElementById('eleven-preset').addEventListener('change', updateFlowVisibility);
+document.getElementById('vibevoice-base-url').addEventListener('input', updateFlowVisibility);
 document.getElementById('eleven-voice-select').addEventListener('change', () => {
   const selected = elevenVoices.find((voice) => voice.voice_id === document.getElementById('eleven-voice-select').value);
   document.getElementById('eleven-voice-id').value = selected ? selected.voice_id : '';
   document.getElementById('eleven-voice-name').value = selected ? selected.name : '';
   updateFlowVisibility();
 });
+document.getElementById('vibevoice-voice-select').addEventListener('change', () => {
+  const selected = vibevoiceVoices.find((voice) => voice.voice_id === document.getElementById('vibevoice-voice-select').value);
+  document.getElementById('vibevoice-voice').value = selected ? selected.voice_id : '';
+  updateFlowVisibility();
+});
 document.getElementById('eleven-voice-id').addEventListener('input', () => {
   syncElevenVoiceSelectionFromId();
   updateFlowVisibility();
 });
+document.getElementById('vibevoice-voice').addEventListener('input', () => {
+  syncVibeVoiceSelectionFromInput();
+  updateFlowVisibility();
+});
+document.getElementById('agent-backend').addEventListener('change', () => {
+  renderConversationBackendControls();
+  updateFlowVisibility();
+});
+document.getElementById('agent-hermes-root').addEventListener('input', updateFlowVisibility);
 document.getElementById('gateway-url').addEventListener('input', updateFlowVisibility);
 document.getElementById('gateway-token').addEventListener('input', updateFlowVisibility);
 document.getElementById('gateway-model').addEventListener('input', updateFlowVisibility);
 document.getElementById('gateway-session-key').addEventListener('input', updateFlowVisibility);
+document.getElementById('shortcut-toggle-window').addEventListener('input', updateFlowVisibility);
+document.getElementById('shortcut-pause-resume').addEventListener('input', updateFlowVisibility);
+document.getElementById('shortcut-interrupt').addEventListener('input', updateFlowVisibility);
 
 document.getElementById('validate-stt').addEventListener('click', async () => {
   try {
@@ -812,7 +1418,7 @@ document.getElementById('validate-tts').addEventListener('click', async () => {
     });
     setResult('tts-result', `Saved TTS provider: ${payload.default_provider}`, true);
     await refreshState();
-    scrollToSection(payload.default_provider === 'edge' ? 'edge-section' : 'eleven-section');
+    scrollToSection(ttsProviderSectionId(payload.default_provider));
   } catch (error) {
     setResult('tts-result', error.message, false);
   }
@@ -837,6 +1443,52 @@ document.getElementById('validate-edge').addEventListener('click', async () => {
     scrollToSection('gateway-section');
   } catch (error) {
     setResult('edge-result', error.message, false);
+  }
+});
+
+document.getElementById('validate-piper').addEventListener('click', async () => {
+  try {
+    setResult('piper-result', 'Testing Piper voice...');
+    const payload = await fetchJson(appUrl('api/setup/validate-piper'), {
+      method: 'POST',
+      body: JSON.stringify({
+        model_path: document.getElementById('piper-model-path').value,
+        config_path: document.getElementById('piper-config-path').value,
+        speaker: document.getElementById('piper-speaker').value,
+      }),
+    });
+    document.getElementById('piper-model-path').value = payload.model_path;
+    document.getElementById('piper-config-path').value = payload.config_path;
+    document.getElementById('piper-speaker').value = String(payload.speaker ?? 0);
+    setResult('piper-result', `Validated Piper voice: ${payload.voice_name}.`, true);
+    await refreshState();
+    scrollToSection('gateway-section');
+  } catch (error) {
+    setResult('piper-result', error.message, false);
+  }
+});
+
+document.getElementById('validate-chatterbox').addEventListener('click', async () => {
+  try {
+    setResult('chatterbox-result', 'Testing Chatterbox...');
+    const payload = await fetchJson(appUrl('api/setup/validate-chatterbox'), {
+      method: 'POST',
+      body: JSON.stringify({
+        model: document.getElementById('chatterbox-model').value,
+        device: document.getElementById('chatterbox-device').value,
+        voice: document.getElementById('chatterbox-voice').value,
+        language: document.getElementById('chatterbox-language').value,
+      }),
+    });
+    document.getElementById('chatterbox-model').value = payload.model;
+    document.getElementById('chatterbox-device').value = payload.device;
+    document.getElementById('chatterbox-voice').value = payload.voice;
+    document.getElementById('chatterbox-language').value = payload.language;
+    setResult('chatterbox-result', `Validated ${payload.voice_name} on ${payload.device}.`, true);
+    await refreshState();
+    scrollToSection('gateway-section');
+  } catch (error) {
+    setResult('chatterbox-result', error.message, false);
   }
 });
 
@@ -889,20 +1541,59 @@ document.getElementById('validate-eleven-voice').addEventListener('click', async
   }
 });
 
-document.getElementById('validate-gateway').addEventListener('click', async () => {
+document.getElementById('load-vibevoice-voices').addEventListener('click', () => {
+  loadVibeVoiceVoices().catch((error) => setResult('vibevoice-result', error.message, false));
+});
+
+document.getElementById('validate-vibevoice').addEventListener('click', async () => {
   try {
-    setResult('gateway-result', 'Validating direct-agent gateway...');
-    const payload = await fetchJson(appUrl('api/setup/validate-gateway'), {
+    setResult('vibevoice-result', 'Validating VibeVoice preset voice...');
+    const payload = await fetchJson(appUrl('api/setup/validate-vibevoice'), {
       method: 'POST',
       body: JSON.stringify({
+        base_url: document.getElementById('vibevoice-base-url').value,
+        voice: document.getElementById('vibevoice-voice').value,
+      }),
+    });
+    document.getElementById('vibevoice-base-url').value = payload.base_url;
+    document.getElementById('vibevoice-voice').value = payload.voice_id;
+    syncVibeVoiceSelectionFromInput();
+    setResult('vibevoice-result', `Validated VibeVoice voice: ${payload.voice_name}.`, true);
+    await refreshState();
+    scrollToSection('gateway-section');
+  } catch (error) {
+    setResult('vibevoice-result', error.message, false);
+  }
+});
+
+document.getElementById('validate-gateway').addEventListener('click', async () => {
+  const backend = currentAgentBackend();
+  try {
+    setResult(
+      'gateway-result',
+      backend === 'hermes' ? 'Validating Hermes agent...' : 'Validating direct-agent gateway...',
+    );
+    const payload = await fetchJson(appUrl('api/setup/validate-agent'), {
+      method: 'POST',
+      body: JSON.stringify({
+        backend,
+        hermes_root: document.getElementById('agent-hermes-root').value,
         url: document.getElementById('gateway-url').value,
         token: document.getElementById('gateway-token').value,
         model: document.getElementById('gateway-model').value,
         session_key: document.getElementById('gateway-session-key').value,
       }),
     });
-    setResult('gateway-result', `Validated gateway reply: ${payload.reply_preview}`, true);
-    document.getElementById('gateway-token').value = '';
+    setResult(
+      'gateway-result',
+      backend === 'hermes'
+        ? `Validated Hermes reply: ${payload.reply_preview}`
+        : `Validated gateway reply: ${payload.reply_preview}`,
+      true,
+    );
+    if (backend === 'openclaw') {
+      document.getElementById('gateway-token').value = '';
+    }
     await refreshState();
     scrollToSection('launch-summary');
   } catch (error) {
@@ -910,12 +1601,32 @@ document.getElementById('validate-gateway').addEventListener('click', async () =
   }
 });
 
+document.getElementById('save-windows-shortcuts').addEventListener('click', async () => {
+  try {
+    setResult('windows-client-result', 'Saving Windows shortcuts...');
+    const payload = await fetchJson(appUrl('api/setup/validate-windows-client'), {
+      method: 'POST',
+      body: JSON.stringify(currentWindowsShortcutValues()),
+    });
+    document.getElementById('shortcut-toggle-window').value = payload.shortcuts.toggle_window;
+    document.getElementById('shortcut-pause-resume').value = payload.shortcuts.pause_resume;
+    document.getElementById('shortcut-interrupt').value = payload.shortcuts.interrupt;
+    setResult('windows-client-result', 'Windows shortcuts saved.', true);
+    await refreshState();
+  } catch (error) {
+    setResult('windows-client-result', error.message, false);
+  }
+});
+
 document.getElementById('continue-stt').addEventListener('click', () => scrollToSection('tts-section'));
 document.getElementById('continue-tts').addEventListener('click', () => {
-  scrollToSection(currentTtsProvider() === 'edge' ? 'edge-section' : 'eleven-section');
+  scrollToSection(ttsProviderSectionId(currentTtsProvider()));
 });
 document.getElementById('continue-edge').addEventListener('click', () => scrollToSection('gateway-section'));
+document.getElementById('continue-piper').addEventListener('click', () => scrollToSection('gateway-section'));
 document.getElementById('continue-eleven').addEventListener('click', () => scrollToSection('gateway-section'));
+document.getElementById('continue-chatterbox').addEventListener('click', () => scrollToSection('gateway-section'));
+document.getElementById('continue-vibevoice').addEventListener('click', () => scrollToSection('gateway-section'));
 document.getElementById('continue-gateway').addEventListener('click', () => scrollToSection('launch-summary'));
 
 refreshState()
@@ -925,6 +1636,9 @@ refreshState()
     }
     if (!elevenVoices.length && setupState.saved.tts.elevenlabs_api_key_present && setupState.saved.tts.default_provider === 'elevenlabs' && !document.getElementById('eleven-section').classList.contains('hidden')) {
       loadElevenVoices().catch(() => {});
+    }
+    if (!vibevoiceVoices.length && setupState.saved.tts.default_provider === 'vibevoice' && !document.getElementById('vibevoice-section').classList.contains('hidden')) {
+      loadVibeVoiceVoices().catch(() => {});
     }
   })
   .catch((error) => {

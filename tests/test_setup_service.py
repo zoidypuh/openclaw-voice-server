@@ -1,6 +1,9 @@
 import asyncio
 
+import pytest
+
 from openclaw_voice_server.config_store import ConfigStore
+from openclaw_voice_server.errors import ValidationError
 from openclaw_voice_server.setup_service import SetupService
 
 
@@ -94,6 +97,78 @@ def test_elevenlabs_voices_uses_saved_secret(tmp_path, monkeypatch):
     assert result == {"ok": True, "voices": [{"voice_id": "voice-abc", "name": "Saved Voice"}]}
 
 
+def test_validate_piper_persists_resolved_config(tmp_path, monkeypatch):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+    resolved_model = str((tmp_path / "voice.onnx").resolve())
+    resolved_config = str((tmp_path / "voice.onnx.json").resolve())
+
+    async def fake_validate_piper(*, model_path, config_path, speaker):
+        assert model_path == resolved_model
+        assert config_path == ""
+        assert speaker == 2
+        return {
+            "ok": True,
+            "model_path": resolved_model,
+            "config_path": resolved_config,
+            "speaker": 2,
+            "voice_name": "voice.onnx",
+        }
+
+    monkeypatch.setattr("openclaw_voice_server.setup_service.normalize_piper_model_path", lambda value: resolved_model)
+    monkeypatch.setattr("openclaw_voice_server.setup_service.validate_piper_voice_step", fake_validate_piper)
+
+    result = asyncio.run(
+        service.validate_piper(
+            {
+                "model_path": "/tmp/voice.onnx",
+                "config_path": "",
+                "speaker": "2",
+            }
+        )
+    )
+    saved = store.load_config()
+
+    assert result["ok"] is True
+    assert saved["tts"]["piper_model_path"] == resolved_model
+    assert saved["tts"]["piper_config_path"] == resolved_config
+    assert saved["tts"]["piper_speaker"] == 2
+    assert saved["validation"]["piper"]["config_hash"]
+
+
+def test_validate_chatterbox_persists_resolved_settings(tmp_path, monkeypatch):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+    store.update_config({"stt": {"language": "de"}})
+
+    async def fake_validate_chatterbox(*, model, device, language, voice):
+        assert model == "multilingual"
+        assert device == "auto"
+        assert language == "de"
+        assert voice == "mara"
+        return {
+            "ok": True,
+            "model": "multilingual",
+            "device": "cpu",
+            "language": "de",
+            "voice": "mara",
+            "voice_name": "Mara",
+        }
+
+    monkeypatch.setattr("openclaw_voice_server.setup_service.validate_chatterbox_voice_step", fake_validate_chatterbox)
+    monkeypatch.setattr("openclaw_voice_server.setup_service.resolve_chatterbox_voice", lambda value: (value or "default").strip())
+
+    result = asyncio.run(service.validate_chatterbox({"model": "multilingual", "device": "auto", "voice": "mara", "language": ""}))
+    saved = store.load_config()
+
+    assert result["ok"] is True
+    assert saved["tts"]["chatterbox_model"] == "multilingual"
+    assert saved["tts"]["chatterbox_device"] == "cpu"
+    assert saved["tts"]["chatterbox_language"] == "de"
+    assert saved["tts"]["chatterbox_voice"] == "mara"
+    assert saved["validation"]["chatterbox"]["config_hash"]
+
+
 def test_validate_gateway_saves_secret_and_config(tmp_path, monkeypatch):
     store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
     service = SetupService(store)
@@ -124,10 +199,53 @@ def test_validate_gateway_saves_secret_and_config(tmp_path, monkeypatch):
     env_text = (tmp_path / ".env").read_text(encoding="utf-8")
 
     assert result["reply_preview"] == "OK"
+    assert saved["agent"]["backend"] == "openclaw"
     assert saved["gateway"]["url"] == "https://gateway.test.ts.net/v1/chat/completions"
     assert saved["gateway"]["session_key"] == "voice-main"
     assert "OPENCLAW_VOICE_GATEWAY_TOKEN=gw-secret" in env_text
     assert saved["validation"]["gateway"]["config_hash"]
+
+
+def test_validate_agent_saves_hermes_root_and_backend(tmp_path, monkeypatch):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+    resolved_root = str((tmp_path / "hermes-agent").resolve())
+    store.update_config(
+        {
+            "gateway": {
+                "url": "http://127.0.0.1:18789/v1/chat/completions",
+                "model": "openclaw:main",
+            }
+        }
+    )
+    store.update_secrets({"OPENCLAW_VOICE_GATEWAY_TOKEN": "gw-secret"})
+
+    async def fake_validate_hermes_connection(*, project_root, gateway_url, gateway_token, gateway_model):
+        assert project_root == "/tmp/hermes-agent"
+        assert gateway_url == "http://127.0.0.1:18789/v1/chat/completions"
+        assert gateway_token == "gw-secret"
+        assert gateway_model == "openclaw:main"
+        return {"ok": True, "project_root": resolved_root, "reply_preview": "OK"}
+
+    monkeypatch.setattr(
+        "openclaw_voice_server.setup_service.validate_hermes_connection",
+        fake_validate_hermes_connection,
+    )
+
+    result = asyncio.run(
+        service.validate_agent(
+            {
+                "backend": "hermes",
+                "hermes_root": "/tmp/hermes-agent",
+            }
+        )
+    )
+    saved = store.load_config()
+
+    assert result["backend"] == "hermes"
+    assert saved["agent"]["backend"] == "hermes"
+    assert saved["agent"]["hermes_root"] == resolved_root
+    assert saved["validation"]["hermes"]["config_hash"]
 
 
 def test_setup_state_requires_explicit_validation(tmp_path):
@@ -184,6 +302,66 @@ def test_setup_state_allows_remote_whisper_without_local_module(tmp_path, monkey
     state = service.state()
 
     assert state["status"]["stt_ready"] is True
+
+
+def test_setup_state_includes_default_remote_whisper_hint(tmp_path, monkeypatch):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+
+    monkeypatch.setattr(
+        service,
+        "_resolve_ssh_hostname",
+        lambda alias: "192.168.50.60",
+    )
+
+    state = service.state()
+
+    assert state["hints"]["default_remote_whisper_endpoint_url"] == "http://192.168.50.60:18000/v1/audio/transcriptions"
+    assert state["hints"]["default_remote_whisper_endpoint_model"] == ""
+    assert state["hints"]["remote_whisper_host_alias"] == "remote-whisper"
+
+
+def test_setup_state_ignores_unresolvable_default_remote_whisper_alias(tmp_path, monkeypatch):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+
+    monkeypatch.setattr(service, "_resolve_ssh_hostname", lambda alias: "remote-whisper")
+    monkeypatch.setattr(service, "_host_is_resolvable", lambda host: False)
+
+    state = service.state()
+
+    assert state["hints"]["default_remote_whisper_endpoint_url"] == ""
+
+
+def test_setup_state_detects_local_piper_voices(tmp_path):
+    voices_dir = tmp_path / "piper-voices"
+    voices_dir.mkdir()
+    model_path = voices_dir / "de_DE-demo.onnx"
+    config_path = voices_dir / "de_DE-demo.onnx.json"
+    model_path.write_bytes(b"fake-model")
+    config_path.write_text("{}", encoding="utf-8")
+
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+
+    state = service.state()
+
+    assert state["hints"]["default_piper_model_path"] == str(model_path.resolve())
+    assert state["hints"]["default_piper_config_path"] == str(config_path.resolve())
+    assert {
+        "voice_name": "de_DE-demo.onnx",
+        "model_path": str(model_path.resolve()),
+        "config_path": str(config_path.resolve()),
+        "source_dir": str(voices_dir.resolve()),
+    } in state["hints"]["local_piper_voices"]
+    assert state["hints"]["local_piper_voices"][0] == {
+        "voice_name": "de_DE-demo.onnx",
+        "model_path": str(model_path.resolve()),
+        "config_path": str(config_path.resolve()),
+        "source_dir": str(voices_dir.resolve()),
+    }
+    assert "not the Piper install directory" in state["hints"]["piper_note"]
+    assert str(voices_dir.resolve()) in state["hints"]["piper_note"]
 
 
 def test_runtime_ready_uses_live_config_even_if_stt_validation_is_stale(tmp_path, monkeypatch):
@@ -286,3 +464,268 @@ def test_runtime_ready_requires_provider_specific_live_config(tmp_path, monkeypa
     state = service.state()
 
     assert state["status"]["runtime_ready"] is False
+
+
+def test_runtime_ready_accepts_vibevoice_live_config(tmp_path, monkeypatch):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+    store.update_config(
+        {
+            "stt": {
+                "enabled_backends": ["whisper"],
+                "default_backend": "whisper",
+                "whisper_endpoint_url": "http://127.0.0.1:18000/v1/audio/transcriptions",
+            },
+            "tts": {
+                "enabled_providers": ["vibevoice"],
+                "default_provider": "vibevoice",
+                "vibevoice_base_url": "http://127.0.0.1:3000",
+                "vibevoice_voice": "en-Carter_man",
+            },
+            "gateway": {
+                "url": "http://127.0.0.1:18789/v1/chat/completions",
+                "model": "openclaw:main",
+                "session_key": "voice-main",
+            },
+            "validation": {
+                "tts": {
+                    "config_hash": service._config_hash(
+                        {"enabled_providers": ["vibevoice"], "default_provider": "vibevoice"}
+                    )
+                },
+                "vibevoice": {
+                    "config_hash": service._config_hash(
+                        {"base_url": "http://127.0.0.1:3000", "voice": "en-Carter_man"}
+                    )
+                },
+                "gateway": {
+                    "config_hash": service._config_hash(
+                        {
+                            "url": "http://127.0.0.1:18789/v1/chat/completions",
+                            "model": "openclaw:main",
+                            "session_key": "voice-main",
+                        }
+                    ),
+                    "token_fingerprint": service._fingerprint_secret("gw-secret"),
+                },
+            },
+        }
+    )
+    store.update_secrets({"OPENCLAW_VOICE_GATEWAY_TOKEN": "gw-secret"})
+
+    monkeypatch.setattr("openclaw_voice_server.setup_service.module_available", lambda import_name: True)
+
+    state = service.state()
+
+    assert state["status"]["vibevoice_ready"] is True
+    assert state["status"]["runtime_ready"] is True
+
+
+def test_runtime_ready_accepts_piper_live_config(tmp_path, monkeypatch):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+    store.update_config(
+        {
+            "stt": {
+                "enabled_backends": ["whisper"],
+                "default_backend": "whisper",
+                "whisper_endpoint_url": "http://127.0.0.1:18000/v1/audio/transcriptions",
+            },
+            "tts": {
+                "enabled_providers": ["piper"],
+                "default_provider": "piper",
+                "piper_model_path": "/voices/de-demo.onnx",
+                "piper_config_path": "/voices/de-demo.onnx.json",
+                "piper_speaker": 1,
+            },
+            "gateway": {
+                "url": "http://127.0.0.1:18789/v1/chat/completions",
+                "model": "openclaw:main",
+                "session_key": "voice-main",
+            },
+            "validation": {
+                "tts": {
+                    "config_hash": service._config_hash(
+                        {"enabled_providers": ["piper"], "default_provider": "piper"}
+                    )
+                },
+                "piper": {
+                    "config_hash": service._config_hash(
+                        {
+                            "model_path": "/voices/de-demo.onnx",
+                            "config_path": "/voices/de-demo.onnx.json",
+                            "speaker": 1,
+                        }
+                    )
+                },
+                "gateway": {
+                    "config_hash": service._config_hash(
+                        {
+                            "url": "http://127.0.0.1:18789/v1/chat/completions",
+                            "model": "openclaw:main",
+                            "session_key": "voice-main",
+                        }
+                    ),
+                    "token_fingerprint": service._fingerprint_secret("gw-secret"),
+                },
+            },
+        }
+    )
+    store.update_secrets({"OPENCLAW_VOICE_GATEWAY_TOKEN": "gw-secret"})
+
+    monkeypatch.setattr(
+        "openclaw_voice_server.setup_service.module_available",
+        lambda import_name: import_name == "piper",
+    )
+
+    state = service.state()
+
+    assert state["status"]["piper_ready"] is True
+    assert state["status"]["runtime_ready"] is True
+
+
+def test_runtime_ready_accepts_chatterbox_live_config(tmp_path, monkeypatch):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+    store.update_config(
+        {
+            "stt": {
+                "enabled_backends": ["whisper"],
+                "default_backend": "whisper",
+                "whisper_endpoint_url": "http://127.0.0.1:18000/v1/audio/transcriptions",
+            },
+            "tts": {
+                "enabled_providers": ["chatterbox"],
+                "default_provider": "chatterbox",
+                "chatterbox_model": "multilingual",
+                "chatterbox_device": "cpu",
+                "chatterbox_language": "de",
+                "chatterbox_voice": "mara",
+            },
+            "gateway": {
+                "url": "http://127.0.0.1:18789/v1/chat/completions",
+                "model": "openclaw:main",
+                "session_key": "voice-main",
+            },
+            "validation": {
+                "tts": {
+                    "config_hash": service._config_hash(
+                        {"enabled_providers": ["chatterbox"], "default_provider": "chatterbox"}
+                    )
+                },
+                "chatterbox": {
+                    "config_hash": service._config_hash(
+                        {"model": "multilingual", "device": "cpu", "language": "de", "voice": "mara"}
+                    )
+                },
+                "gateway": {
+                    "config_hash": service._config_hash(
+                        {
+                            "url": "http://127.0.0.1:18789/v1/chat/completions",
+                            "model": "openclaw:main",
+                            "session_key": "voice-main",
+                        }
+                    ),
+                    "token_fingerprint": service._fingerprint_secret("gw-secret"),
+                },
+            },
+        }
+    )
+    store.update_secrets({"OPENCLAW_VOICE_GATEWAY_TOKEN": "gw-secret"})
+
+    monkeypatch.setattr("openclaw_voice_server.setup_service.module_available", lambda import_name: True)
+
+    state = service.state()
+
+    assert state["status"]["chatterbox_ready"] is True
+    assert state["status"]["runtime_ready"] is True
+
+
+def test_runtime_ready_accepts_hermes_live_config(tmp_path, monkeypatch):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+    hermes_root = tmp_path / "hermes-agent"
+    python_bin = hermes_root / "venv" / "bin"
+    python_bin.mkdir(parents=True)
+    (python_bin / "python").write_text("", encoding="utf-8")
+    store.update_config(
+        {
+            "agent": {
+                "backend": "hermes",
+                "hermes_root": str(hermes_root.resolve()),
+            },
+            "stt": {
+                "enabled_backends": ["whisper"],
+                "default_backend": "whisper",
+                "whisper_endpoint_url": "http://127.0.0.1:18000/v1/audio/transcriptions",
+            },
+            "tts": {
+                "enabled_providers": ["edge"],
+                "default_provider": "edge",
+                "edge_voice": "en-US-AvaNeural",
+            },
+            "validation": {
+                "edge": {
+                    "config_hash": service._config_hash(
+                        {"voice": "en-US-AvaNeural", "rate": "+0%"}
+                    )
+                },
+                "tts": {
+                    "config_hash": service._config_hash(
+                        {"enabled_providers": ["edge"], "default_provider": "edge"}
+                    )
+                },
+                "hermes": {
+                    "config_hash": service._config_hash(
+                        {"hermes_root": str(hermes_root.resolve())}
+                    )
+                },
+            },
+        }
+    )
+
+    monkeypatch.setattr("openclaw_voice_server.setup_service.module_available", lambda import_name: True)
+
+    state = service.state()
+
+    assert state["status"]["hermes_ready"] is True
+    assert state["status"]["runtime_ready"] is True
+
+
+def test_validate_windows_client_normalizes_and_persists_shortcuts(tmp_path):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+
+    result = service.validate_windows_client(
+        {
+            "toggle_window": "control + shift + space",
+            "pause_resume": "ctrl + shift + keyp",
+            "interrupt": "alt + ctrl + a",
+        }
+    )
+    saved = store.load_config()
+
+    assert result == {
+        "ok": True,
+        "shortcuts": {
+            "toggle_window": "Ctrl+Shift+Space",
+            "pause_resume": "Ctrl+Shift+P",
+            "interrupt": "Ctrl+Alt+A",
+        },
+    }
+    assert saved["windows_client"]["shortcuts"] == result["shortcuts"]
+    assert saved["validation"]["windows_client"]["config_hash"]
+
+
+def test_validate_windows_client_rejects_duplicate_shortcuts(tmp_path):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+
+    with pytest.raises(ValidationError, match="Windows client shortcuts must be unique."):
+        service.validate_windows_client(
+            {
+                "toggle_window": "Ctrl+Shift+Space",
+                "pause_resume": "Ctrl+Shift+Space",
+                "interrupt": "Ctrl+Alt+A",
+            }
+        )

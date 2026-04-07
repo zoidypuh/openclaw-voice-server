@@ -16,30 +16,38 @@ _COMMON_NOISE = {
     "bis zum naechsten mal",
     "bis zum nächsten mal",
 }
+_POLITE_NOISE_WORDS = {"vielen", "dank", "danke", "schoen", "schön"}
 _COMMAND_KEYWORDS = {
     "de": {
-        "interrupt": {"stopp"},
+        "interrupt": {"stopp", "halt"},
+        "hold": {"warte"},
         "pause": {"pause", "pausieren"},
         "send_phrases": ("hey los", "los"),
     },
     "en": {
         "interrupt": {"stop"},
+        "hold": set(),
         "pause": {"pause"},
         "send_phrases": ("hey go", "go"),
     },
 }
 _TRAILING_FILLERS = {"bitte", "danke", "jetzt", "okay", "ok", "mal", "kurz"}
-_LEADING_FILLERS = {"hey", "ok", "okay", "bitte", "bonnie", "clyde"}
+_LEADING_FILLERS = {"hey", "ok", "okay", "bitte", "assistant", "agent"}
 
 _SENTENCE_BOUNDARY_RE = re.compile(r"[.!?—](?:\s|$)")
 _EARLY_BREAK_RE = re.compile(r"[,;:](?:\s|$)")
+_ORDERED_LIST_MARKER_RE = re.compile(r"(?:(?<=^)|(?<=\n)|(?<=\r)|(?<=\s))(?P<number>\d+)\.\s+")
 _VOICE_STYLE_RE = re.compile(
     r"^\s*\[(?:voice\s*[:=]\s*)?(?P<style>" + "|".join(ELEVENLABS_PRESETS.keys()) + r")\]\s*",
     re.IGNORECASE,
 )
+_SPEAKER_DIRECTIVE_RE = re.compile(r"^\s*\[(?P<speaker>[A-Za-z][A-Za-z0-9_-]{0,31})\]\s*")
+_DEFAULT_SPEAKER_DIRECTIVES = {"speaker-a", "speaker-b"}
 
 
 def strip_markdown(text: str) -> str:
+    if len(_ORDERED_LIST_MARKER_RE.findall(text)) >= 2:
+        text = _ORDERED_LIST_MARKER_RE.sub(lambda match: f'{match.group("number")} ', text)
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
     text = re.sub(r"\*(.+?)\*", r"\1", text)
     text = re.sub(r"__(.+?)__", r"\1", text)
@@ -47,6 +55,7 @@ def strip_markdown(text: str) -> str:
     text = re.sub(r"`(.+?)`", r"\1", text)
     text = re.sub(r"#{1,6}\s*", "", text)
     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+    text = text.replace("*", "")
     text = re.sub(r"[\U0001F600-\U0001FAFF]", "", text)
     return text.strip()
 
@@ -61,6 +70,65 @@ def extract_voice_style_directive(text: str) -> tuple[str | None, str, bool]:
     if stripped.startswith("[") and "]" not in stripped and len(stripped) < 48:
         return None, text, True
     return None, text, False
+
+
+def extract_speaker_directive(
+    text: str,
+    *,
+    allowed_speakers: set[str] | None = None,
+) -> tuple[str | None, str, bool]:
+    allowed = {str(item or "").strip().lower() for item in (allowed_speakers or set()) if str(item or "").strip()}
+    allowed.update(_DEFAULT_SPEAKER_DIRECTIVES)
+
+    match = _SPEAKER_DIRECTIVE_RE.match(text)
+    if match:
+        speaker = match.group("speaker").lower()
+        if speaker in allowed:
+            return speaker, text[match.end() :], False
+
+    stripped = text.lstrip()
+    if stripped.startswith("[") and "]" not in stripped and len(stripped) < 48:
+        return None, text, True
+    return None, text, False
+
+
+def extract_speech_directives(
+    text: str,
+    *,
+    allowed_speakers: set[str] | None = None,
+) -> tuple[str | None, str | None, str, bool]:
+    speaker_name: str | None = None
+    preset_name: str | None = None
+    remaining = text
+
+    for _ in range(4):
+        consumed = False
+
+        if speaker_name is None:
+            speaker_name, next_text, waiting = extract_speaker_directive(
+                remaining,
+                allowed_speakers=allowed_speakers,
+            )
+            if waiting:
+                return speaker_name, preset_name, remaining, True
+            if speaker_name is not None:
+                remaining = next_text
+                consumed = True
+                continue
+
+        if preset_name is None:
+            preset_name, next_text, waiting = extract_voice_style_directive(remaining)
+            if waiting:
+                return speaker_name, preset_name, remaining, True
+            if preset_name is not None:
+                remaining = next_text
+                consumed = True
+                continue
+
+        if not consumed:
+            break
+
+    return speaker_name, preset_name, remaining, False
 
 
 def normalize_voice_text(text: str) -> str:
@@ -93,6 +161,17 @@ def _trim_control_fillers(words: list[str]) -> list[str]:
     return trimmed
 
 
+def _trim_transcript_fillers(words: list[str]) -> list[str]:
+    trimmed = list(words)
+    while trimmed and trimmed[0] in _LEADING_FILLERS:
+        trimmed.pop(0)
+    return trimmed
+
+
+def _is_polite_noise_transcript(words: list[str]) -> bool:
+    return bool(words) and all(word in _POLITE_NOISE_WORDS for word in words)
+
+
 def should_drop_stt_false_positive(text: str, duration: float, min_duration: float) -> bool:
     normalized = normalize_voice_text(text)
     if not normalized:
@@ -117,11 +196,23 @@ def should_drop_voice_transcript(
     if detect_voice_control_command(text, language=command_language):
         return False
 
-    if should_drop_stt_false_positive(text, duration, min_duration):
+    normalized = normalize_voice_text(text)
+    if not normalized:
         return True
 
-    normalized = normalize_voice_text(text)
-    words = _trim_control_fillers(normalized.split())
+    # Keep short polite phrases like "Danke" on committed turns unless the
+    # captured clip was genuinely very short, which is where these phrases tend
+    # to show up as STT false positives.
+    if normalized in _COMMON_NOISE and duration < min_duration:
+        return True
+
+    # Whisper commonly hallucinates polite stock phrases on long low-information
+    # captures. Keep short real "Danke" turns, but drop suspiciously long turns
+    # that resolve to nothing except these polite noise words.
+    if duration >= 4.0 and _is_polite_noise_transcript(normalized.split()):
+        return True
+
+    words = _trim_transcript_fillers(normalized.split())
     if not words:
         return True
     return len(words) < max(1, min_words)
@@ -151,15 +242,21 @@ def detect_voice_control_command(text: str, *, language: str | None = None) -> s
     if not normalized:
         return None
     words = _trim_control_fillers(normalized.split())
-    if not words or len(words) > 3:
+    if not words:
         return None
     resolved = resolve_command_language(language)
     if resolved is None:
+        hold_words = set().union(*(keywords["hold"] for keywords in _COMMAND_KEYWORDS.values()))
         pause_words = set().union(*(keywords["pause"] for keywords in _COMMAND_KEYWORDS.values()))
         interrupt_words = set().union(*(keywords["interrupt"] for keywords in _COMMAND_KEYWORDS.values()))
     else:
+        hold_words = _COMMAND_KEYWORDS[resolved]["hold"]
         pause_words = _COMMAND_KEYWORDS[resolved]["pause"]
         interrupt_words = _COMMAND_KEYWORDS[resolved]["interrupt"]
+    if words[0] in hold_words or words[-1] in hold_words:
+        return "hold"
+    if len(words) > 3:
+        return None
     if any(word in pause_words for word in words):
         return "pause"
     if any(word in interrupt_words for word in words):
@@ -169,6 +266,34 @@ def detect_voice_control_command(text: str, *, language: str | None = None) -> s
 
 def should_cancel_voice_input(text: str, *, language: str | None = None) -> bool:
     return detect_voice_control_command(text, language=language) == "interrupt"
+
+
+def remaining_voice_text_after_command(
+    text: str,
+    action: str | None,
+    *,
+    language: str | None = None,
+) -> str:
+    normalized = normalize_voice_text(text)
+    if not normalized:
+        return ""
+
+    words = _trim_control_fillers(normalized.split())
+    if not words or not action:
+        return " ".join(words)
+
+    resolved = resolve_command_language(language)
+    if resolved is None:
+        command_words = set().union(*(keywords.get(action, set()) for keywords in _COMMAND_KEYWORDS.values()))
+    else:
+        command_words = _COMMAND_KEYWORDS[resolved].get(action, set())
+
+    while words and words[0] in command_words:
+        words.pop(0)
+    while words and words[-1] in command_words:
+        words.pop()
+    words = _trim_control_fillers(words)
+    return " ".join(words)
 
 
 def _within_edit_distance_one(source: str, target: str) -> bool:

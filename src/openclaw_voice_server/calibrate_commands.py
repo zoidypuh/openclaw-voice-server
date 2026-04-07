@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .config_store import ConfigStore
-from .providers import build_transcriber
+from .stt import build_transcriber
 from .runtime import VoiceRuntime
 from .text import detect_voice_control_command, split_send_phrase
 
