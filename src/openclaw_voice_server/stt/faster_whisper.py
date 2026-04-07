@@ -52,7 +52,7 @@ class FasterWhisperTranscriber(BaseTranscriber):
         duration = len(samples) / 16000
         transcribe_kwargs = {
             "language": self.language,
-            "beam_size": 1,
+            "beam_size": 5,
             "condition_on_previous_text": False,
         }
         if self.vad_filter:
