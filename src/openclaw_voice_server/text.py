@@ -12,9 +12,28 @@ _COMMON_NOISE = {
     "you tschuess",
     "you tschuss",
     "you tschüss",
+    "tschuess",
+    "tschuss",
+    "tschüss",
     "untertitel im auftrag des zdf",
     "bis zum naechsten mal",
     "bis zum nächsten mal",
+    "vielen dank für's zuschauen",
+    "vielen dank fürs zuschauen",
+    "ich habe nicht gesagt",
+}
+
+# Always-drop hallucinations — these are never real user input.
+_ALWAYS_DROP = {
+    "vielen dank",
+    "tschüss",
+    "tschuss",
+    "tschuess",
+    "bis zum nächsten mal",
+    "bis zum naechsten mal",
+    "untertitel im auftrag des zdf",
+    "vielen dank für's zuschauen",
+    "vielen dank fürs zuschauen",
 }
 _POLITE_NOISE_WORDS = {"vielen", "dank", "danke", "schoen", "schön"}
 _COMMAND_KEYWORDS = {
@@ -200,9 +219,10 @@ def should_drop_voice_transcript(
     if not normalized:
         return True
 
-    # Keep short polite phrases like "Danke" on committed turns unless the
-    # captured clip was genuinely very short, which is where these phrases tend
-    # to show up as STT false positives.
+    # Hard hallucination blacklist — always drop, regardless of duration.
+    if normalized in _ALWAYS_DROP:
+        return True
+
     if normalized in _COMMON_NOISE and duration < min_duration:
         return True
 
