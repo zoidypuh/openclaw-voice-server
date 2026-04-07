@@ -50,6 +50,14 @@ class FasterWhisperTranscriber(BaseTranscriber):
         self.load()
         samples = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
         duration = len(samples) / 16000
+
+        # Fast Silero VAD pre-check: skip Whisper entirely if no speech detected.
+        from .silero_vad import audio_contains_speech
+
+        if not audio_contains_speech(audio_bytes):
+            LOGGER.debug("Silero VAD: no speech detected, skipping Whisper")
+            return TranscriptionResult(text="", duration_seconds=duration)
+
         transcribe_kwargs = {
             "language": self.language,
             "beam_size": 5,

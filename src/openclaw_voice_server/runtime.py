@@ -265,6 +265,18 @@ class VoiceRuntime:
         if len(audio_bytes) < 1600:
             return web.json_response({"ok": True, "matched": False, "heard": ""})
 
+        # Fast Silero VAD pre-check: skip full Whisper if no speech detected.
+        from .stt.silero_vad import audio_contains_speech
+
+        loop = asyncio.get_running_loop()
+        has_speech = await loop.run_in_executor(
+            None, audio_contains_speech, audio_bytes,
+        )
+        if not has_speech:
+            return web.json_response(
+                {"ok": True, "matched": False, "action": "", "heard": "", "content": "", "usable_speech": False}
+            )
+
         transcriber = await self._get_interrupt_transcriber()
         command_language = self.store.load_runtime_settings()["stt"].get("language", "")
         loop = asyncio.get_running_loop()
