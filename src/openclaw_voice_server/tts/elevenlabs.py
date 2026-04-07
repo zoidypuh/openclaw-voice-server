@@ -95,10 +95,7 @@ class ElevenLabsSynthesizer(BaseSynthesizer):
             )
         if response.status_code >= 400:
             raise ValidationError(_http_error_message(response))
-        audio = response.content
-        if audio:
-            _archive_elevenlabs_audio(audio, voice_id=resolved_voice_id, text=text)
-        return audio
+        return response.content
 
 
 async def list_elevenlabs_voices(api_key: str) -> list[dict]:

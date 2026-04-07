@@ -18,12 +18,19 @@ LOGGER = logging.getLogger(__name__)
 
 
 def configure_logging() -> None:
+    from rich.logging import RichHandler
+
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s",
+        format="%(message)s",
         datefmt="%H:%M:%S",
+        handlers=[RichHandler(rich_tracebacks=True, show_path=False, markup=True)],
     )
     logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
+    # Silence noisy loggers
+    logging.getLogger("faster_whisper").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 def _static_dir() -> Path:

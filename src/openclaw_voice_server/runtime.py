@@ -624,24 +624,21 @@ class VoiceRuntime:
             audio_settings = settings.get("audio", {})
             min_duration = max(float(audio_settings.get("min_speech_ms", 500) or 500) / 1000.0, 0.0)
             if should_drop_voice_transcript(text, duration, min_duration=min_duration, command_language=command_language):
-                LOGGER.info(
-                    "[%s] VAD ignored noise/too-short input (%s, stt=%s): %s",
-                    turn.turn_id,
-                    _format_elapsed(duration),
-                    _format_elapsed(turn.stt_seconds),
+                LOGGER.debug(
+                    "[dim]dropped: %s (%s)[/dim]",
                     _summarize_text(text),
+                    _format_elapsed(duration),
                 )
                 await ws.send_json({"status": "idle"})
                 return
 
             turn.transcript = text
             LOGGER.info(
-                "[%s] speech input detected (%s)",
-                turn.turn_id,
+                "[bold cyan]🎤 %s[/bold cyan]  [dim]stt=%s  audio=%s[/dim]",
+                _summarize_text(turn.transcript),
+                _format_elapsed(turn.stt_seconds),
                 _format_elapsed(turn.speech_duration_seconds),
             )
-            LOGGER.info("[%s] transcript: %s", turn.turn_id, _summarize_text(turn.transcript))
-            LOGGER.info("[%s] stt took %s", turn.turn_id, _format_elapsed(turn.stt_seconds))
 
             speaking_started = False
             reply_style: str | None = None
@@ -690,13 +687,12 @@ class VoiceRuntime:
                 if turn.first_audio_seconds is None:
                     turn.first_audio_seconds = time.perf_counter() - turn.started_at
                     LOGGER.info(
-                        "[%s] ttft was %s | tts first chunk %s | first chunk arrived in %s",
-                        turn.turn_id,
+                        "[bold green]🔊 %s[/bold green]  [dim]llm=%s  tts=%s  total=%s[/dim]",
+                        _summarize_text(turn.reply_chunks[0]),
                         _format_elapsed(turn.ttft_seconds),
                         _format_elapsed(turn.first_tts_seconds),
                         _format_elapsed(turn.first_audio_seconds),
                     )
-                    LOGGER.info("[%s] first chunk: %s", turn.turn_id, turn.reply_chunks[0])
 
             async for chunk in conversation_agent.stream_reply(text, task_abort_event):
                 if task_abort_event.is_set():
@@ -737,16 +733,15 @@ class VoiceRuntime:
                 await send_reply_chunk(intro_buffer)
             if task_abort_event.is_set():
                 return
+            total_elapsed = time.perf_counter() - turn.started_at
             if turn.reply_chunks:
-                LOGGER.info("[%s] reply || %s", turn.turn_id, " || ".join(turn.reply_chunks))
+                LOGGER.info(
+                    "[dim]── roundtrip %s  tts_total=%s ──[/dim]",
+                    _format_elapsed(total_elapsed),
+                    _format_elapsed(turn.total_tts_seconds),
+                )
             else:
-                LOGGER.info("[%s] reply was empty", turn.turn_id)
-            LOGGER.info(
-                "[%s] total roundtrip %s | tts total %s",
-                turn.turn_id,
-                _format_elapsed(time.perf_counter() - turn.started_at),
-                _format_elapsed(turn.total_tts_seconds),
-            )
+                LOGGER.info("[yellow]⚠ empty reply[/yellow]  [dim]roundtrip %s[/dim]", _format_elapsed(total_elapsed))
             await ws.send_json({"status": "idle"})
 
         async def cancel_active_task(*, send_idle: bool) -> None:
