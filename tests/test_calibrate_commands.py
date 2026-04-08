@@ -1,7 +1,7 @@
 import wave
 from pathlib import Path
 
-from openclaw_voice_server.calibrate_commands import _expand_paths, _read_wav_pcm16, resolve_command_action
+from agent_switchboard.calibrate_commands import _expand_paths, _read_wav_pcm16, resolve_command_action
 
 
 def test_resolve_command_action_detects_interrupt():

@@ -408,10 +408,10 @@ let settings = {
   min_speech_ms: 500,
 };
 
-const TUNING_STORAGE_KEY = 'openclaw.voice.tuning.v1';
-const TUNING_PANEL_STORAGE_KEY = 'openclaw.voice.tuning-panel.v1';
-const INTERRUPT_MODE_STORAGE_KEY = 'openclaw.voice.interrupt-mode.v1';
-const INTERRUPT_PANEL_STORAGE_KEY = 'openclaw.voice.interrupt-panel.v1';
+const TUNING_STORAGE_KEY = 'agent-switchboard.voice.tuning.v1';
+const TUNING_PANEL_STORAGE_KEY = 'agent-switchboard.voice.tuning-panel.v1';
+const INTERRUPT_MODE_STORAGE_KEY = 'agent-switchboard.voice.interrupt-mode.v1';
+const INTERRUPT_PANEL_STORAGE_KEY = 'agent-switchboard.voice.interrupt-panel.v1';
 const DEFAULT_TUNING = {
   inputThresholdDb: -41,
   waitAfterSpeakMs: 1700,
@@ -2334,8 +2334,8 @@ setState('paused');
 configureSetupLink();
 configureTuningControls();
 updateControlStates();
-window.__openclawManualInterrupt = manualInterrupt;
-window.__openclawToggleVoiceInterrupt = () => setInterruptMode(
+window.__agentSwitchboardManualInterrupt = manualInterrupt;
+window.__agentSwitchboardToggleVoiceInterrupt = () => setInterruptMode(
   interruptMode === 'off' ? 'barge-in' : (interruptMode === 'barge-in' ? 'keyword' : 'off')
 );
 startShellStatusHeartbeat();

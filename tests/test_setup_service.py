@@ -2,9 +2,9 @@ import asyncio
 
 import pytest
 
-from openclaw_voice_server.config_store import ConfigStore
-from openclaw_voice_server.errors import ValidationError
-from openclaw_voice_server.setup_service import SetupService
+from agent_switchboard.config_store import ConfigStore
+from agent_switchboard.errors import ValidationError
+from agent_switchboard.setup_service import SetupService
 
 
 def test_validate_stt_persists_validated_selection(tmp_path, monkeypatch):
@@ -12,7 +12,7 @@ def test_validate_stt_persists_validated_selection(tmp_path, monkeypatch):
     service = SetupService(store)
 
     monkeypatch.setattr(
-        "openclaw_voice_server.setup_service.validate_stt_selection_step",
+        "agent_switchboard.setup_service.validate_stt_selection_step",
         lambda settings: {"ok": True, "results": [{"backend": "faster-whisper", "model": "large-v3"}]},
     )
 
@@ -57,9 +57,9 @@ def test_validate_elevenlabs_key_and_voice_save_to_split_storage(tmp_path, monke
         assert preset_name == "expressive"
         return {"ok": True, "voice_id": voice_id, "voice_name": "Resolved Voice"}
 
-    monkeypatch.setattr("openclaw_voice_server.setup_service.validate_elevenlabs_api_key_step", fake_validate_key)
-    monkeypatch.setattr("openclaw_voice_server.setup_service.list_elevenlabs_voices", fake_list_voices)
-    monkeypatch.setattr("openclaw_voice_server.setup_service.validate_elevenlabs_voice_step", fake_validate_voice)
+    monkeypatch.setattr("agent_switchboard.setup_service.validate_elevenlabs_api_key_step", fake_validate_key)
+    monkeypatch.setattr("agent_switchboard.setup_service.list_elevenlabs_voices", fake_list_voices)
+    monkeypatch.setattr("agent_switchboard.setup_service.validate_elevenlabs_voice_step", fake_validate_voice)
 
     key_result = asyncio.run(service.validate_elevenlabs_key({"api_key": "sk-test"}))
     asyncio.run(
@@ -72,7 +72,7 @@ def test_validate_elevenlabs_key_and_voice_save_to_split_storage(tmp_path, monke
     saved = store.load_config()
 
     assert key_result["voices"] == [{"voice_id": "voice-123", "name": "Resolved Voice"}]
-    assert "OPENCLAW_VOICE_ELEVENLABS_API_KEY=sk-test" in env_text
+    assert "AGENT_SWITCHBOARD_ELEVENLABS_API_KEY=sk-test" in env_text
     assert saved["tts"]["elevenlabs_voice_id"] == "voice-123"
     assert saved["tts"]["elevenlabs_voice_name"] == "Resolved Voice"
     assert saved["tts"]["elevenlabs_model"] == "eleven-model"
@@ -84,13 +84,13 @@ def test_validate_elevenlabs_key_and_voice_save_to_split_storage(tmp_path, monke
 def test_elevenlabs_voices_uses_saved_secret(tmp_path, monkeypatch):
     store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
     service = SetupService(store)
-    store.update_secrets({"OPENCLAW_VOICE_ELEVENLABS_API_KEY": "sk-saved"})
+    store.update_secrets({"AGENT_SWITCHBOARD_ELEVENLABS_API_KEY": "sk-saved"})
 
     async def fake_list_voices(api_key):
         assert api_key == "sk-saved"
         return [{"voice_id": "voice-abc", "name": "Saved Voice"}]
 
-    monkeypatch.setattr("openclaw_voice_server.setup_service.list_elevenlabs_voices", fake_list_voices)
+    monkeypatch.setattr("agent_switchboard.setup_service.list_elevenlabs_voices", fake_list_voices)
 
     result = asyncio.run(service.elevenlabs_voices())
 
@@ -115,8 +115,8 @@ def test_validate_piper_persists_resolved_config(tmp_path, monkeypatch):
             "voice_name": "voice.onnx",
         }
 
-    monkeypatch.setattr("openclaw_voice_server.setup_service.normalize_piper_model_path", lambda value: resolved_model)
-    monkeypatch.setattr("openclaw_voice_server.setup_service.validate_piper_voice_step", fake_validate_piper)
+    monkeypatch.setattr("agent_switchboard.setup_service.normalize_piper_model_path", lambda value: resolved_model)
+    monkeypatch.setattr("agent_switchboard.setup_service.validate_piper_voice_step", fake_validate_piper)
 
     result = asyncio.run(
         service.validate_piper(
@@ -155,8 +155,8 @@ def test_validate_chatterbox_persists_resolved_settings(tmp_path, monkeypatch):
             "voice_name": "Mara",
         }
 
-    monkeypatch.setattr("openclaw_voice_server.setup_service.validate_chatterbox_voice_step", fake_validate_chatterbox)
-    monkeypatch.setattr("openclaw_voice_server.setup_service.resolve_chatterbox_voice", lambda value: (value or "default").strip())
+    monkeypatch.setattr("agent_switchboard.setup_service.validate_chatterbox_voice_step", fake_validate_chatterbox)
+    monkeypatch.setattr("agent_switchboard.setup_service.resolve_chatterbox_voice", lambda value: (value or "default").strip())
 
     result = asyncio.run(service.validate_chatterbox({"model": "multilingual", "device": "auto", "voice": "mara", "language": ""}))
     saved = store.load_config()
@@ -181,7 +181,7 @@ def test_validate_gateway_saves_secret_and_config(tmp_path, monkeypatch):
         return {"ok": True, "reply_preview": "OK"}
 
     monkeypatch.setattr(
-        "openclaw_voice_server.setup_service.validate_gateway_connection",
+        "agent_switchboard.setup_service.validate_gateway_connection",
         fake_validate_gateway_connection,
     )
 
@@ -199,10 +199,10 @@ def test_validate_gateway_saves_secret_and_config(tmp_path, monkeypatch):
     env_text = (tmp_path / ".env").read_text(encoding="utf-8")
 
     assert result["reply_preview"] == "OK"
-    assert saved["agent"]["backend"] == "openclaw"
+    assert saved["agent"]["backend"] == "gateway"
     assert saved["gateway"]["url"] == "https://gateway.test.ts.net/v1/chat/completions"
     assert saved["gateway"]["session_key"] == "voice-main"
-    assert "OPENCLAW_VOICE_GATEWAY_TOKEN=gw-secret" in env_text
+    assert "AGENT_SWITCHBOARD_GATEWAY_TOKEN=gw-secret" in env_text
     assert saved["validation"]["gateway"]["config_hash"]
 
 
@@ -218,7 +218,7 @@ def test_validate_agent_saves_hermes_root_and_backend(tmp_path, monkeypatch):
             }
         }
     )
-    store.update_secrets({"OPENCLAW_VOICE_GATEWAY_TOKEN": "gw-secret"})
+    store.update_secrets({"AGENT_SWITCHBOARD_GATEWAY_TOKEN": "gw-secret"})
 
     async def fake_validate_hermes_connection(*, project_root, gateway_url, gateway_token, gateway_model):
         assert project_root == "/tmp/hermes-agent"
@@ -228,7 +228,7 @@ def test_validate_agent_saves_hermes_root_and_backend(tmp_path, monkeypatch):
         return {"ok": True, "project_root": resolved_root, "reply_preview": "OK"}
 
     monkeypatch.setattr(
-        "openclaw_voice_server.setup_service.validate_hermes_connection",
+        "agent_switchboard.setup_service.validate_hermes_connection",
         fake_validate_hermes_connection,
     )
 
@@ -295,7 +295,7 @@ def test_setup_state_allows_remote_whisper_without_local_module(tmp_path, monkey
     )
 
     monkeypatch.setattr(
-        "openclaw_voice_server.setup_service.module_available",
+        "agent_switchboard.setup_service.module_available",
         lambda import_name: False,
     )
 
@@ -423,12 +423,12 @@ def test_runtime_ready_uses_live_config_even_if_stt_validation_is_stale(tmp_path
     )
     store.update_secrets(
         {
-            "OPENCLAW_VOICE_ELEVENLABS_API_KEY": "sk-test",
-            "OPENCLAW_VOICE_GATEWAY_TOKEN": "gw-secret",
+            "AGENT_SWITCHBOARD_ELEVENLABS_API_KEY": "sk-test",
+            "AGENT_SWITCHBOARD_GATEWAY_TOKEN": "gw-secret",
         }
     )
 
-    monkeypatch.setattr("openclaw_voice_server.setup_service.module_available", lambda import_name: False)
+    monkeypatch.setattr("agent_switchboard.setup_service.module_available", lambda import_name: False)
 
     state = service.state()
 
@@ -457,9 +457,9 @@ def test_runtime_ready_requires_provider_specific_live_config(tmp_path, monkeypa
             },
         }
     )
-    store.update_secrets({"OPENCLAW_VOICE_GATEWAY_TOKEN": "gw-secret"})
+    store.update_secrets({"AGENT_SWITCHBOARD_GATEWAY_TOKEN": "gw-secret"})
 
-    monkeypatch.setattr("openclaw_voice_server.setup_service.module_available", lambda import_name: True)
+    monkeypatch.setattr("agent_switchboard.setup_service.module_available", lambda import_name: True)
 
     state = service.state()
 
@@ -511,13 +511,126 @@ def test_runtime_ready_accepts_vibevoice_live_config(tmp_path, monkeypatch):
             },
         }
     )
-    store.update_secrets({"OPENCLAW_VOICE_GATEWAY_TOKEN": "gw-secret"})
+    store.update_secrets({"AGENT_SWITCHBOARD_GATEWAY_TOKEN": "gw-secret"})
 
-    monkeypatch.setattr("openclaw_voice_server.setup_service.module_available", lambda import_name: True)
+    monkeypatch.setattr("agent_switchboard.setup_service.module_available", lambda import_name: True)
 
     state = service.state()
 
     assert state["status"]["vibevoice_ready"] is True
+    assert state["status"]["runtime_ready"] is True
+
+
+def test_runtime_ready_accepts_neutts_live_config(tmp_path, monkeypatch):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+    store.update_config(
+        {
+            "stt": {
+                "enabled_backends": ["whisper"],
+                "default_backend": "whisper",
+                "whisper_endpoint_url": "http://127.0.0.1:18000/v1/audio/transcriptions",
+            },
+            "tts": {
+                "enabled_providers": ["neutts"],
+                "default_provider": "neutts",
+                "neutts_backbone": "neuphonic/neutts-nano-german",
+                "neutts_codec": "neuphonic/neucodec",
+                "neutts_device": "cpu",
+                "neutts_voice": "mara",
+            },
+            "gateway": {
+                "url": "http://127.0.0.1:18789/v1/chat/completions",
+                "model": "openclaw:main",
+                "session_key": "voice-main",
+            },
+            "validation": {
+                "tts": {
+                    "config_hash": service._config_hash(
+                        {"enabled_providers": ["neutts"], "default_provider": "neutts"}
+                    )
+                },
+                "neutts": {
+                    "config_hash": service._config_hash(
+                        {
+                            "backbone": "neuphonic/neutts-nano-german",
+                            "codec": "neuphonic/neucodec",
+                            "device": "cpu",
+                            "voice": "mara",
+                        }
+                    )
+                },
+                "gateway": {
+                    "config_hash": service._config_hash(
+                        {
+                            "url": "http://127.0.0.1:18789/v1/chat/completions",
+                            "model": "openclaw:main",
+                            "session_key": "voice-main",
+                        }
+                    ),
+                    "token_fingerprint": service._fingerprint_secret("gw-secret"),
+                },
+            },
+        }
+    )
+    store.update_secrets({"AGENT_SWITCHBOARD_GATEWAY_TOKEN": "gw-secret"})
+
+    monkeypatch.setattr(
+        "agent_switchboard.setup_service.module_available",
+        lambda import_name: import_name in {"neutts", None},
+    )
+
+    state = service.state()
+
+    assert state["status"]["neutts_ready"] is True
+    assert state["status"]["runtime_ready"] is True
+
+
+def test_runtime_ready_accepts_disabled_tts_mode(tmp_path, monkeypatch):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+    store.update_config(
+        {
+            "stt": {
+                "enabled_backends": ["whisper"],
+                "default_backend": "whisper",
+                "whisper_endpoint_url": "http://127.0.0.1:18000/v1/audio/transcriptions",
+            },
+            "tts": {
+                "enabled_providers": ["disabled"],
+                "default_provider": "disabled",
+            },
+            "gateway": {
+                "url": "http://127.0.0.1:18789/v1/chat/completions",
+                "model": "openclaw:main",
+                "session_key": "voice-main",
+            },
+            "validation": {
+                "tts": {
+                    "config_hash": service._config_hash(
+                        {"enabled_providers": ["disabled"], "default_provider": "disabled"}
+                    )
+                },
+                "gateway": {
+                    "config_hash": service._config_hash(
+                        {
+                            "url": "http://127.0.0.1:18789/v1/chat/completions",
+                            "model": "openclaw:main",
+                            "session_key": "voice-main",
+                        }
+                    ),
+                    "token_fingerprint": service._fingerprint_secret("gw-secret"),
+                },
+            },
+        }
+    )
+    store.update_secrets({"AGENT_SWITCHBOARD_GATEWAY_TOKEN": "gw-secret"})
+
+    monkeypatch.setattr("agent_switchboard.setup_service.module_available", lambda import_name: True)
+
+    state = service.state()
+
+    assert state["status"]["tts_selection_ready"] is True
     assert state["status"]["runtime_ready"] is True
 
 
@@ -571,10 +684,10 @@ def test_runtime_ready_accepts_piper_live_config(tmp_path, monkeypatch):
             },
         }
     )
-    store.update_secrets({"OPENCLAW_VOICE_GATEWAY_TOKEN": "gw-secret"})
+    store.update_secrets({"AGENT_SWITCHBOARD_GATEWAY_TOKEN": "gw-secret"})
 
     monkeypatch.setattr(
-        "openclaw_voice_server.setup_service.module_available",
+        "agent_switchboard.setup_service.module_available",
         lambda import_name: import_name == "piper",
     )
 
@@ -631,9 +744,9 @@ def test_runtime_ready_accepts_chatterbox_live_config(tmp_path, monkeypatch):
             },
         }
     )
-    store.update_secrets({"OPENCLAW_VOICE_GATEWAY_TOKEN": "gw-secret"})
+    store.update_secrets({"AGENT_SWITCHBOARD_GATEWAY_TOKEN": "gw-secret"})
 
-    monkeypatch.setattr("openclaw_voice_server.setup_service.module_available", lambda import_name: True)
+    monkeypatch.setattr("agent_switchboard.setup_service.module_available", lambda import_name: True)
 
     state = service.state()
 
@@ -684,7 +797,7 @@ def test_runtime_ready_accepts_hermes_live_config(tmp_path, monkeypatch):
         }
     )
 
-    monkeypatch.setattr("openclaw_voice_server.setup_service.module_available", lambda import_name: True)
+    monkeypatch.setattr("agent_switchboard.setup_service.module_available", lambda import_name: True)
 
     state = service.state()
 
@@ -728,4 +841,19 @@ def test_validate_windows_client_rejects_duplicate_shortcuts(tmp_path):
                 "pause_resume": "Ctrl+Shift+Space",
                 "interrupt": "Ctrl+Alt+A",
             }
+        )
+
+
+def test_validate_tts_selection_rejects_disabled_with_other_provider(tmp_path):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+
+    with pytest.raises(ValidationError, match="Disabled TTS must be selected on its own."):
+        asyncio.run(
+            service.validate_tts_selection(
+                {
+                    "enabled_providers": ["disabled", "edge"],
+                    "default_provider": "disabled",
+                }
+            )
         )

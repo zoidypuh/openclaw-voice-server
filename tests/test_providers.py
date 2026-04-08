@@ -5,13 +5,13 @@ import sys
 import types
 import numpy as np
 
-from openclaw_voice_server.stt import backends as stt_module
-from openclaw_voice_server.tts import backends as tts_module
-from openclaw_voice_server.tts import chatterbox as chatterbox_module
-from openclaw_voice_server.tts import edge as edge_module
-from openclaw_voice_server.tts import elevenlabs as elevenlabs_module
-from openclaw_voice_server.tts import piper as piper_module
-from openclaw_voice_server.tts.backends import (
+from agent_switchboard.stt import backends as stt_module
+from agent_switchboard.tts import backends as tts_module
+from agent_switchboard.tts import chatterbox as chatterbox_module
+from agent_switchboard.tts import edge as edge_module
+from agent_switchboard.tts import elevenlabs as elevenlabs_module
+from agent_switchboard.tts import piper as piper_module
+from agent_switchboard.tts.backends import (
     ElevenLabsSynthesizer,
     _piper_command,
     default_piper_config_path,

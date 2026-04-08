@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OpenClaw Voice Setup</title>
+<title>Agent Switchboard Setup</title>
 <style>
   :root {
     color-scheme: dark;
@@ -180,7 +180,7 @@
 <body>
 <main>
   <header>
-    <h1>OpenClaw Voice Setup</h1>
+    <h1>Agent Switchboard Setup</h1>
     <div class="intro" id="intro"></div>
     <div class="paths" id="paths"></div>
   </header>
@@ -247,7 +247,7 @@
     <div class="section-header">
       <div class="section-title">
         <h2>2. TTS</h2>
-        <p>Choose one speech provider. This step only appears after STT has been validated and saved.</p>
+        <p>Choose one speech provider, or disable spoken replies entirely. This step only appears after STT has been validated and saved.</p>
       </div>
       <div class="badge" id="tts-badge">Not checked</div>
     </div>
@@ -424,6 +424,41 @@
     <div class="result" id="vibevoice-result"></div>
   </section>
 
+  <section class="section hidden" id="neutts-section">
+    <div class="section-header">
+      <div class="section-title">
+        <h2>8. NeuTTS Voice</h2>
+        <p>Configure the NeuTTS backbone model, codec, device, and voice clone reference.</p>
+      </div>
+      <div class="badge" id="neutts-badge">Not checked</div>
+    </div>
+    <div class="grid">
+      <label>Backbone model
+        <input id="neutts-backbone" type="text" placeholder="neuphonic/neutts-nano-german">
+      </label>
+      <label>Codec model
+        <input id="neutts-codec" type="text" placeholder="neuphonic/neucodec">
+      </label>
+      <label>Device
+        <select id="neutts-device"></select>
+      </label>
+      <label>Local voices
+        <select id="neutts-voice-select">
+          <option value="">No local NeuTTS voices detected</option>
+        </select>
+      </label>
+      <label>Voice
+        <input id="neutts-voice" type="text" placeholder="mara">
+      </label>
+    </div>
+    <div class="note" id="neutts-note"></div>
+    <div class="actions">
+      <button class="primary" id="validate-neutts">Validate NeuTTS Voice And Save</button>
+      <button id="continue-neutts">Continue With Validated NeuTTS</button>
+    </div>
+    <div class="result" id="neutts-result"></div>
+  </section>
+
   <section class="section hidden" id="gateway-section">
     <div class="section-header">
       <div class="section-title">
@@ -437,7 +472,7 @@
         <select id="agent-backend"></select>
       </label>
     </div>
-    <div class="grid" id="openclaw-backend-fields">
+    <div class="grid" id="gateway-backend-fields">
       <label>Gateway URL
         <input id="gateway-url" type="text" placeholder="http://127.0.0.1:18789">
       </label>
@@ -445,7 +480,7 @@
         <input id="gateway-token" type="password" placeholder="Stored token will be reused if left blank">
       </label>
       <label>Agent Model
-        <input id="gateway-model" type="text" placeholder="openclaw:main">
+        <input id="gateway-model" type="text" placeholder="your-model-name">
       </label>
       <label>Agent Session
         <input id="gateway-session-key" type="text" placeholder="agent:main:voice-chat-main">
@@ -515,7 +550,7 @@ let rememberedRemoteStt = {
   url: '',
   model: '',
 };
-const REMOTE_STT_MEMORY_KEY = 'openclaw.voice.remote-stt.v1';
+const REMOTE_STT_MEMORY_KEY = 'agent-switchboard.voice.remote-stt.v1';
 const STT_LANGUAGES = [
   ["auto", "Auto Detect"],
   ["de", "German"],
@@ -540,10 +575,13 @@ function currentTtsProvider() {
 }
 
 function currentAgentBackend() {
-  return document.getElementById('agent-backend').value || 'openclaw';
+  return document.getElementById('agent-backend').value || 'gateway';
 }
 
 function ttsProviderSectionId(provider) {
+  if (provider === 'disabled') {
+    return 'gateway-section';
+  }
   if (provider === 'edge') {
     return 'edge-section';
   }
@@ -559,13 +597,16 @@ function ttsProviderSectionId(provider) {
   if (provider === 'vibevoice') {
     return 'vibevoice-section';
   }
+  if (provider === 'neutts') {
+    return 'neutts-section';
+  }
   return 'tts-section';
 }
 
 function renderConversationBackendControls() {
   const backend = currentAgentBackend();
   const isHermes = backend === 'hermes';
-  document.getElementById('openclaw-backend-fields').classList.toggle('hidden', isHermes);
+  document.getElementById('gateway-backend-fields').classList.toggle('hidden', isHermes);
   document.getElementById('hermes-backend-fields').classList.toggle('hidden', !isHermes);
   const note = document.getElementById('gateway-note');
   const validateButton = document.getElementById('validate-gateway');
@@ -836,6 +877,31 @@ function renderPiperVoiceOptions(voices) {
   }
 }
 
+function renderNeuTTSVoiceOptions(voices) {
+  const select = document.getElementById('neutts-voice-select');
+  const currentVoice = document.getElementById('neutts-voice').value.trim();
+  select.innerHTML = '';
+
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = voices.length ? 'Choose a local NeuTTS voice' : 'No local NeuTTS voices detected';
+  select.appendChild(placeholder);
+
+  for (const voice of voices) {
+    const option = document.createElement('option');
+    option.value = voice.id;
+    option.textContent = voice.label;
+    select.appendChild(option);
+  }
+
+  select.disabled = voices.length === 0;
+  if (currentVoice && voices.some((v) => v.id === currentVoice)) {
+    select.value = currentVoice;
+  } else {
+    select.value = '';
+  }
+}
+
 function syncPiperSelectionFromInput() {
   const modelPath = document.getElementById('piper-model-path').value.trim();
   const select = document.getElementById('piper-local-voice');
@@ -886,6 +952,7 @@ function getEffectiveStatus() {
       piper_ready: false,
       eleven_ready: false,
       vibevoice_ready: false,
+      neutts_ready: false,
       gateway_ready: false,
       hermes_ready: false,
       conversation_ready: false,
@@ -916,6 +983,10 @@ function getEffectiveStatus() {
     sttReady
     && status.tts_selection_ready
     && currentProvider === ttsSaved.default_provider
+  );
+  const ttsDisabled = Boolean(
+    ttsReady
+    && currentProvider === 'disabled'
   );
 
   const edgeReady = Boolean(
@@ -963,14 +1034,24 @@ function getEffectiveStatus() {
     && document.getElementById('chatterbox-language').value.trim() === (ttsSaved.chatterbox_language || '')
   );
 
+  const neuttsReady = Boolean(
+    ttsReady
+    && currentProvider === 'neutts'
+    && status.neutts_ready
+    && document.getElementById('neutts-backbone').value.trim() === (ttsSaved.neutts_backbone || 'neuphonic/neutts-nano-german')
+    && document.getElementById('neutts-codec').value.trim() === (ttsSaved.neutts_codec || 'neuphonic/neucodec')
+    && document.getElementById('neutts-device').value === (ttsSaved.neutts_device || 'auto')
+    && document.getElementById('neutts-voice').value.trim() === (ttsSaved.neutts_voice || '')
+  );
+
   const gatewaySaved = saved.gateway || {};
   const agentSaved = saved.agent || {};
   const currentAgentBackendVal = currentAgentBackend();
   const savedSessionKey = gatewaySaved.session_key || (setupState?.hints?.default_voice_session_key || '');
   const gatewayReady = Boolean(
-    (edgeReady || piperReady || elevenReady || chatterboxReady || vibevoiceReady)
-    && currentAgentBackendVal === 'openclaw'
-    && (agentSaved.backend || 'openclaw') === 'openclaw'
+    (ttsDisabled || edgeReady || piperReady || elevenReady || chatterboxReady || vibevoiceReady || neuttsReady)
+    && currentAgentBackendVal === 'gateway'
+    && (agentSaved.backend || 'gateway') === 'gateway'
     && status.gateway_ready
     && document.getElementById('gateway-url').value.trim() === gatewaySaved.url
     && document.getElementById('gateway-model').value.trim() === gatewaySaved.model
@@ -979,9 +1060,9 @@ function getEffectiveStatus() {
   );
   const savedHermesRoot = (agentSaved.hermes_root || (setupState?.hints?.default_hermes_root || '')).trim();
   const hermesReady = Boolean(
-    (edgeReady || piperReady || elevenReady || chatterboxReady || vibevoiceReady)
+    (ttsDisabled || edgeReady || piperReady || elevenReady || chatterboxReady || vibevoiceReady || neuttsReady)
     && currentAgentBackendVal === 'hermes'
-    && (agentSaved.backend || 'openclaw') === 'hermes'
+    && (agentSaved.backend || 'gateway') === 'hermes'
     && status.hermes_ready
     && document.getElementById('agent-hermes-root').value.trim() === savedHermesRoot
   );
@@ -1003,11 +1084,12 @@ function getEffectiveStatus() {
     eleven_ready: elevenReady,
     chatterbox_ready: chatterboxReady,
     vibevoice_ready: vibevoiceReady,
+    neutts_ready: neuttsReady,
     gateway_ready: gatewayReady,
     hermes_ready: hermesReady,
     conversation_ready: conversationReady,
     windows_shortcuts_saved: windowsShortcutsSaved,
-    runtime_ready: conversationReady,
+    runtime_ready: Boolean(conversationReady && status.runtime_ready),
   };
 }
 
@@ -1020,6 +1102,8 @@ function updateFlowVisibility() {
   const showEleven = showTts && effective.tts_ready && currentProvider === 'elevenlabs';
   const showChatterbox = showTts && effective.tts_ready && currentProvider === 'chatterbox';
   const showVibeVoice = showTts && effective.tts_ready && currentProvider === 'vibevoice';
+  const showNeuTTS = showTts && effective.tts_ready && currentProvider === 'neutts';
+  const showDisabled = showTts && effective.tts_ready && currentProvider === 'disabled';
   const providerReady = showEdge
     ? effective.edge_ready
     : showPiper
@@ -1030,10 +1114,14 @@ function updateFlowVisibility() {
         ? effective.chatterbox_ready
       : showVibeVoice
         ? effective.vibevoice_ready
+      : showNeuTTS
+        ? effective.neutts_ready
+        : showDisabled
+          ? true
         : false;
   const showGateway = showTts && effective.tts_ready && providerReady;
   const showWindowsClient = showGateway;
-  const showLaunch = showGateway && effective.conversation_ready;
+  const showLaunch = showGateway && effective.runtime_ready;
 
   document.getElementById('tts-section').classList.toggle('hidden', !showTts);
   document.getElementById('edge-section').classList.toggle('hidden', !showEdge);
@@ -1041,6 +1129,7 @@ function updateFlowVisibility() {
   document.getElementById('eleven-section').classList.toggle('hidden', !showEleven);
   document.getElementById('chatterbox-section').classList.toggle('hidden', !showChatterbox);
   document.getElementById('vibevoice-section').classList.toggle('hidden', !showVibeVoice);
+  document.getElementById('neutts-section').classList.toggle('hidden', !showNeuTTS);
   document.getElementById('gateway-section').classList.toggle('hidden', !showGateway);
   document.getElementById('windows-client-section').classList.toggle('hidden', !showWindowsClient);
   document.getElementById('launch-section').classList.toggle('hidden', !showLaunch);
@@ -1052,6 +1141,7 @@ function updateFlowVisibility() {
   setBadge('eleven-badge', effective.eleven_ready ? 'Validated' : 'Needs validation', effective.eleven_ready);
   setBadge('chatterbox-badge', effective.chatterbox_ready ? 'Validated' : 'Needs validation', effective.chatterbox_ready);
   setBadge('vibevoice-badge', effective.vibevoice_ready ? 'Validated' : 'Needs validation', effective.vibevoice_ready);
+  setBadge('neutts-badge', effective.neutts_ready ? 'Validated' : 'Needs validation', effective.neutts_ready);
   setBadge(
     'gateway-badge',
     effective.conversation_ready ? 'Validated' : 'Needs validation',
@@ -1070,6 +1160,7 @@ function updateFlowVisibility() {
   document.getElementById('continue-eleven').disabled = !effective.eleven_ready;
   document.getElementById('continue-chatterbox').disabled = !effective.chatterbox_ready;
   document.getElementById('continue-vibevoice').disabled = !effective.vibevoice_ready;
+  document.getElementById('continue-neutts').disabled = !effective.neutts_ready;
   document.getElementById('continue-gateway').disabled = !effective.conversation_ready;
   document.getElementById('launch-link').style.pointerEvents = effective.runtime_ready ? 'auto' : 'none';
   document.getElementById('launch-link').style.opacity = effective.runtime_ready ? '1' : '0.45';
@@ -1204,6 +1295,17 @@ function populateFromState(state) {
   document.getElementById('vibevoice-base-url').value = tts.vibevoice_base_url || state.hints.default_vibevoice_base_url || '';
   document.getElementById('vibevoice-voice').value = tts.vibevoice_voice || '';
   document.getElementById('vibevoice-note').textContent = state.hints.vibevoice_note || '';
+  document.getElementById('neutts-backbone').value = tts.neutts_backbone || state.hints.default_neutts_backbone || 'neuphonic/neutts-nano-german';
+  document.getElementById('neutts-codec').value = tts.neutts_codec || state.hints.default_neutts_codec || 'neuphonic/neucodec';
+  document.getElementById('neutts-voice').value = tts.neutts_voice || '';
+  document.getElementById('neutts-note').textContent = state.hints.neutts_note || '';
+  updateSelectOptions(
+    document.getElementById('neutts-device'),
+    (state.catalog.neutts_devices || []).map((item) => item.id),
+    Object.fromEntries((state.catalog.neutts_devices || []).map((item) => [item.id, item.label])),
+  );
+  document.getElementById('neutts-device').value = tts.neutts_device || state.hints.default_neutts_device || 'auto';
+  renderNeuTTSVoiceOptions(state.catalog.neutts_voices || []);
   syncElevenVoiceSelectionFromId();
   syncPiperSelectionFromInput();
   syncVibeVoiceSelectionFromInput();
@@ -1215,7 +1317,7 @@ function populateFromState(state) {
     (state.catalog.agent_backends || []).map((item) => item.id),
     agentLabels,
   );
-  document.getElementById('agent-backend').value = agent.backend || 'openclaw';
+  document.getElementById('agent-backend').value = agent.backend || 'gateway';
   document.getElementById('agent-hermes-root').value = agent.hermes_root || state.hints.default_hermes_root || '';
 
   const gateway = state.saved.gateway;
@@ -1341,6 +1443,10 @@ document.getElementById('chatterbox-model').addEventListener('change', updateFlo
 document.getElementById('chatterbox-device').addEventListener('change', updateFlowVisibility);
 document.getElementById('chatterbox-voice').addEventListener('change', updateFlowVisibility);
 document.getElementById('chatterbox-language').addEventListener('input', updateFlowVisibility);
+document.getElementById('neutts-backbone').addEventListener('input', updateFlowVisibility);
+document.getElementById('neutts-codec').addEventListener('input', updateFlowVisibility);
+document.getElementById('neutts-device').addEventListener('change', updateFlowVisibility);
+document.getElementById('neutts-voice').addEventListener('input', updateFlowVisibility);
 document.getElementById('eleven-api-key').addEventListener('input', updateFlowVisibility);
 document.getElementById('eleven-model').addEventListener('input', updateFlowVisibility);
 document.getElementById('eleven-preset').addEventListener('change', updateFlowVisibility);
@@ -1591,7 +1697,7 @@ document.getElementById('validate-gateway').addEventListener('click', async () =
         : `Validated gateway reply: ${payload.reply_preview}`,
       true,
     );
-    if (backend === 'openclaw') {
+    if (backend === 'gateway') {
       document.getElementById('gateway-token').value = '';
     }
     await refreshState();
@@ -1627,6 +1733,35 @@ document.getElementById('continue-piper').addEventListener('click', () => scroll
 document.getElementById('continue-eleven').addEventListener('click', () => scrollToSection('gateway-section'));
 document.getElementById('continue-chatterbox').addEventListener('click', () => scrollToSection('gateway-section'));
 document.getElementById('continue-vibevoice').addEventListener('click', () => scrollToSection('gateway-section'));
+
+document.getElementById('validate-neutts').addEventListener('click', async () => {
+  try {
+    setResult('neutts-result', 'Validating NeuTTS voice (this may take a moment on first run)...');
+    const payload = await fetchJson(appUrl('api/setup/validate-neutts'), {
+      method: 'POST',
+      body: JSON.stringify({
+        backbone: document.getElementById('neutts-backbone').value,
+        codec: document.getElementById('neutts-codec').value,
+        device: document.getElementById('neutts-device').value,
+        voice: document.getElementById('neutts-voice').value,
+      }),
+    });
+    setResult('neutts-result', `Validated NeuTTS: backbone=${payload.backbone}, device=${payload.device}, voice=${payload.voice}.`, true);
+    await refreshState();
+    scrollToSection('gateway-section');
+  } catch (error) {
+    setResult('neutts-result', error.message, false);
+  }
+});
+
+document.getElementById('neutts-voice-select').addEventListener('change', (e) => {
+  if (e.target.value) {
+    document.getElementById('neutts-voice').value = e.target.value;
+  }
+  updateFlowVisibility();
+});
+
+document.getElementById('continue-neutts').addEventListener('click', () => scrollToSection('gateway-section'));
 document.getElementById('continue-gateway').addEventListener('click', () => scrollToSection('launch-summary'));
 
 refreshState()

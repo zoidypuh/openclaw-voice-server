@@ -1,5 +1,5 @@
 @echo off
-REM Start openclaw-voice-server natively on Windows (no WSL required).
+REM Start agent-switchboard natively on Windows (no WSL required).
 REM
 REM Prerequisites:
 REM   1. Run bootstrap-windows.py once to create .venv and .env
@@ -25,8 +25,8 @@ if exist "%REPO_DIR%\.venv\Scripts\activate.bat" (
 
 REM Change to repo root and start the server
 cd /d "%REPO_DIR%"
-echo Starting openclaw-voice-server on http://127.0.0.1:8765 ...
-python -m openclaw_voice_server
+echo Starting agent-switchboard on http://127.0.0.1:8765 ...
+python -m agent_switchboard
 
 echo.
 echo Server exited. Press any key to close.

@@ -3,13 +3,13 @@ import asyncio
 import httpx
 import pytest
 
-from openclaw_voice_server.gateway import (
+from agent_switchboard.gateway import (
     DirectGatewayClient,
     _friendly_connection_error,
     normalize_gateway_url,
     resolve_voice_session_key,
 )
-from openclaw_voice_server.errors import ValidationError
+from agent_switchboard.errors import ValidationError
 
 
 def test_resolve_voice_session_key_keeps_configured_value():
@@ -46,7 +46,7 @@ def test_friendly_connection_error_guides_ts_net_users_to_local_gateway():
 
     message = _friendly_connection_error("https://machine.example.ts.net/v1/chat/completions", exc)
 
-    assert "Use the local OpenClaw gateway URL http://127.0.0.1:18789" in message
+    assert "Use the local gateway URL http://127.0.0.1:18789" in message
 
 
 def test_validate_gateway_connection_includes_session_key_header(monkeypatch):
@@ -71,9 +71,9 @@ def test_validate_gateway_connection_includes_session_key_header(monkeypatch):
             captured["json"] = json
             return FakeResponse()
 
-    monkeypatch.setattr("openclaw_voice_server.gateway.httpx.AsyncClient", lambda timeout: FakeClient())
+    monkeypatch.setattr("agent_switchboard.gateway.httpx.AsyncClient", lambda timeout: FakeClient())
 
-    from openclaw_voice_server.gateway import validate_gateway_connection
+    from agent_switchboard.gateway import validate_gateway_connection
 
     result = asyncio.run(
         validate_gateway_connection(
@@ -133,7 +133,7 @@ def test_stream_reply_reads_stream_error_body_before_parsing(monkeypatch):
         def stream(self, method, url, headers, json):
             return FakeStreamContext(FakeResponse())
 
-    monkeypatch.setattr("openclaw_voice_server.gateway.httpx.AsyncClient", lambda timeout: FakeClient())
+    monkeypatch.setattr("agent_switchboard.gateway.httpx.AsyncClient", lambda timeout: FakeClient())
 
     gateway = DirectGatewayClient(url="http://127.0.0.1:18789", token="speaker-a", model="openclaw:main")
 

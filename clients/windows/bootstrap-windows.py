@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Windows bootstrap script for openclaw-voice-server v1.
+Windows bootstrap script for agent-switchboard v1.
 
 Usage on Windows (PowerShell or CMD):
     py bootstrap-windows.py
@@ -26,12 +26,12 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 VENV_PATH = REPO_ROOT / ".venv"
 ENV_FILE = REPO_ROOT / ".env"
 REQUIRED_SECRETS = [
-    "OPENCLAW_VOICE_GATEWAY_TOKEN",
-    "OPENCLAW_VOICE_ELEVENLABS_API_KEY",
+    "AGENT_SWITCHBOARD_GATEWAY_TOKEN",
+    "AGENT_SWITCHBOARD_ELEVENLABS_API_KEY",
 ]
 OPTIONAL_SECRETS = [
-    ("OPENCLAW_VOICE_HTTP_HOST", "127.0.0.1"),
-    ("OPENCLAW_VOICE_HTTP_PORT", "8765"),
+    ("AGENT_SWITCHBOARD_HTTP_HOST", "127.0.0.1"),
+    ("AGENT_SWITCHBOARD_HTTP_PORT", "8765"),
 ]
 
 
@@ -56,7 +56,7 @@ def rmtree(path: Path) -> None:
 
 
 def main() -> None:
-    print(f"=== openclaw-voice-server Windows bootstrap ===")
+    print(f"=== agent-switchboard Windows bootstrap ===")
     print(f"Repo root: {REPO_ROOT}")
     print()
 
@@ -103,7 +103,7 @@ def main() -> None:
 
     secrets_to_write: dict[str, str] = {}
 
-    print("  Required secrets (paste from your OpenClaw config):")
+    print("  Required secrets (paste from your gateway config):")
     for key in REQUIRED_SECRETS:
         current = existing.get(key, "")
         if current:
@@ -139,7 +139,7 @@ def main() -> None:
     print(f"       stt.device: 'cpu'  (or set a remote whisper_endpoint_url)")
     print(f"       tts.enabled_providers: ['elevenlabs']  (or keep ['edge'])")
     print(f"  2. Start the server:")
-    print(f"       .\\.venv\\Scripts\\python.exe -m openclaw_voice_server")
+    print(f"       .\\.venv\\Scripts\\python.exe -m agent_switchboard")
     print(f"  3. Or use the Tauri tray client: run 'npm run tauri:dev' from src-tauri/")
     print()
 

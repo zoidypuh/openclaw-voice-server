@@ -95,6 +95,12 @@ class ElevenLabsSynthesizer(BaseSynthesizer):
             )
         if response.status_code >= 400:
             raise ValidationError(_http_error_message(response))
+        if response.content:
+            _archive_elevenlabs_audio(
+                response.content,
+                voice_id=resolved_voice_id,
+                text=text,
+            )
         return response.content
 
 

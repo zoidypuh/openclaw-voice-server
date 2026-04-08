@@ -11,7 +11,7 @@ from .catalog import DEFAULT_LOCAL_GATEWAY_URL, DEFAULT_VOICE_SESSION_KEY
 from .errors import ValidationError
 from .text import pop_early_chunk, pop_sentence_chunk
 
-OPENCLAW_OPERATOR_SCOPES = "operator.write"
+GATEWAY_OPERATOR_SCOPES = "operator.write"
 
 
 def _collect_text_fragments(value: Any) -> list[str]:
@@ -63,7 +63,7 @@ class DirectGatewayClient:
         headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
-            "X-OpenClaw-Scopes": OPENCLAW_OPERATOR_SCOPES,
+            "X-OpenClaw-Scopes": GATEWAY_OPERATOR_SCOPES,
         }
         if include_session and self.session_key:
             headers["X-OpenClaw-Session-Key"] = self.session_key
@@ -190,7 +190,7 @@ def _friendly_connection_error(normalized_url: str, exc: httpx.HTTPError) -> str
     ):
         return (
             f"Could not resolve {host} from the local voice server. "
-            f"Use the local OpenClaw gateway URL {DEFAULT_LOCAL_GATEWAY_URL} instead of the public Tailscale hostname."
+            f"Use the local gateway URL {DEFAULT_LOCAL_GATEWAY_URL} instead of the public Tailscale hostname."
         )
     return f"Could not reach the gateway at {normalized_url}: {message}"
 
@@ -202,7 +202,7 @@ async def validate_gateway_connection(*, url: str, token: str, model: str, sessi
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
-        "X-OpenClaw-Scopes": OPENCLAW_OPERATOR_SCOPES,
+        "X-OpenClaw-Scopes": GATEWAY_OPERATOR_SCOPES,
     }
     if session_key.strip():
         headers["X-OpenClaw-Session-Key"] = session_key.strip()

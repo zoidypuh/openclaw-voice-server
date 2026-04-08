@@ -14,6 +14,7 @@ import wave
 from aiohttp import WSMsgType, web
 
 from .agents import HermesConversationAgent, OpenAIChatAgent, build_conversation_agent
+from .catalog import normalize_agent_backend
 from .config_store import ConfigStore
 from .errors import ValidationError
 from .stt import build_transcriber
@@ -54,6 +55,13 @@ def _summarize_text(text: str, *, limit: int = 180) -> str:
     if len(normalized) <= limit:
         return normalized
     return f"{normalized[: limit - 3].rstrip()}..."
+
+
+def _should_skip_spoken_reply(text: str) -> bool:
+    normalized = " ".join(str(text or "").split())
+    if not normalized:
+        return True
+    return normalized.upper() == "EMPTY"
 
 
 @dataclass(slots=True)
@@ -148,6 +156,11 @@ class VoiceRuntime:
     def _allowed_speakers(cls, settings: dict) -> set[str]:
         return set(cls._speaker_voice_ids(settings)) | set(cls._speaker_overrides(settings))
 
+    @staticmethod
+    def _tts_disabled(settings: dict) -> bool:
+        provider = str((settings.get("tts") or {}).get("default_provider") or "").strip().lower()
+        return provider == "disabled"
+
     @classmethod
     def _tts_settings_for_speaker(cls, settings: dict, speaker_name: str | None) -> dict:
         base_tts_settings = dict(settings.get("tts") or {})
@@ -223,6 +236,8 @@ class VoiceRuntime:
         speaker_name: str | None = None,
         default_synthesizer=None,
     ):
+        if cls._tts_disabled(settings):
+            raise ValidationError("TTS is disabled for this runtime.")
         tts_settings = cls._tts_settings_for_speaker(settings, speaker_name)
         if default_synthesizer is not None and tts_settings == dict(settings.get("tts") or {}):
             synthesizer = default_synthesizer
@@ -233,7 +248,7 @@ class VoiceRuntime:
 
     @staticmethod
     def _conversation_backend(settings: dict) -> str:
-        return str((settings.get("agent") or {}).get("backend") or "openclaw").strip().lower()
+        return normalize_agent_backend((settings.get("agent") or {}).get("backend"))
 
     @classmethod
     def _build_conversation_agent(cls, settings: dict):
@@ -461,6 +476,8 @@ class VoiceRuntime:
         spoken_text = strip_markdown(raw_text).strip()
         if not spoken_text:
             raise ValidationError("Text to speak was empty after normalization.")
+        if self._tts_disabled(settings):
+            raise ValidationError("TTS is disabled for this runtime.")
 
         synthesizer, audio_mime_type = self._resolve_synthesizer(
             settings,
@@ -545,7 +562,8 @@ class VoiceRuntime:
         await self._set_active_ws(ws)
 
         transcriber = build_transcriber(turn_stt_settings)
-        synthesizer = build_synthesizer(settings["tts"], settings["secrets"])
+        tts_disabled = self._tts_disabled(settings)
+        synthesizer = None if tts_disabled else build_synthesizer(settings["tts"], settings["secrets"])
         conversation_agent = self._build_conversation_agent(settings)
         command_language = settings["stt"].get("language", "")
 
@@ -651,6 +669,8 @@ class VoiceRuntime:
             }
 
             def resolve_chunk_synthesizer(current_speaker: str | None):
+                if tts_disabled:
+                    return None, "audio/mpeg"
                 normalized_speaker = self._normalize_speaker_name(current_speaker)
                 cache_key = normalized_speaker or ""
                 if cache_key not in synth_cache:
@@ -663,7 +683,20 @@ class VoiceRuntime:
             async def send_reply_chunk(clean_text: str) -> None:
                 nonlocal speaking_started
                 chunk_text = clean_text.strip()
-                if not chunk_text:
+                if _should_skip_spoken_reply(chunk_text):
+                    LOGGER.info(
+                        "[dim]skipping empty spoken reply chunk: %s[/dim]",
+                        _summarize_text(chunk_text),
+                    )
+                    return
+                if tts_disabled:
+                    if turn.ttft_seconds is None:
+                        turn.ttft_seconds = time.perf_counter() - reply_started_at
+                    turn.reply_chunks.append(_summarize_text(chunk_text))
+                    LOGGER.info(
+                        "[dim]tts disabled, reply not spoken: %s[/dim]",
+                        _summarize_text(chunk_text),
+                    )
                     return
                 current_synthesizer, current_audio_mime_type = resolve_chunk_synthesizer(reply_speaker)
                 if turn.ttft_seconds is None:

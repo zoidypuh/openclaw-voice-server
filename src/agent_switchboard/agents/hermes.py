@@ -48,7 +48,7 @@ class _HermesAgentSession:
         if not self.project_root.exists():
             raise ValidationError(
                 f"Hermes Agent was not found at {self.project_root}. "
-                "Set OPENCLAW_VOICE_HERMES_ROOT if it is installed elsewhere."
+                "Set AGENT_SWITCHBOARD_HERMES_ROOT if it is installed elsewhere."
             )
         self._agent = None
         self._subprocess_python = self._resolve_subprocess_python(self.project_root)
@@ -60,7 +60,7 @@ class _HermesAgentSession:
 
     @staticmethod
     def _resolve_project_root(configured_root: str | None = None) -> Path:
-        configured = str(configured_root or os.environ.get("OPENCLAW_VOICE_HERMES_ROOT") or "").strip()
+        configured = str(configured_root or os.environ.get("AGENT_SWITCHBOARD_HERMES_ROOT") or "").strip()
         if configured:
             return Path(configured).expanduser().resolve()
         return (Path.home() / ".hermes" / "hermes-agent").resolve()
@@ -282,8 +282,11 @@ class HermesConversationAgent(BaseConversationAgent):
     ):
         self._session = _HermesAgentSession(
             system_prompt=(
-                "You are a live voice chat assistant. Reply naturally and concisely. "
-                "No markdown, no bullet points, and no stage directions."
+                "Du bist Mara — chaotisch-gut, direkt, witzig, loyal. "
+                "Du redest wie ein Mensch, nicht wie ein Assistent. Kurze Antworten, kein Bullshit. "
+                "Kein Markdown, keine Aufzählungspunkte, keine Bühnenanweisungen. "
+                "Wenn du etwas nicht weißt, sagst du es. Wenn du etwas lustig findest, sagst du das auch. "
+                "Antworte auf Deutsch wenn der User Deutsch spricht, auf Englisch wenn Englisch."
             ),
             session_id=f"voice-chat-hermes-{uuid.uuid4().hex[:8]}",
             empty_reply_error="Hermes Agent returned an empty spoken reply.",

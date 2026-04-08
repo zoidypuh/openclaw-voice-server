@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 APP_VERSION_LABEL = "v0.04"
-DEFAULT_SAMPLE_TEXT = "OpenClaw voice setup validation."
+DEFAULT_SAMPLE_TEXT = "Agent Switchboard setup validation."
 DEFAULT_VOICE_SESSION_KEY = "agent:main:voice-chat-main"
 DEFAULT_LOCAL_GATEWAY_URL = "http://127.0.0.1:18789"
 DEFAULT_HERMES_ROOT = str((Path.home() / ".hermes" / "hermes-agent").resolve())
@@ -101,6 +101,12 @@ SUPPORTED_STT_BACKENDS = {
 }
 
 SUPPORTED_TTS_PROVIDERS = {
+    "disabled": {
+        "id": "disabled",
+        "label": "Disabled (text only)",
+        "package": None,
+        "import_name": None,
+    },
     "edge": {
         "id": "edge",
         "label": "Edge TTS",
@@ -131,12 +137,18 @@ SUPPORTED_TTS_PROVIDERS = {
         "package": None,
         "import_name": None,
     },
+    "neutts": {
+        "id": "neutts",
+        "label": "NeuTTS",
+        "package": "neutts",
+        "import_name": "neutts",
+    },
 }
 
 SUPPORTED_AGENT_BACKENDS = {
-    "openclaw": {
-        "id": "openclaw",
-        "label": "OpenClaw Agent",
+    "gateway": {
+        "id": "gateway",
+        "label": "Gateway Agent",
     },
     "hermes": {
         "id": "hermes",
@@ -145,11 +157,32 @@ SUPPORTED_AGENT_BACKENDS = {
 }
 
 SECRET_ENV_KEYS = {
+    "AGENT_SWITCHBOARD_GATEWAY_TOKEN",
+    "AGENT_SWITCHBOARD_ELEVENLABS_API_KEY",
     "OPENCLAW_VOICE_GATEWAY_TOKEN",
     "OPENCLAW_VOICE_ELEVENLABS_API_KEY",
 }
 
 LEGACY_ENV_TO_CONFIG = {
+    "AGENT_SWITCHBOARD_GATEWAY_URL": ("gateway", "url"),
+    "AGENT_SWITCHBOARD_GATEWAY_MODEL": ("gateway", "model"),
+    "AGENT_SWITCHBOARD_GATEWAY_SESSION_KEY": ("gateway", "session_key"),
+    "AGENT_SWITCHBOARD_HERMES_ROOT": ("agent", "hermes_root"),
+    "AGENT_SWITCHBOARD_HTTP_HOST": ("server", "host"),
+    "AGENT_SWITCHBOARD_HTTP_PORT": ("server", "port"),
+    "AGENT_SWITCHBOARD_WHISPER_MODEL": ("stt", "backend_models", "faster-whisper"),
+    "AGENT_SWITCHBOARD_WHISPER_ENDPOINT_URL": ("stt", "whisper_endpoint_url"),
+    "AGENT_SWITCHBOARD_WHISPER_ENDPOINT_MODEL": ("stt", "whisper_endpoint_model"),
+    "AGENT_SWITCHBOARD_WHISPER_DEVICE": ("stt", "device"),
+    "AGENT_SWITCHBOARD_WHISPER_COMPUTE_TYPE": ("stt", "compute_type"),
+    "AGENT_SWITCHBOARD_WHISPER_LANG": ("stt", "language"),
+    "AGENT_SWITCHBOARD_ELEVENLABS_VOICE_ID": ("tts", "elevenlabs_voice_id"),
+    "AGENT_SWITCHBOARD_ELEVENLABS_MODEL": ("tts", "elevenlabs_model"),
+    "AGENT_SWITCHBOARD_PIPER_MODEL": ("tts", "piper_model_path"),
+    "AGENT_SWITCHBOARD_PIPER_CONFIG": ("tts", "piper_config_path"),
+    "AGENT_SWITCHBOARD_PIPER_SPEAKER": ("tts", "piper_speaker"),
+    "AGENT_SWITCHBOARD_VIBEVOICE_BASE_URL": ("tts", "vibevoice_base_url"),
+    "AGENT_SWITCHBOARD_VIBEVOICE_VOICE": ("tts", "vibevoice_voice"),
     "OPENCLAW_VOICE_GATEWAY_URL": ("gateway", "url"),
     "OPENCLAW_VOICE_GATEWAY_MODEL": ("gateway", "model"),
     "OPENCLAW_VOICE_GATEWAY_SESSION_KEY": ("gateway", "session_key"),
@@ -171,6 +204,15 @@ LEGACY_ENV_TO_CONFIG = {
     "OPENCLAW_VOICE_VIBEVOICE_VOICE": ("tts", "vibevoice_voice"),
 }
 
+
+def normalize_agent_backend(value: str | None) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized in {"", "gateway", "openclaw"}:
+        return "gateway"
+    if normalized == "hermes":
+        return "hermes"
+    return "gateway"
+
 DEFAULT_CONFIG = {
     "schema_version": 1,
     "server": {
@@ -183,7 +225,7 @@ DEFAULT_CONFIG = {
         "session_key": DEFAULT_VOICE_SESSION_KEY,
     },
     "agent": {
-        "backend": "openclaw",
+        "backend": "gateway",
         "hermes_root": DEFAULT_HERMES_ROOT,
     },
     "stt": {
@@ -220,6 +262,10 @@ DEFAULT_CONFIG = {
         "news_speakers": [],
         "vibevoice_base_url": DEFAULT_VIBEVOICE_BASE_URL,
         "vibevoice_voice": "",
+        "neutts_backbone": "neuphonic/neutts-nano-german",
+        "neutts_codec": "neuphonic/neucodec",
+        "neutts_device": "auto",
+        "neutts_voice": "",
     },
     "audio": {
         "silence_threshold": 0.015,
@@ -253,6 +299,9 @@ DEFAULT_CONFIG = {
             "config_hash": "",
         },
         "vibevoice": {
+            "config_hash": "",
+        },
+        "neutts": {
             "config_hash": "",
         },
         "gateway": {

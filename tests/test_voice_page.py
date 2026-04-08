@@ -1,4 +1,4 @@
-from openclaw_voice_server.app import _static_dir
+from agent_switchboard.app import _static_dir
 
 
 def test_voice_html_has_start_of_playback_barge_in_grace_window():
@@ -53,7 +53,7 @@ def test_voice_html_has_mute_button_and_mic_gate():
     assert '<button id="mute-btn" class="mini-btn" type="button">mute</button>' in voice_html
     assert "let muted = false;" in voice_html
     assert "let interruptMode = 'barge-in';" in voice_html
-    assert "const INTERRUPT_MODE_STORAGE_KEY = 'openclaw.voice.interrupt-mode.v1';" in voice_html
+    assert "const INTERRUPT_MODE_STORAGE_KEY = 'agent-switchboard.voice.interrupt-mode.v1';" in voice_html
     assert "function voiceInterruptDisabled() {" in voice_html
     assert "function setInterruptMode(nextMode) {" in voice_html
     assert "function commitBufferedTurnNow() {" in voice_html

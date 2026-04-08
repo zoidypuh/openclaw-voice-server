@@ -5,9 +5,9 @@ import logging
 from aiohttp import WSMsgType
 import pytest
 
-from openclaw_voice_server import runtime as runtime_module
-from openclaw_voice_server.errors import ValidationError
-from openclaw_voice_server.runtime import VoiceRuntime
+from agent_switchboard import runtime as runtime_module
+from agent_switchboard.errors import ValidationError
+from agent_switchboard.runtime import VoiceRuntime
 
 
 class FakeStore:
@@ -632,14 +632,9 @@ def test_handle_ws_logs_human_readable_turn_timing(monkeypatch, caplog):
         ws = asyncio.run(scenario())
 
     assert len(ws.binary_messages) == 2
-    assert "speech input detected" in caplog.text
-    assert "transcript: hello there speaker-a" in caplog.text
-    assert "stt took" in caplog.text
-    assert "ttft was" in caplog.text
-    assert "first chunk arrived in" in caplog.text
-    assert "first chunk: First chunk." in caplog.text
-    assert "reply || First chunk. || Second chunk." in caplog.text
-    assert "total roundtrip" in caplog.text
+    assert "🎤 hello there speaker-a" in caplog.text
+    assert "🔊 First chunk." in caplog.text
+    assert "roundtrip" in caplog.text
 
 
 def test_handle_ws_logs_vad_ignored_noise(monkeypatch, caplog):
@@ -681,10 +676,10 @@ def test_handle_ws_logs_vad_ignored_noise(monkeypatch, caplog):
         await ws.messages.put(FakeWebSocketResponse.STOP)
         await handler_task
 
-    with caplog.at_level(logging.INFO):
+    with caplog.at_level(logging.DEBUG):
         asyncio.run(scenario())
 
-    assert "VAD ignored noise/too-short input" in caplog.text
+    assert "dropped: hmm" in caplog.text
 
 
 def test_speak_text_pushes_server_side_audio_to_active_client(monkeypatch):
@@ -992,6 +987,34 @@ def test_speak_text_requires_active_voice_client(monkeypatch):
     asyncio.run(scenario())
 
 
+def test_speak_text_rejects_when_tts_disabled(monkeypatch):
+    class DisabledTtsStore(FakeStore):
+        def load_runtime_settings(self):
+            settings = super().load_runtime_settings()
+            settings["tts"] = {
+                "enabled_providers": ["disabled"],
+                "default_provider": "disabled",
+            }
+            return settings
+
+    async def fake_get_active_ws(self):
+        return object()
+
+    monkeypatch.setattr(VoiceRuntime, "_get_active_ws", fake_get_active_ws)
+    monkeypatch.setattr(
+        runtime_module,
+        "build_synthesizer",
+        lambda tts, secrets: (_ for _ in ()).throw(AssertionError("build_synthesizer should not run")),
+    )
+
+    async def scenario():
+        runtime = VoiceRuntime(DisabledTtsStore())
+        with pytest.raises(ValidationError, match="TTS is disabled for this runtime."):
+            await runtime.speak_text("hello")
+
+    asyncio.run(scenario())
+
+
 def test_handle_ws_uses_hermes_agent_when_selected(monkeypatch):
     FakeWebSocketResponse.created.clear()
     hermes_calls = []
@@ -1055,6 +1078,107 @@ def test_handle_ws_uses_hermes_agent_when_selected(monkeypatch):
     assert ws.binary_messages == [b"audio"]
 
 
+def test_handle_ws_skips_audio_when_tts_disabled(monkeypatch):
+    FakeWebSocketResponse.created.clear()
+    gateway_calls = []
+
+    class DisabledTtsStore(FakeStore):
+        def load_runtime_settings(self):
+            settings = super().load_runtime_settings()
+            settings["tts"] = {
+                "enabled_providers": ["disabled"],
+                "default_provider": "disabled",
+            }
+            return settings
+
+    class FakeTranscriber:
+        def transcribe(self, audio_bytes):
+            return type("Result", (), {"text": "hello from mic", "duration_seconds": 1.0})()
+
+    class FakeGateway:
+        def __init__(self, **kwargs):
+            pass
+
+        async def stream_reply(self, text, abort_event):
+            gateway_calls.append(text)
+            yield "Acknowledged."
+
+    monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
+    monkeypatch.setattr(
+        runtime_module,
+        "build_synthesizer",
+        lambda tts, secrets: (_ for _ in ()).throw(AssertionError("build_synthesizer should not run")),
+    )
+    monkeypatch.setattr(runtime_module, "DirectGatewayClient", lambda **kwargs: FakeGateway())
+    monkeypatch.setattr(runtime_module.web, "WebSocketResponse", FakeWebSocketResponse)
+
+    async def scenario():
+        runtime = VoiceRuntime(DisabledTtsStore())
+        handler_task = asyncio.create_task(runtime.handle_ws(object()))
+
+        while not FakeWebSocketResponse.created:
+            await asyncio.sleep(0)
+        ws = FakeWebSocketResponse.created[-1]
+        await ws.messages.put(FakeMessage(WSMsgType.BINARY, data=b"x" * 3200))
+        while ws.json_messages[-1:] != [{"status": "idle"}]:
+            await asyncio.sleep(0)
+        await ws.messages.put(FakeWebSocketResponse.STOP)
+        await handler_task
+        return ws
+
+    ws = asyncio.run(scenario())
+
+    assert gateway_calls == ["hello from mic"]
+    assert ws.binary_messages == []
+    assert ws.json_messages == [{"status": "thinking"}, {"status": "idle"}]
+
+
+def test_handle_ws_skips_empty_reply_sentinel_before_tts(monkeypatch):
+    FakeWebSocketResponse.created.clear()
+    synth_calls = []
+
+    class FakeTranscriber:
+        def transcribe(self, audio_bytes):
+            return type("Result", (), {"text": "hello from mic", "duration_seconds": 1.0})()
+
+    class FakeSynthesizer:
+        async def synthesize(self, text, *, preset_name=None):
+            synth_calls.append((text, preset_name))
+            return b"audio"
+
+    class FakeGateway:
+        def __init__(self, **kwargs):
+            pass
+
+        async def stream_reply(self, text, abort_event):
+            yield "EMPTY"
+
+    monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
+    monkeypatch.setattr(runtime_module, "build_synthesizer", lambda tts, secrets: FakeSynthesizer())
+    monkeypatch.setattr(runtime_module, "DirectGatewayClient", lambda **kwargs: FakeGateway())
+    monkeypatch.setattr(runtime_module.web, "WebSocketResponse", FakeWebSocketResponse)
+
+    async def scenario():
+        runtime = VoiceRuntime(FakeStore())
+        handler_task = asyncio.create_task(runtime.handle_ws(object()))
+
+        while not FakeWebSocketResponse.created:
+            await asyncio.sleep(0)
+        ws = FakeWebSocketResponse.created[-1]
+        await ws.messages.put(FakeMessage(WSMsgType.BINARY, data=b"x" * 3200))
+        while ws.json_messages[-1:] != [{"status": "idle"}]:
+            await asyncio.sleep(0)
+        await ws.messages.put(FakeWebSocketResponse.STOP)
+        await handler_task
+        return ws
+
+    ws = asyncio.run(scenario())
+
+    assert synth_calls == []
+    assert ws.binary_messages == []
+    assert ws.json_messages == [{"status": "thinking"}, {"status": "idle"}]
+
+
 def test_handle_speak_request_times_out_when_speak_stalls(monkeypatch):
     class FakeRequest:
         can_read_body = True
@@ -1116,6 +1240,7 @@ def test_handle_interrupt_probe_uses_configured_language(monkeypatch):
         return FakeTranscriber()
 
     monkeypatch.setattr(runtime_module, "build_transcriber", fake_build_transcriber)
+    monkeypatch.setattr("agent_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: True)
 
     async def scenario():
         runtime = VoiceRuntime(FakeStore())
@@ -1195,6 +1320,7 @@ def test_handle_interrupt_probe_returns_pause_action(monkeypatch):
             }
 
     monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
+    monkeypatch.setattr("agent_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: True)
 
     async def scenario():
         runtime = VoiceRuntime(FakeStore())
@@ -1229,6 +1355,7 @@ def test_handle_interrupt_probe_returns_send_action_for_language_specific_manual
             }
 
     monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
+    monkeypatch.setattr("agent_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: True)
 
     async def scenario():
         runtime = VoiceRuntime(FakeStore())
@@ -1261,6 +1388,7 @@ def test_handle_interrupt_probe_returns_hold_action_and_content(monkeypatch):
             }
 
     monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
+    monkeypatch.setattr("agent_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: True)
 
     async def scenario():
         runtime = VoiceRuntime(FakeStore())

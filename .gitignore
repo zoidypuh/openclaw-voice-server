@@ -20,7 +20,9 @@ clients/windows/src-tauri/target/
 tts-eleven/
 piper-voices/
 chatterbox-voices/
+neutts-voices/
 samples/
 image.png
 netsh
 .codex
+fish-speech/

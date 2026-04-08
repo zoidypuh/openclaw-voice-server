@@ -156,7 +156,7 @@ fn open_in_browser(url: &Url) {
 }
 
 fn tray_tooltip(state: TrayState) -> String {
-    format!("OpenClaw Voice: {}", state.label())
+    format!("Agent Switchboard: {}", state.label())
 }
 
 fn set_pixel(rgba: &mut [u8], x: i32, y: i32, color: [u8; 4]) {
@@ -456,7 +456,7 @@ fn build_main_window<R: tauri::Runtime>(
         MAIN_WINDOW_LABEL,
         WebviewUrl::External(voice_url.clone()),
     )
-    .title("OpenClaw Voice")
+    .title("Agent Switchboard")
     .inner_size(460.0, 620.0)
     .min_inner_size(360.0, 520.0)
     .resizable(true)
@@ -606,7 +606,7 @@ fn build_tray<R: tauri::Runtime>(
             let quitting = quitting.clone();
             move |app, event| match event.id().as_ref() {
                 MENU_START => start_voice_runtime(app),
-                MENU_INTERRUPT => invoke_voice_action(app, "__openclawManualInterrupt"),
+                MENU_INTERRUPT => invoke_voice_action(app, "__agentSwitchboardManualInterrupt"),
                 MENU_TOGGLE => toggle_main_window(app),
                 MENU_QUIT => {
                     quitting.store(true, Ordering::SeqCst);
@@ -631,7 +631,7 @@ fn build_tray<R: tauri::Runtime>(
 
 pub fn run() {
     if let Err(error) = run_inner() {
-        eprintln!("failed to launch OpenClaw Voice Windows client: {error}");
+        eprintln!("failed to launch Agent Switchboard Windows client: {error}");
     }
 }
 
@@ -701,7 +701,7 @@ fn run_inner() -> tauri::Result<()> {
             } else if shortcut.id() == pause_shortcut_id {
                 click_voice_button(app, "#pause-btn");
             } else if interrupt_shortcut_ids.iter().any(|shortcut_id| *shortcut_id == shortcut.id()) {
-                invoke_voice_action(app, "__openclawManualInterrupt");
+                invoke_voice_action(app, "__agentSwitchboardManualInterrupt");
             }
         })
         .build();

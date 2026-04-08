@@ -1,5 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    openclaw_voice_windows_client_lib::run();
+    agent_switchboard_windows_client_lib::run();
 }

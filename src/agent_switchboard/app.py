@@ -180,6 +180,11 @@ def create_app() -> web.Application:
         result = await setup_service.validate_vibevoice(payload)
         return web.json_response(result)
 
+    async def validate_neutts(request: web.Request) -> web.Response:
+        payload = await parse_json(request)
+        result = await setup_service.validate_neutts(payload)
+        return web.json_response(result)
+
     @web.middleware
     async def error_middleware(request: web.Request, handler):
         try:
@@ -214,6 +219,7 @@ def create_app() -> web.Application:
     app.router.add_get("/api/setup/vibevoice-voices", vibevoice_voices)
     app.router.add_post("/api/setup/vibevoice-voices", vibevoice_voices)
     app.router.add_post("/api/setup/validate-vibevoice", validate_vibevoice)
+    app.router.add_post("/api/setup/validate-neutts", validate_neutts)
     app.router.add_get("/ws/voice", runtime.handle_ws)
     app.router.add_static("/static", static_dir)
     return app

@@ -1,12 +1,12 @@
 [package]
-name = "openclaw-voice-windows-client"
+name = "agent-switchboard-windows-client"
 version = "0.1.0"
-description = "Tauri Windows client for the OpenClaw voice server."
-authors = ["OpenClaw contributors"]
+description = "Tauri Windows client for Agent Switchboard."
+authors = ["Agent Switchboard contributors"]
 edition = "2021"
 
 [lib]
-name = "openclaw_voice_windows_client_lib"
+name = "agent_switchboard_windows_client_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

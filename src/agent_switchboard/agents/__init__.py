@@ -1,6 +1,7 @@
 from .base import BaseConversationAgent, ConversationAgent
 from .hermes import HermesConversationAgent, validate_hermes_connection
 from .openai_chat import OpenAIChatAgent
+from ..catalog import normalize_agent_backend
 from ..gateway import normalize_gateway_url, resolve_voice_session_key
 
 
@@ -30,7 +31,7 @@ def build_conversation_agent(
     hermes_agent_cls=HermesConversationAgent,
     direct_agent_cls=OpenAIChatAgent,
 ) -> BaseConversationAgent:
-    backend = str((settings.get("agent") or {}).get("backend") or "openclaw").strip().lower()
+    backend = normalize_agent_backend((settings.get("agent") or {}).get("backend"))
     if backend == "hermes":
         return hermes_agent_cls(
             project_root=str((settings.get("agent") or {}).get("hermes_root") or "").strip() or None,

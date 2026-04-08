@@ -1,4 +1,4 @@
-# OpenClaw Voice Windows Client
+# Agent Switchboard Windows Client
 
 This is a Windows-oriented client wrapper for the existing Python voice server.
 
@@ -43,7 +43,7 @@ This is the supported path for running the voice server **directly on Windows** 
 ### Step 1 — Bootstrap
 
 ```powershell
-cd C:\path\to\openclaw-voice-server\clients\windows
+cd C:\path\to\agent-switchboard\clients\windows
 py bootstrap-windows.py
 ```
 
@@ -67,12 +67,12 @@ Edit `config.json` in the repo root:
 }
 ```
 
-Or set `OPENCLAW_VOICE_WHISPER_DEVICE=cpu` in `.env`.
+Or set `AGENT_SWITCHBOARD_WHISPER_DEVICE=cpu` in `.env`.
 
 For a **remote Whisper endpoint** instead of local CPU, set:
 ```
-OPENCLAW_VOICE_WHISPER_ENDPOINT_URL=https://your-whisper-endpoint.com
-OPENCLAW_VOICE_WHISPER_ENDPOINT_MODEL=large-v3
+AGENT_SWITCHBOARD_WHISPER_ENDPOINT_URL=https://your-whisper-endpoint.com
+AGENT_SWITCHBOARD_WHISPER_ENDPOINT_MODEL=large-v3
 ```
 
 ### Step 3 — Start
@@ -105,15 +105,15 @@ wscript.exe .\start-windows-backend-hidden.vbs
 Start the Python backend first in Linux/macOS/WSL:
 
 ```bash
-cd /path/to/openclaw-voice-server
+cd /path/to/agent-switchboard
 source .venv/bin/activate
-openclaw-voice-server
+agent-switchboard
 ```
 
 Then from this folder on Windows:
 
 ```powershell
-cd C:\path\to\openclaw-voice-server\clients\windows
+cd C:\path\to\agent-switchboard\clients\windows
 npm install
 npm run tauri:dev
 ```
@@ -133,13 +133,13 @@ The batch script:
 - starts the backend inside WSL from that repo
 - reuses the existing `.venv` if present
 - skips startup if something is already listening on `127.0.0.1:8765`
-- writes backend logs to `%LOCALAPPDATA%\OpenClawVoice\logs\wsl-voice-server.log`
+- writes backend logs to `%LOCALAPPDATA%\AgentSwitchboard\logs\wsl-voice-server.log`
 
 Optional environment variable:
 
-- `OPENCLAW_WSL_DISTRO`
+- `AGENT_SWITCHBOARD_WSL_DISTRO`
   set this in Windows if you need a specific distro instead of the default WSL distro
-- `OPENCLAW_WSL_REPO_PATH`
+- `AGENT_SWITCHBOARD_WSL_REPO_PATH`
   set this only if the repo is not next to this script or if you want to override the auto-detected WSL path
 
 Startup usage:
@@ -159,7 +159,7 @@ wscript.exe .\start-wsl-voice-server-hidden.vbs
 From this folder on Windows:
 
 ```powershell
-cd C:\path\to\openclaw-voice-server\clients\windows
+cd C:\path\to\agent-switchboard\clients\windows
 npm install
 npm run tauri:build
 ```

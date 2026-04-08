@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .catalog import LEGACY_ENV_TO_CONFIG, SECRET_ENV_KEYS, default_config
+from .catalog import LEGACY_ENV_TO_CONFIG, SECRET_ENV_KEYS, default_config, normalize_agent_backend
 
 
 def _parse_scalar(value: str) -> Any:
@@ -77,13 +77,29 @@ def _quote_env_value(value: str) -> str:
     return value
 
 
+def _first_env_value(env_values: dict[str, str], *keys: str) -> str:
+    for key in keys:
+        value = env_values.get(key)
+        if value not in (None, ""):
+            return value
+    return ""
+
+
 class ConfigStore:
     def __init__(self, config_path: Path | None = None, env_path: Path | None = None):
         cwd = Path.cwd()
         self.config_path = Path(
-            os.environ.get("OPENCLAW_VOICE_CONFIG_FILE", config_path or cwd / "config.json")
+            os.environ.get("AGENT_SWITCHBOARD_CONFIG_FILE")
+            or os.environ.get("OPENCLAW_VOICE_CONFIG_FILE")
+            or config_path
+            or cwd / "config.json"
         )
-        self.env_path = Path(os.environ.get("OPENCLAW_VOICE_ENV_FILE", env_path or cwd / ".env"))
+        self.env_path = Path(
+            os.environ.get("AGENT_SWITCHBOARD_ENV_FILE")
+            or os.environ.get("OPENCLAW_VOICE_ENV_FILE")
+            or env_path
+            or cwd / ".env"
+        )
 
     def load_env_values(self) -> dict[str, str]:
         values: dict[str, str] = {}
@@ -118,14 +134,26 @@ class ConfigStore:
                 continue
             _set_nested(config, path, _parse_scalar(env_value))
 
+        agent = config.get("agent")
+        if isinstance(agent, dict):
+            agent["backend"] = normalize_agent_backend(agent.get("backend"))
+
         return config
 
     def load_runtime_settings(self) -> dict[str, Any]:
         config = self.load_config()
         env_values = self.load_env_values()
         config["secrets"] = {
-            "gateway_token": env_values.get("OPENCLAW_VOICE_GATEWAY_TOKEN", ""),
-            "elevenlabs_api_key": env_values.get("OPENCLAW_VOICE_ELEVENLABS_API_KEY", ""),
+            "gateway_token": _first_env_value(
+                env_values,
+                "AGENT_SWITCHBOARD_GATEWAY_TOKEN",
+                "OPENCLAW_VOICE_GATEWAY_TOKEN",
+            ),
+            "elevenlabs_api_key": _first_env_value(
+                env_values,
+                "AGENT_SWITCHBOARD_ELEVENLABS_API_KEY",
+                "OPENCLAW_VOICE_ELEVENLABS_API_KEY",
+            ),
         }
         return config
 

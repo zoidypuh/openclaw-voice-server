@@ -3,6 +3,17 @@ from __future__ import annotations
 from ..catalog import CHATTERBOX_DEFAULT_DEVICE, CHATTERBOX_DEFAULT_MODEL
 from ..errors import ValidationError
 from .base import BaseSynthesizer, Synthesizer
+from .neutts import (
+    NEUTTS_DEFAULT_BACKBONE,
+    NEUTTS_DEFAULT_CODEC,
+    NEUTTS_DEFAULT_DEVICE,
+    NEUTTS_SUPPORTED_DEVICES,
+    NeuTTSSynthesizer,
+    list_local_neutts_voices,
+    normalize_neutts_device,
+    resolve_neutts_voice,
+    validate_neutts_voice,
+)
 from .chatterbox import (
     CHATTERBOX_DEFAULT_LANGUAGE,
     CHATTERBOX_SUPPORTED_DEVICES,
@@ -73,5 +84,12 @@ def build_synthesizer(tts_settings: dict, secrets: dict[str, str]) -> BaseSynthe
         return VibeVoiceSynthesizer(
             base_url=tts_settings["vibevoice_base_url"],
             voice=tts_settings["vibevoice_voice"],
+        )
+    if provider == "neutts":
+        return NeuTTSSynthesizer(
+            backbone=tts_settings.get("neutts_backbone", NEUTTS_DEFAULT_BACKBONE),
+            codec=tts_settings.get("neutts_codec", NEUTTS_DEFAULT_CODEC),
+            device=tts_settings.get("neutts_device", NEUTTS_DEFAULT_DEVICE),
+            voice=tts_settings.get("neutts_voice", ""),
         )
     raise ValidationError(f"Unsupported TTS provider: {provider}")

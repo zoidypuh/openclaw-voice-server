@@ -1,4 +1,4 @@
-from openclaw_voice_server.text import (
+from agent_switchboard.text import (
     command_send_phrases,
     detect_voice_control_command,
     extract_speaker_directive,

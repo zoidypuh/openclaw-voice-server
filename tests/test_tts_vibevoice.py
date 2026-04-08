@@ -2,12 +2,12 @@ import asyncio
 import io
 import wave
 
-from openclaw_voice_server.tts.backends import (
+from agent_switchboard.tts.backends import (
     _pcm16le_to_wav,
     normalize_vibevoice_base_url,
     validate_vibevoice_voice,
 )
-from openclaw_voice_server.tts import vibevoice as vibevoice_module
+from agent_switchboard.tts import vibevoice as vibevoice_module
 
 
 def test_normalize_vibevoice_base_url_rewrites_common_inputs():

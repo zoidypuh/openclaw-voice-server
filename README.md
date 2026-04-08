@@ -1,357 +1,279 @@
-# OpenClaw Voice Server
+# Agent Switchboard
 
-![OpenClaw voice runtime screenshot](image.png)
+![Agent Switchboard voice runtime screenshot](image.png)
 
-`openclaw-voice-server` is an alpha browser voice client for a configured text agent plus local or remote STT/TTS backends.
+`agent-switchboard` is a local voice frontend for text agents. It gives you a browser setup page at `/setup`, a voice UI at `/voice`, local or remote Whisper-family STT, multiple TTS backends, and an optional Windows tray client.
 
-It is provided as-is. It works well in the tested path, but it can still break, regress, or have rough edges.
+This repo is still alpha. The main path works, but rough edges still exist.
 
-## What It Does
+## What This Repo Does
 
-- serves a browser setup flow at `/setup`
-- serves a minimal voice runtime at `/voice`
 - records mic audio in the browser
-- detects end-of-utterance in the browser
 - sends speech to the Python server for transcription
-- sends the transcript to the configured conversation agent
-- synthesizes the reply with Edge TTS, Piper, Chatterbox, ElevenLabs, or VibeVoice Realtime
-- streams reply audio back to the browser
+- sends the transcript to your configured conversation backend
+- optionally speaks the reply with TTS
+- can run in text-only mode with TTS disabled
+- exposes a setup page so you can validate each step before launch
 
-## How It Works
+## Before You Start
 
-High level flow:
+You need all of these before the app can work:
 
-1. The browser captures microphone input.
-2. The browser decides when the user finished speaking.
-3. The Python server transcribes the audio with a Whisper-family backend.
-4. The server sends the transcript to the configured conversation backend.
-5. The server synthesizes the model reply with the selected TTS provider.
-6. The browser plays the streamed reply audio and returns to listening.
-
-## Alpha Status
-
-- this is alpha software
-- it is meant for real-world testing, not polished distribution
-- gateway restarts, shared-session edge cases, and UI gaps can still cause failures
-- if you need a stable production-grade voice client, this is not there yet
-
-## Requirements
-
-- Python 3.11+
+- `git`
+- Python `3.11+`
 - one working conversation backend
 - one working STT backend
-- one working TTS backend
-- a supported voice client surface
-- Tailscale if you want to use the app from other devices over MagicDNS
+- optionally one TTS backend
 
-Optional, depending on chosen providers:
+The currently tested path is:
 
-- CUDA if using GPU STT
-- ElevenLabs API key if using ElevenLabs
-- Edge TTS package if using Edge TTS
-- Chatterbox package and model weights if using Chatterbox
-- a local VibeVoice demo server if using VibeVoice Realtime
+- backend on Linux, macOS, or WSL
+- browser UI at `http://127.0.0.1:8765`
+- optional Windows tray client from `clients/windows`
 
-Supported access paths right now:
+Treat iOS, macOS Safari, and random remote mobile browser paths as unsupported unless you personally verify them.
 
-- `http://127.0.0.1:8765` on the host itself
-- the Windows Tauri client in [clients/windows](clients/windows)
-- `https://<machine>.ts.net/voice/` only for browser paths that actually work in your environment
+## Fast Start
 
-Current platform limitation:
+If you want the shortest route to a first working run, do this.
 
-- the tested remote path is the existing Windows setup
-- iOS and macOS browser clients should currently be treated as unsupported
-- Safari/WebKit behavior is not a working target right now
-
-Network model:
-
-- `127.0.0.1` is local to the machine running the service
-- the voice server itself runs locally on that machine
-- the browser can still reach it from other devices when your existing reverse proxy or Tailscale setup exposes `/voice/`
-- the voice server talks to whichever conversation backend you configured
-- Tailscale/MagicDNS is for browser access from other devices, not for the voice server's backend-to-backend gateway call
-- remote browser reachability does not imply the voice runtime will work correctly on iOS/macOS
-
-## Install
-
-The backend and the Windows client are separate components. Install and run them separately.
-
-### Backend
-
-Use this on Linux, macOS, or WSL.
+1. Clone the repo.
 
 ```bash
-git clone <repo-url>
-cd openclaw-voice-server
+git clone <repo-url> agent-switchboard
+cd agent-switchboard
+```
+
+2. Create and activate a virtual environment.
+
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
+```
+
+3. Install the app.
+
+```bash
 python -m pip install --upgrade pip
 pip install -e .[dev]
+```
+
+4. Create your local env file.
+
+```bash
 cp .env.example .env
 ```
 
-Edit `.env` and set at least:
+5. Edit `.env`.
+
+At minimum, if you use the gateway backend, set:
 
 ```dotenv
-OPENCLAW_VOICE_GATEWAY_TOKEN=your-agent-token
+AGENT_SWITCHBOARD_GATEWAY_TOKEN=replace-me
 ```
 
-Add `OPENCLAW_VOICE_ELEVENLABS_API_KEY=...` only if you plan to use ElevenLabs.
+If you use ElevenLabs, also set:
 
-Important runtime detail:
+```dotenv
+AGENT_SWITCHBOARD_ELEVENLABS_API_KEY=replace-me
+```
 
-- start `openclaw-voice-server` from the repo root unless you also set `OPENCLAW_VOICE_CONFIG_FILE` and `OPENCLAW_VOICE_ENV_FILE`
-- by default the server reads `config.json` and `.env` from the current working directory
+6. Start the server from the repo root.
 
-Provider dependencies can be installed ahead of time:
+```bash
+source .venv/bin/activate
+agent-switchboard
+```
+
+7. Open the setup page in a browser.
+
+```text
+http://127.0.0.1:8765/setup
+```
+
+8. In the setup page, do these steps in order:
+
+- validate one STT backend
+- validate one TTS backend, or choose `Disabled (text only)` for the simplest first run
+- validate the conversation backend
+- open the voice app
+
+9. Open the voice UI.
+
+```text
+http://127.0.0.1:8765/voice
+```
+
+If setup is complete, `http://127.0.0.1:8765/` will also open the voice UI.
+
+## Easiest First Run
+
+If you only want to prove the pipeline works and do not care about spoken replies yet:
+
+- set up STT
+- choose `Disabled (text only)` in the TTS section
+- validate the conversation backend
+- open `/voice`
+
+That removes TTS from the first-run debugging path.
+
+## Important Runtime Rule
+
+Run `agent-switchboard` from the repo root unless you also set:
+
+- `AGENT_SWITCHBOARD_CONFIG_FILE`
+- `AGENT_SWITCHBOARD_ENV_FILE`
+
+By default, the server reads:
+
+- `config.json`
+- `.env`
+
+from the current working directory.
+
+## Optional Python Extras
+
+You do not need every provider installed on day one.
+
+Base install:
+
+```bash
+pip install -e .[dev]
+```
+
+Optional extras:
 
 ```bash
 pip install -e .[dev,stt-faster-whisper,stt-whisper,tts-edge,tts-piper,tts-chatterbox]
 ```
 
-Or you can let the setup flow install missing Python packages while validating STT and TTS.
+Notes:
 
-Optional VibeVoice dependency:
+- the setup page can install some missing Python packages while validating providers
+- NeuTTS is currently installed on demand during validation
+- VibeVoice runs in its own separate environment and server
 
-- this repo talks to the existing VibeVoice demo server over HTTP/WebSocket
-- install and run VibeVoice in its own environment instead of adding its dependencies here
+## TTS Backends
 
-Optional Chatterbox dependency:
+Currently supported:
 
-- this repo can run Chatterbox locally with the packaged built-in voice conditionals
-- the first validation/download can be large because model weights are fetched from Hugging Face
-- use the multilingual model for German and other non-English languages
+- Edge TTS
+- Piper
+- Chatterbox
+- ElevenLabs
+- NeuTTS
+- VibeVoice Realtime
+- `Disabled (text only)`
 
-Run the backend:
+## NeuTTS Local Voices
 
-```bash
-cd /path/to/openclaw-voice-server
-source .venv/bin/activate
-openclaw-voice-server
+If you use NeuTTS voice cloning, keep local reference material in `neutts-voices/`.
+
+Example:
+
+```text
+neutts-voices/
+  mara/
+    reference.wav
+    reference.txt
 ```
 
-Health check:
+Rules:
 
-```bash
-curl http://127.0.0.1:8765/health
-```
+- each voice gets its own subdirectory
+- each subdirectory needs one `.wav` and one `.txt`
+- the transcript should closely match the spoken audio
+- these files are local workspace data, not something to commit
 
-Finish setup in the browser:
+## Remote Access
 
-1. Open `http://127.0.0.1:8765/setup`.
-2. Validate one STT path.
-3. Validate one TTS provider and voice.
-4. Validate the configured conversation backend, model, session key, and token.
-5. Open `http://127.0.0.1:8765/voice`.
-
-If setup is valid, `GET /` serves the voice runtime automatically.
-
-### Windows Client
-
-Use this only if you want the Windows tray/Tauri wrapper. It does not replace the Python backend.
-
-Prerequisites:
-
-- Windows with WebView2
-- Node.js 20+
-- Rust installed through `rustup`
-- the Python backend above already running on `http://127.0.0.1:8765`
-
-Install and run the client from Windows:
-
-```powershell
-cd C:\path\to\openclaw-voice-server\clients\windows
-npm install
-npm run tauri:dev
-```
-
-Build a Windows bundle:
-
-```powershell
-cd C:\path\to\openclaw-voice-server\clients\windows
-npm install
-npm run tauri:build
-```
-
-Startup order:
-
-1. Start the Python backend.
-2. Start the Windows client.
-3. Use the tray app or the window at `http://127.0.0.1:8765/voice`.
-
-For tray behavior, shortcuts, and Windows-specific verification notes, see [clients/windows/README.md](clients/windows/README.md).
-
-## Tests
-
-Run tests with:
-
-```bash
-PYTHONPATH=src python3 -m pytest
-```
-
-Default local bind:
+Local browser URL:
 
 ```text
 http://127.0.0.1:8765
 ```
 
-Recommended Tailscale/MagicDNS address when routed through the existing OpenClaw gateway:
+Possible remote browser URL behind your own reverse proxy or Tailscale setup:
 
 ```text
 https://<machine>.ts.net/voice/
 ```
 
-Treat that as a remote access URL, not as a promise that every browser engine works. The current tested path is still Windows-first.
+Important:
 
-### VibeVoice Realtime Demo Server
+- the browser URL and the conversation backend URL are not the same thing
+- use your local gateway URL inside setup, not the public browser URL
+- remote browser reachability does not mean every browser engine will work correctly
 
-Use this if you want local preset voices instead of ElevenLabs.
+## Windows Client
 
-```bash
-git clone https://github.com/microsoft/VibeVoice.git
-cd VibeVoice
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .[streamingtts]
-python demo/vibevoice_realtime_demo.py --model_path microsoft/VibeVoice-Realtime-0.5B --device cuda --port 3000
+The Windows tray client is optional.
+
+This repo does not ship a prebuilt Windows release or checked-in bundle artifacts. Build it yourself from source.
+
+Development run on Windows:
+
+```powershell
+cd C:\path\to\agent-switchboard\clients\windows
+npm install
+npm run tauri:dev
 ```
 
-Then in the OpenClaw setup UI:
+Build the Windows client:
 
-1. choose `VibeVoice Realtime` as the TTS provider
-2. set the server URL to `http://127.0.0.1:3000`
-3. load voices from the VibeVoice server
-4. validate and save one preset voice
+```powershell
+cd C:\path\to\agent-switchboard\clients\windows
+npm install
+npm run tauri:build
+```
+
+Prerequisites:
+
+- WebView2
+- Node.js `20+`
+- Rust via `rustup`
+- the Python backend already running on `http://127.0.0.1:8765`
+
+For the full Windows-specific setup and autostart notes, read [clients/windows/README.md](clients/windows/README.md).
+
+## Tests
+
+Run the test suite from the repo root:
+
+```bash
+source .venv/bin/activate
+PYTHONPATH=src python3 -m pytest
+```
+
+If you just want to verify a file or feature while editing, run a smaller slice, for example:
+
+```bash
+source .venv/bin/activate
+PYTHONPATH=src python3 -m pytest tests/test_runtime.py
+```
 
 ## Command Calibration
 
-The voice runtime now includes a lightweight calibration workflow for spoken control phrases such as `hey go`, `hey stop`, and `hey pause`.
-
-Record browser samples at:
-
-```text
-http://127.0.0.1:8765/record
-```
-
-The recorder downloads `16kHz` mono WAV files that can be replayed through the configured STT backend with the bundled CLI:
-
-```bash
-uv run openclaw-calibrate-command samples/hey-go --expected-action send --send-phrase "hey go"
-```
-
-Useful flags:
-
-- `--expected-action interrupt`
-- `--expected-action pause`
-- `--send-phrase "hey go"`
-
-## Configuration
-
-Configuration is split across:
-
-- `config.json` for normal settings
-- `.env` for secrets
-
-The setup UI validates each section before saving it.
-
-Setup sections:
-
-1. `STT`
-   Pick the speech-to-text backend, language, device, and model.
-2. `TTS`
-   Pick the speech provider.
-3. `Edge Voice`
-   If Edge is selected, choose and validate the voice.
-4. `ElevenLabs`
-   If ElevenLabs is selected, validate the API key and voice.
-5. `VibeVoice Realtime`
-   If VibeVoice is selected, point the app at the local VibeVoice demo server, load preset voices, and validate one preset.
-6. `Conversation Backend`
-   Point the app at the local OpenClaw gateway and validate the session/model/token.
-
-Important gateway rule:
-
-- use the local gateway URL, for example `http://127.0.0.1:18789`
-- the app will normalize it to `/v1/chat/completions`
-- do not use the public `.ts.net` URL in the gateway field
-- the `.ts.net` URL is for opening the voice UI from another device in a browser
-
-## Sessions
-
-By default, the app is intended to use a dedicated voice-chat session key.
-
-That default can be overridden with another existing session key, including one that also routes messages to a channel such as Telegram.
-
-That gives you two useful modes:
-
-- dedicated voice session
-  voice chat stays isolated from other channels
-- shared channel-linked session
-  for example, if voice uses the same session as Telegram:
-  the agent can speak with you in voice chat and also send messages into Telegram
-  and if you write to the agent in Telegram, that context can later be recalled inside the voice chat
-
-This shared-session mode is powerful, but it also means voice and the other channel are using the same OpenClaw session state.
-
-## Known Bugs
-
-- minor: unnecessary OpenAI/OpenAI-compat sessions may still be spawned in some flows
-- spoken voice command detection still needs more real-world tuning
-- Windows tray shell is usable, but still has rough edges and should be treated as alpha
-- iOS/macOS browser use should currently be treated as unsupported; do not assume Safari/WebKit will behave like the tested Windows path
-
-## Tested
-
-Tested successfully in the main path:
-
-- Faster Whisper on CUDA
-- ElevenLabs TTS
-- OpenClaw local gateway on `127.0.0.1:18789`
-- proxied `/voice/` route behind the existing OpenClaw/Tailscale setup
-- Windows Tauri tray shell with a local WSL backend
-
-## Not Yet Tested
-
-- Edge TTS
-- VibeVoice Realtime
-- OpenAI Whisper on CPU
-
-## Not Supported Right Now
-
-- iPhone/iOS browser use
-- macOS browser use
-- assuming Safari/WebKit behaves like the tested Windows browser/Tauri path
-
-## TODO
-
-- test Edge TTS end to end
-- test VibeVoice Realtime end to end
-- test Whisper on CPU end to end
-- keep tuning spoken command detection for `hey stop` and `hey pause`
-
-## Routes
-
-- `GET /` serves `/setup` until runtime config is valid, then serves `/voice`
-- `GET /setup` setup flow
-- `GET /voice` voice runtime
-- `GET /record` browser WAV recorder for command calibration
-- `GET /health` liveness/readiness
-- `GET /api/setup/state` setup state
-- `GET /api/runtime/state` runtime browser settings
-- `POST /api/runtime/interrupt-probe` short STT probe for spoken control detection
-- `POST /api/runtime/speak` synthesize arbitrary text and push it to the active voice client
-- `GET /ws/voice` voice websocket
+There is also a calibration helper for spoken control phrases.
 
 Example:
 
 ```bash
-curl -X POST http://127.0.0.1:8765/api/runtime/speak \
-  -H 'content-type: application/json' \
-  -d '{"text":"[voice:expressive]Hello from OpenClaw voice."}'
+source .venv/bin/activate
+agent-switchboard-calibrate samples/hey-go --expected-action send --send-phrase "hey go"
 ```
 
-Notes:
+Help:
 
-- this only works while a `/voice` browser tab or Windows shell is actively connected
-- the injected speech is serialized with normal voice turns, so it will wait for any in-flight reply to finish
+```bash
+source .venv/bin/activate
+agent-switchboard-calibrate --help
+```
+
+## Troubleshooting
+
+- If the app cannot find your config, you probably started it from the wrong directory.
+- If the setup page says validation failed, fix that step before touching the next one.
+- If you want the simplest debug path, disable TTS first.
+- If the browser page loads but replies do not work, the conversation backend is usually misconfigured.
+- If remote `.ts.net` access is flaky, validate everything locally on `127.0.0.1` first.

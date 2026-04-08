@@ -1,5 +1,5 @@
-from openclaw_voice_server.windows_client_state import WindowsClientStateStore
-from openclaw_voice_server.errors import ValidationError
+from agent_switchboard.windows_client_state import WindowsClientStateStore
+from agent_switchboard.errors import ValidationError
 
 
 def test_windows_client_state_store_tracks_and_expires_status():

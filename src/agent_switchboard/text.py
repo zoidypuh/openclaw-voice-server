@@ -25,7 +25,6 @@ _COMMON_NOISE = {
 
 # Always-drop hallucinations — these are never real user input.
 _ALWAYS_DROP = {
-    "vielen dank",
     "tschüss",
     "tschuss",
     "tschuess",
