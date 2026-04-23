@@ -74,6 +74,7 @@ def _build_transcriber(backend_id: str, settings: dict) -> BaseTranscriber:
     if backend_id == "faster-whisper":
         kwargs["vad_filter"] = bool(settings.get("vad_filter", True))
         kwargs["vad_min_silence_duration_ms"] = int(settings.get("vad_min_silence_duration_ms", 500) or 0)
+        kwargs["speech_precheck"] = bool(settings.get("speech_precheck", True))
     return transcriber_cls(**kwargs)
 
 

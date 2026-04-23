@@ -140,3 +140,21 @@ def test_has_probable_voice_transcript_rejects_empty_and_fillers():
     assert has_probable_voice_transcript("", 0.3) is False
     assert has_probable_voice_transcript("hey", 0.3) is False
     assert has_probable_voice_transcript("Vielen Dank", 0.2, min_duration=0.5) is False
+
+
+
+def test_should_drop_voice_transcript_rejects_impossibly_dense_sentence_from_short_audio():
+    assert should_drop_voice_transcript(
+        "I'm going to make a cake with the remaining cream.",
+        0.8,
+        min_duration=0.5,
+    ) is True
+
+
+
+def test_has_probable_voice_transcript_rejects_impossibly_dense_sentence_from_short_audio():
+    assert has_probable_voice_transcript(
+        "I'm going to make a cake with the remaining cream.",
+        0.8,
+        min_duration=0.5,
+    ) is False

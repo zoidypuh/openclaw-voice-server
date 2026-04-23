@@ -7,6 +7,7 @@ It does not replace the Python backend. It opens the existing voice runtime at `
 ## Default shortcuts
 
 - `Ctrl+Shift+Space`: show or hide the main window
+- `Ctrl+Shift+S`: hold to talk, release to send the current turn
 - `Ctrl+Shift+P`: click the existing pause or resume button in the voice UI
 - immediate interrupt: `Ctrl+Alt+A`
 
@@ -170,6 +171,7 @@ The shell does not bundle the Python server. Keep the backend and client as sepa
 
 When testing voice control behavior, verify all of these cases explicitly:
 
+- holding `Ctrl+Shift+S` captures a held turn and releasing it sends immediately without waiting for silence timeout.
 - `Ctrl+Alt+A` interrupts immediately while the agent is speaking.
 - Tray `Interrupt Now` interrupts immediately while the agent is speaking.
 - saying `hey stop` interrupts the current reply reliably.

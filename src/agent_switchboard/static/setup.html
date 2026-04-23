@@ -394,10 +394,69 @@
     <div class="result" id="chatterbox-result"></div>
   </section>
 
+  <section class="section hidden" id="pockettts-section">
+    <div class="section-header">
+      <div class="section-title">
+        <h2>7. Pocket TTS</h2>
+        <p>Run Kyutai Pocket TTS locally, choose one built-in preset voice or a custom voice reference, and validate one synthesis pass before saving.</p>
+      </div>
+      <div class="badge" id="pockettts-badge">Not checked</div>
+    </div>
+    <div class="grid">
+      <label>Preset voices
+        <select id="pockettts-voice-select">
+          <option value="">Choose one preset voice</option>
+        </select>
+      </label>
+      <label>Voice reference
+        <input id="pockettts-voice" type="text" placeholder="alba or /path/to/voice.wav or https://... or hf://...">
+      </label>
+    </div>
+    <div class="note" id="pockettts-note"></div>
+    <div class="actions">
+      <button class="primary" id="validate-pockettts">Validate Pocket TTS Voice And Save</button>
+      <button id="continue-pockettts">Continue With Validated Pocket TTS</button>
+    </div>
+    <div class="result" id="pockettts-result"></div>
+  </section>
+
+  <section class="section hidden" id="supertonic-section">
+    <div class="section-header">
+      <div class="section-title">
+        <h2>8. Supertonic</h2>
+        <p>Run Supertonic through a dedicated Python environment, then validate one fast local synthesis pass before saving.</p>
+      </div>
+      <div class="badge" id="supertonic-badge">Not checked</div>
+    </div>
+    <div class="grid">
+      <label>Python executable
+        <input id="supertonic-python-path" type="text" placeholder="/path/to/python">
+      </label>
+      <label>Voice
+        <select id="supertonic-voice"></select>
+      </label>
+      <label>Language
+        <select id="supertonic-language"></select>
+      </label>
+      <label>Total steps
+        <input id="supertonic-total-steps" type="number" min="1" step="1" placeholder="3">
+      </label>
+      <label>Speed
+        <input id="supertonic-speed" type="number" min="0.1" step="0.05" placeholder="1.05">
+      </label>
+    </div>
+    <div class="note" id="supertonic-note"></div>
+    <div class="actions">
+      <button class="primary" id="validate-supertonic">Validate Supertonic And Save</button>
+      <button id="continue-supertonic">Continue With Validated Supertonic</button>
+    </div>
+    <div class="result" id="supertonic-result"></div>
+  </section>
+
   <section class="section hidden" id="vibevoice-section">
     <div class="section-header">
       <div class="section-title">
-        <h2>7. VibeVoice Realtime</h2>
+        <h2>9. VibeVoice Realtime</h2>
         <p>Connect to a local VibeVoice demo server, load its preset voices, and validate one preset before saving.</p>
       </div>
       <div class="badge" id="vibevoice-badge">Not checked</div>
@@ -427,7 +486,7 @@
   <section class="section hidden" id="neutts-section">
     <div class="section-header">
       <div class="section-title">
-        <h2>8. NeuTTS Voice</h2>
+        <h2>10. NeuTTS Voice</h2>
         <p>Configure the NeuTTS backbone model, codec, device, and voice clone reference.</p>
       </div>
       <div class="badge" id="neutts-badge">Not checked</div>
@@ -462,7 +521,7 @@
   <section class="section hidden" id="gateway-section">
     <div class="section-header">
       <div class="section-title">
-        <h2>8. Conversation Backend</h2>
+        <h2>11. Conversation Backend</h2>
         <p>Select the chat agent and validate its backend before launch.</p>
       </div>
       <div class="badge" id="gateway-badge">Not checked</div>
@@ -545,6 +604,7 @@ let setupState = null;
 let edgeVoices = [];
 let elevenVoices = [];
 let localPiperVoices = [];
+let pocketTtsVoices = [];
 let vibevoiceVoices = [];
 let rememberedRemoteStt = {
   url: '',
@@ -593,6 +653,12 @@ function ttsProviderSectionId(provider) {
   }
   if (provider === 'chatterbox') {
     return 'chatterbox-section';
+  }
+  if (provider === 'pockettts') {
+    return 'pockettts-section';
+  }
+  if (provider === 'supertonic') {
+    return 'supertonic-section';
   }
   if (provider === 'vibevoice') {
     return 'vibevoice-section';
@@ -687,7 +753,7 @@ function updateDeviceNotes() {
 }
 
 function resolveAppBase() {
-  return new URL('.', window.location.href);
+  return new URL('/', window.location.href);
 }
 
 const APP_BASE = resolveAppBase();
@@ -902,6 +968,39 @@ function renderNeuTTSVoiceOptions(voices) {
   }
 }
 
+function renderPocketTtsVoiceOptions(voices) {
+  pocketTtsVoices = voices;
+  const select = document.getElementById('pockettts-voice-select');
+  const currentVoice = document.getElementById('pockettts-voice').value.trim();
+  select.innerHTML = '';
+
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = voices.length ? 'Choose one preset voice' : 'No Pocket TTS preset voices available';
+  select.appendChild(placeholder);
+
+  for (const voice of voices) {
+    const option = document.createElement('option');
+    option.value = voice.id;
+    option.textContent = voice.label;
+    select.appendChild(option);
+  }
+
+  select.disabled = voices.length === 0;
+  if (currentVoice && voices.some((voice) => voice.id === currentVoice)) {
+    select.value = currentVoice;
+  } else {
+    select.value = '';
+  }
+}
+
+function syncPocketTtsSelectionFromInput() {
+  const voice = document.getElementById('pockettts-voice').value.trim().toLowerCase();
+  const select = document.getElementById('pockettts-voice-select');
+  const match = pocketTtsVoices.find((item) => item.id === voice);
+  select.value = match ? match.id : '';
+}
+
 function syncPiperSelectionFromInput() {
   const modelPath = document.getElementById('piper-model-path').value.trim();
   const select = document.getElementById('piper-local-voice');
@@ -951,6 +1050,9 @@ function getEffectiveStatus() {
       edge_ready: false,
       piper_ready: false,
       eleven_ready: false,
+      chatterbox_ready: false,
+      pockettts_ready: false,
+      supertonic_ready: false,
       vibevoice_ready: false,
       neutts_ready: false,
       gateway_ready: false,
@@ -1033,6 +1135,22 @@ function getEffectiveStatus() {
     && document.getElementById('chatterbox-voice').value === (ttsSaved.chatterbox_voice || 'default')
     && document.getElementById('chatterbox-language').value.trim() === (ttsSaved.chatterbox_language || '')
   );
+  const pocketttsReady = Boolean(
+    ttsReady
+    && currentProvider === 'pockettts'
+    && status.pockettts_ready
+    && document.getElementById('pockettts-voice').value.trim() === (ttsSaved.pockettts_voice || '')
+  );
+  const supertonicReady = Boolean(
+    ttsReady
+    && currentProvider === 'supertonic'
+    && status.supertonic_ready
+    && document.getElementById('supertonic-python-path').value.trim() === (ttsSaved.supertonic_python_path || '')
+    && document.getElementById('supertonic-voice').value === (ttsSaved.supertonic_voice || 'M4')
+    && document.getElementById('supertonic-language').value === (ttsSaved.supertonic_language || 'en')
+    && Number(document.getElementById('supertonic-total-steps').value || 3) === Number(ttsSaved.supertonic_total_steps || 3)
+    && Number(document.getElementById('supertonic-speed').value || 1.05) === Number(ttsSaved.supertonic_speed || 1.05)
+  );
 
   const neuttsReady = Boolean(
     ttsReady
@@ -1049,7 +1167,7 @@ function getEffectiveStatus() {
   const currentAgentBackendVal = currentAgentBackend();
   const savedSessionKey = gatewaySaved.session_key || (setupState?.hints?.default_voice_session_key || '');
   const gatewayReady = Boolean(
-    (ttsDisabled || edgeReady || piperReady || elevenReady || chatterboxReady || vibevoiceReady || neuttsReady)
+    (ttsDisabled || edgeReady || piperReady || elevenReady || chatterboxReady || pocketttsReady || supertonicReady || vibevoiceReady || neuttsReady)
     && currentAgentBackendVal === 'gateway'
     && (agentSaved.backend || 'gateway') === 'gateway'
     && status.gateway_ready
@@ -1060,7 +1178,7 @@ function getEffectiveStatus() {
   );
   const savedHermesRoot = (agentSaved.hermes_root || (setupState?.hints?.default_hermes_root || '')).trim();
   const hermesReady = Boolean(
-    (ttsDisabled || edgeReady || piperReady || elevenReady || chatterboxReady || vibevoiceReady || neuttsReady)
+    (ttsDisabled || edgeReady || piperReady || elevenReady || chatterboxReady || pocketttsReady || supertonicReady || vibevoiceReady || neuttsReady)
     && currentAgentBackendVal === 'hermes'
     && (agentSaved.backend || 'gateway') === 'hermes'
     && status.hermes_ready
@@ -1083,6 +1201,8 @@ function getEffectiveStatus() {
     piper_ready: piperReady,
     eleven_ready: elevenReady,
     chatterbox_ready: chatterboxReady,
+    pockettts_ready: pocketttsReady,
+    supertonic_ready: supertonicReady,
     vibevoice_ready: vibevoiceReady,
     neutts_ready: neuttsReady,
     gateway_ready: gatewayReady,
@@ -1101,6 +1221,8 @@ function updateFlowVisibility() {
   const showPiper = showTts && effective.tts_ready && currentProvider === 'piper';
   const showEleven = showTts && effective.tts_ready && currentProvider === 'elevenlabs';
   const showChatterbox = showTts && effective.tts_ready && currentProvider === 'chatterbox';
+  const showPocketTts = showTts && effective.tts_ready && currentProvider === 'pockettts';
+  const showSupertonic = showTts && effective.tts_ready && currentProvider === 'supertonic';
   const showVibeVoice = showTts && effective.tts_ready && currentProvider === 'vibevoice';
   const showNeuTTS = showTts && effective.tts_ready && currentProvider === 'neutts';
   const showDisabled = showTts && effective.tts_ready && currentProvider === 'disabled';
@@ -1112,6 +1234,10 @@ function updateFlowVisibility() {
       ? effective.eleven_ready
       : showChatterbox
         ? effective.chatterbox_ready
+      : showPocketTts
+        ? effective.pockettts_ready
+      : showSupertonic
+        ? effective.supertonic_ready
       : showVibeVoice
         ? effective.vibevoice_ready
       : showNeuTTS
@@ -1128,6 +1254,8 @@ function updateFlowVisibility() {
   document.getElementById('piper-section').classList.toggle('hidden', !showPiper);
   document.getElementById('eleven-section').classList.toggle('hidden', !showEleven);
   document.getElementById('chatterbox-section').classList.toggle('hidden', !showChatterbox);
+  document.getElementById('pockettts-section').classList.toggle('hidden', !showPocketTts);
+  document.getElementById('supertonic-section').classList.toggle('hidden', !showSupertonic);
   document.getElementById('vibevoice-section').classList.toggle('hidden', !showVibeVoice);
   document.getElementById('neutts-section').classList.toggle('hidden', !showNeuTTS);
   document.getElementById('gateway-section').classList.toggle('hidden', !showGateway);
@@ -1140,6 +1268,8 @@ function updateFlowVisibility() {
   setBadge('piper-badge', effective.piper_ready ? 'Validated' : 'Needs validation', effective.piper_ready);
   setBadge('eleven-badge', effective.eleven_ready ? 'Validated' : 'Needs validation', effective.eleven_ready);
   setBadge('chatterbox-badge', effective.chatterbox_ready ? 'Validated' : 'Needs validation', effective.chatterbox_ready);
+  setBadge('pockettts-badge', effective.pockettts_ready ? 'Validated' : 'Needs validation', effective.pockettts_ready);
+  setBadge('supertonic-badge', effective.supertonic_ready ? 'Validated' : 'Needs validation', effective.supertonic_ready);
   setBadge('vibevoice-badge', effective.vibevoice_ready ? 'Validated' : 'Needs validation', effective.vibevoice_ready);
   setBadge('neutts-badge', effective.neutts_ready ? 'Validated' : 'Needs validation', effective.neutts_ready);
   setBadge(
@@ -1159,6 +1289,8 @@ function updateFlowVisibility() {
   document.getElementById('continue-piper').disabled = !effective.piper_ready;
   document.getElementById('continue-eleven').disabled = !effective.eleven_ready;
   document.getElementById('continue-chatterbox').disabled = !effective.chatterbox_ready;
+  document.getElementById('continue-pockettts').disabled = !effective.pockettts_ready;
+  document.getElementById('continue-supertonic').disabled = !effective.supertonic_ready;
   document.getElementById('continue-vibevoice').disabled = !effective.vibevoice_ready;
   document.getElementById('continue-neutts').disabled = !effective.neutts_ready;
   document.getElementById('continue-gateway').disabled = !effective.conversation_ready;
@@ -1248,6 +1380,9 @@ function populateFromState(state) {
   const chatterboxModelLabels = Object.fromEntries((state.catalog.chatterbox_models || []).map((item) => [item.id, item.label]));
   const chatterboxDeviceLabels = Object.fromEntries((state.catalog.chatterbox_devices || []).map((item) => [item.id, item.label]));
   const chatterboxVoiceLabels = Object.fromEntries((state.catalog.chatterbox_voices || []).map((item) => [item.id, item.label]));
+  const pocketTtsVoiceLabels = Object.fromEntries((state.catalog.pockettts_voices || []).map((item) => [item.id, item.label]));
+  const supertonicVoiceLabels = Object.fromEntries((state.catalog.supertonic_voices || []).map((item) => [item.id, item.label]));
+  const supertonicLanguageLabels = Object.fromEntries((state.catalog.supertonic_languages || []).map((item) => [item.id, item.label]));
   const presetLabels = Object.fromEntries((state.catalog.elevenlabs_presets || []).map((item) => [item.id, item.label]));
   updateSelectOptions(
     document.getElementById('tts-default'),
@@ -1270,6 +1405,21 @@ function populateFromState(state) {
     chatterboxVoiceLabels,
   );
   updateSelectOptions(
+    document.getElementById('pockettts-voice-select'),
+    [''].concat((state.catalog.pockettts_voices || []).map((item) => item.id)),
+    Object.assign({'': 'Choose one preset voice'}, pocketTtsVoiceLabels),
+  );
+  updateSelectOptions(
+    document.getElementById('supertonic-voice'),
+    (state.catalog.supertonic_voices || []).map((item) => item.id),
+    supertonicVoiceLabels,
+  );
+  updateSelectOptions(
+    document.getElementById('supertonic-language'),
+    (state.catalog.supertonic_languages || []).map((item) => item.id),
+    supertonicLanguageLabels,
+  );
+  updateSelectOptions(
     document.getElementById('eleven-preset'),
     (state.catalog.elevenlabs_presets || []).map((item) => item.id),
     presetLabels,
@@ -1289,9 +1439,18 @@ function populateFromState(state) {
   document.getElementById('chatterbox-voice').value = tts.chatterbox_voice || state.hints.default_chatterbox_voice || 'default';
   document.getElementById('chatterbox-language').value = tts.chatterbox_language || '';
   document.getElementById('chatterbox-note').textContent = state.hints.chatterbox_note || '';
+  document.getElementById('pockettts-voice').value = tts.pockettts_voice || state.hints.default_pockettts_voice || 'alba';
+  document.getElementById('pockettts-note').textContent = state.hints.pockettts_note || '';
+  document.getElementById('supertonic-python-path').value = tts.supertonic_python_path || state.hints.default_supertonic_python_path || '';
+  document.getElementById('supertonic-voice').value = tts.supertonic_voice || state.hints.default_supertonic_voice || 'M4';
+  document.getElementById('supertonic-language').value = tts.supertonic_language || state.hints.default_supertonic_language || 'en';
+  document.getElementById('supertonic-total-steps').value = String(tts.supertonic_total_steps ?? state.hints.default_supertonic_total_steps ?? 3);
+  document.getElementById('supertonic-speed').value = String(tts.supertonic_speed ?? state.hints.default_supertonic_speed ?? 1.05);
+  document.getElementById('supertonic-note').textContent = state.hints.supertonic_note || '';
   document.getElementById('piper-github-link').href = state.hints.piper_repo_url || 'https://github.com/OHF-Voice/piper1-gpl';
   document.getElementById('piper-voices-link').href = state.hints.piper_voices_url || 'https://huggingface.co/rhasspy/piper-voices';
   renderPiperVoiceOptions(state.hints.local_piper_voices || []);
+  renderPocketTtsVoiceOptions(state.catalog.pockettts_voices || []);
   document.getElementById('vibevoice-base-url').value = tts.vibevoice_base_url || state.hints.default_vibevoice_base_url || '';
   document.getElementById('vibevoice-voice').value = tts.vibevoice_voice || '';
   document.getElementById('vibevoice-note').textContent = state.hints.vibevoice_note || '';
@@ -1308,6 +1467,7 @@ function populateFromState(state) {
   renderNeuTTSVoiceOptions(state.catalog.neutts_voices || []);
   syncElevenVoiceSelectionFromId();
   syncPiperSelectionFromInput();
+  syncPocketTtsSelectionFromInput();
   syncVibeVoiceSelectionFromInput();
 
   const agent = state.saved.agent || {};
@@ -1443,6 +1603,20 @@ document.getElementById('chatterbox-model').addEventListener('change', updateFlo
 document.getElementById('chatterbox-device').addEventListener('change', updateFlowVisibility);
 document.getElementById('chatterbox-voice').addEventListener('change', updateFlowVisibility);
 document.getElementById('chatterbox-language').addEventListener('input', updateFlowVisibility);
+document.getElementById('pockettts-voice-select').addEventListener('change', () => {
+  const selected = pocketTtsVoices.find((voice) => voice.id === document.getElementById('pockettts-voice-select').value);
+  document.getElementById('pockettts-voice').value = selected ? selected.id : '';
+  updateFlowVisibility();
+});
+document.getElementById('pockettts-voice').addEventListener('input', () => {
+  syncPocketTtsSelectionFromInput();
+  updateFlowVisibility();
+});
+document.getElementById('supertonic-python-path').addEventListener('input', updateFlowVisibility);
+document.getElementById('supertonic-voice').addEventListener('change', updateFlowVisibility);
+document.getElementById('supertonic-language').addEventListener('change', updateFlowVisibility);
+document.getElementById('supertonic-total-steps').addEventListener('input', updateFlowVisibility);
+document.getElementById('supertonic-speed').addEventListener('input', updateFlowVisibility);
 document.getElementById('neutts-backbone').addEventListener('input', updateFlowVisibility);
 document.getElementById('neutts-codec').addEventListener('input', updateFlowVisibility);
 document.getElementById('neutts-device').addEventListener('change', updateFlowVisibility);
@@ -1598,6 +1772,51 @@ document.getElementById('validate-chatterbox').addEventListener('click', async (
   }
 });
 
+document.getElementById('validate-pockettts').addEventListener('click', async () => {
+  try {
+    setResult('pockettts-result', 'Testing Pocket TTS voice (first run may download model files)...');
+    const payload = await fetchJson(appUrl('api/setup/validate-pockettts'), {
+      method: 'POST',
+      body: JSON.stringify({
+        voice: document.getElementById('pockettts-voice').value,
+      }),
+    });
+    document.getElementById('pockettts-voice').value = payload.voice;
+    syncPocketTtsSelectionFromInput();
+    setResult('pockettts-result', `Validated Pocket TTS voice: ${payload.voice_name}.`, true);
+    await refreshState();
+    scrollToSection('gateway-section');
+  } catch (error) {
+    setResult('pockettts-result', error.message, false);
+  }
+});
+
+document.getElementById('validate-supertonic').addEventListener('click', async () => {
+  try {
+    setResult('supertonic-result', 'Testing Supertonic (first run may warm a dedicated Python worker)...');
+    const payload = await fetchJson(appUrl('api/setup/validate-supertonic'), {
+      method: 'POST',
+      body: JSON.stringify({
+        python_path: document.getElementById('supertonic-python-path').value,
+        voice: document.getElementById('supertonic-voice').value,
+        language: document.getElementById('supertonic-language').value,
+        total_steps: document.getElementById('supertonic-total-steps').value,
+        speed: document.getElementById('supertonic-speed').value,
+      }),
+    });
+    document.getElementById('supertonic-python-path').value = payload.python_path;
+    document.getElementById('supertonic-voice').value = payload.voice;
+    document.getElementById('supertonic-language').value = payload.language;
+    document.getElementById('supertonic-total-steps').value = String(payload.total_steps);
+    document.getElementById('supertonic-speed').value = String(payload.speed);
+    setResult('supertonic-result', `Validated Supertonic: ${payload.voice_name}, ${payload.language_name}, steps=${payload.total_steps}.`, true);
+    await refreshState();
+    scrollToSection('gateway-section');
+  } catch (error) {
+    setResult('supertonic-result', error.message, false);
+  }
+});
+
 document.getElementById('validate-eleven-key').addEventListener('click', async () => {
   try {
     setResult('eleven-result', 'Validating ElevenLabs API key...');
@@ -1732,6 +1951,8 @@ document.getElementById('continue-edge').addEventListener('click', () => scrollT
 document.getElementById('continue-piper').addEventListener('click', () => scrollToSection('gateway-section'));
 document.getElementById('continue-eleven').addEventListener('click', () => scrollToSection('gateway-section'));
 document.getElementById('continue-chatterbox').addEventListener('click', () => scrollToSection('gateway-section'));
+document.getElementById('continue-pockettts').addEventListener('click', () => scrollToSection('gateway-section'));
+document.getElementById('continue-supertonic').addEventListener('click', () => scrollToSection('gateway-section'));
 document.getElementById('continue-vibevoice').addEventListener('click', () => scrollToSection('gateway-section'));
 
 document.getElementById('validate-neutts').addEventListener('click', async () => {

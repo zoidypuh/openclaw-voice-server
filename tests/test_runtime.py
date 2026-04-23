@@ -167,6 +167,123 @@ def test_tts_settings_for_speaker_applies_piper_override():
     assert resolved["piper_speaker"] == 2
 
 
+def test_tts_settings_for_speaker_applies_pockettts_override():
+    settings = {
+        "tts": {
+            "default_provider": "pockettts",
+            "pockettts_voice": "alba",
+            "speaker_overrides": {
+                "speaker-b": {
+                    "provider": "pockettts",
+                    "voice": "/voices/speaker-b.wav",
+                }
+            },
+        }
+    }
+
+    resolved = VoiceRuntime._tts_settings_for_speaker(settings, "Speaker B")
+
+    assert resolved["default_provider"] == "pockettts"
+    assert resolved["pockettts_voice"] == "/voices/speaker-b.wav"
+
+
+def test_tts_settings_for_speaker_applies_supertonic_override():
+    settings = {
+        "tts": {
+            "default_provider": "supertonic",
+            "supertonic_python_path": "/envs/supertonic/bin/python",
+            "supertonic_voice": "M4",
+            "supertonic_language": "en",
+            "supertonic_total_steps": 2,
+            "supertonic_speed": 1.05,
+            "speaker_overrides": {
+                "speaker-b": {
+                    "provider": "supertonic",
+                    "voice": "F3",
+                    "language": "fr",
+                    "total_steps": 3,
+                    "speed": 1.2,
+                }
+            },
+        }
+    }
+
+    resolved = VoiceRuntime._tts_settings_for_speaker(settings, "Speaker B")
+
+    assert resolved["default_provider"] == "supertonic"
+    assert resolved["supertonic_voice"] == "F3"
+    assert resolved["supertonic_language"] == "fr"
+    assert resolved["supertonic_total_steps"] == 3
+    assert resolved["supertonic_speed"] == 1.2
+
+
+def test_handle_ws_buffers_pockettts_reply_into_single_synthesis(monkeypatch):
+    FakeWebSocketResponse.created.clear()
+    synth_calls = []
+
+    class PocketStore(FakeStore):
+        def load_runtime_settings(self):
+            settings = super().load_runtime_settings()
+            settings["tts"] = {
+                "default_provider": "pockettts",
+                "pockettts_voice": "alba",
+            }
+            return settings
+
+    class FakeTranscriber:
+        def transcribe(self, audio_bytes):
+            return type("Result", (), {"text": "say something", "duration_seconds": 1.0})()
+
+    class FakeSynthesizer:
+        audio_mime_type = "audio/wav"
+
+        async def synthesize(self, text, *, preset_name=None, voice_id=None):
+            synth_calls.append(
+                {
+                    "text": text,
+                    "preset_name": preset_name,
+                }
+            )
+            return b"audio"
+
+    class FakeGateway:
+        def __init__(self, **kwargs):
+            pass
+
+        async def stream_reply(self, text, abort_event):
+            yield "Nice."
+            yield "Then we continue."
+
+    monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
+    monkeypatch.setattr(runtime_module, "build_synthesizer", lambda tts, secrets: FakeSynthesizer())
+    monkeypatch.setattr(runtime_module, "DirectGatewayClient", lambda **kwargs: FakeGateway())
+    monkeypatch.setattr(runtime_module.web, "WebSocketResponse", FakeWebSocketResponse)
+
+    async def scenario():
+        runtime = VoiceRuntime(PocketStore())
+        handler_task = asyncio.create_task(runtime.handle_ws(object()))
+
+        while not FakeWebSocketResponse.created:
+            await asyncio.sleep(0)
+        ws = FakeWebSocketResponse.created[-1]
+        await ws.messages.put(FakeMessage(WSMsgType.BINARY, data=b"x" * 3200))
+        while ws.json_messages[-1:] != [{"status": "idle"}]:
+            await asyncio.sleep(0)
+        await ws.messages.put(FakeWebSocketResponse.STOP)
+        await handler_task
+        return ws
+
+    ws = asyncio.run(scenario())
+
+    assert synth_calls == [
+        {
+            "text": "Nice. Then we continue.",
+            "preset_name": None,
+        }
+    ]
+    assert ws.binary_messages == [b"audio"]
+
+
 def test_handle_ws_interrupts_active_stream_and_rejects_overlap(monkeypatch):
     FakeWebSocketResponse.created.clear()
     transcribe_calls = 0
@@ -483,7 +600,12 @@ def test_handle_ws_keeps_short_real_speech_for_gateway(monkeypatch):
 
     assert gateway_calls == ["hello there"]
     assert ws.binary_messages == []
-    assert ws.json_messages == [{"status": "thinking"}, {"status": "idle"}]
+    assert ws.json_messages == [
+        {"status": "thinking"},
+        {"type": "transcript", "text": "hello there"},
+        {"type": "reply-text", "text": "", "replace": True},
+        {"status": "idle"},
+    ]
 
 
 def test_handle_ws_manual_finish_mode_strips_trailing_language_specific_phrase_before_gateway(monkeypatch):
@@ -1025,6 +1147,8 @@ def test_handle_ws_uses_hermes_agent_when_selected(monkeypatch):
             settings["agent"] = {
                 "backend": "hermes",
                 "hermes_root": "/tmp/hermes-agent",
+                "use_context_files": True,
+                "use_memory": True,
             }
             return settings
 
@@ -1038,11 +1162,22 @@ def test_handle_ws_uses_hermes_agent_when_selected(monkeypatch):
             return b"audio"
 
     class FakeHermesConversationAgent:
-        def __init__(self, *, project_root=None, gateway_url=None, gateway_token=None, gateway_model=None):
+        def __init__(
+            self,
+            *,
+            project_root=None,
+            gateway_url=None,
+            gateway_token=None,
+            gateway_model=None,
+            use_context_files=True,
+            use_memory=True,
+        ):
             assert project_root == "/tmp/hermes-agent"
-            assert gateway_url == "http://127.0.0.1:18789/v1/chat/completions"
-            assert gateway_token == "token"
-            assert gateway_model == "openclaw:test"
+            assert gateway_url is None
+            assert gateway_token is None
+            assert gateway_model is None
+            assert use_context_files is True
+            assert use_memory is True
 
         async def stream_reply(self, text, abort_event):
             hermes_calls.append(text)
@@ -1130,7 +1265,13 @@ def test_handle_ws_skips_audio_when_tts_disabled(monkeypatch):
 
     assert gateway_calls == ["hello from mic"]
     assert ws.binary_messages == []
-    assert ws.json_messages == [{"status": "thinking"}, {"status": "idle"}]
+    assert ws.json_messages == [
+        {"status": "thinking"},
+        {"type": "transcript", "text": "hello from mic"},
+        {"type": "reply-text", "text": "", "replace": True},
+        {"type": "reply-text", "text": "Acknowledged.", "append": True},
+        {"status": "idle"},
+    ]
 
 
 def test_handle_ws_skips_empty_reply_sentinel_before_tts(monkeypatch):
@@ -1176,7 +1317,12 @@ def test_handle_ws_skips_empty_reply_sentinel_before_tts(monkeypatch):
 
     assert synth_calls == []
     assert ws.binary_messages == []
-    assert ws.json_messages == [{"status": "thinking"}, {"status": "idle"}]
+    assert ws.json_messages == [
+        {"status": "thinking"},
+        {"type": "transcript", "text": "hello from mic"},
+        {"type": "reply-text", "text": "", "replace": True},
+        {"status": "idle"},
+    ]
 
 
 def test_handle_speak_request_times_out_when_speak_stalls(monkeypatch):
@@ -1203,6 +1349,67 @@ def test_handle_speak_request_times_out_when_speak_stalls(monkeypatch):
         }
 
     asyncio.run(scenario())
+
+
+def test_handle_speak_request_sends_idle_when_playback_accept_times_out(monkeypatch):
+    FakeWebSocketResponse.created.clear()
+
+    class FakeSynthesizer:
+        async def synthesize(self, text, *, preset_name=None):
+            return b"audio"
+
+    class FakeRequest:
+        can_read_body = True
+
+        async def json(self):
+            return {"text": "hello", "timeout_seconds": 0.01}
+
+    monkeypatch.setattr(runtime_module, "build_synthesizer", lambda tts, secrets: FakeSynthesizer())
+    monkeypatch.setattr(runtime_module.web, "WebSocketResponse", FakeWebSocketResponse)
+
+    async def scenario():
+        runtime = VoiceRuntime(FakeStore())
+        handler_task = asyncio.create_task(runtime.handle_ws(object()))
+
+        while not FakeWebSocketResponse.created:
+            await asyncio.sleep(0)
+        ws = FakeWebSocketResponse.created[-1]
+        await ws.messages.put(
+            FakeMessage(
+                WSMsgType.TEXT,
+                payload={"type": "client-ready", "features": {"playback_accept": True}},
+            )
+        )
+        await asyncio.sleep(0)
+
+        response = await runtime.handle_speak_request(FakeRequest())
+
+        for _ in range(50):
+            if len(ws.json_messages) >= 2:
+                break
+            await asyncio.sleep(0)
+
+        await ws.messages.put(FakeWebSocketResponse.STOP)
+        await handler_task
+        return response, ws
+
+    response, ws = asyncio.run(scenario())
+
+    assert response.status == 504
+    payload = json.loads(response.body.decode("utf-8"))
+    assert payload == {
+        "ok": False,
+        "error": "Timed out waiting for the active voice client to accept playback.",
+        "timeout_seconds": 0.01,
+    }
+    assert ws.json_messages[0]["status"] == "speaking"
+    assert ws.json_messages[0]["source"] == "server_speak"
+    assert ws.json_messages[1] == {
+        "status": "idle",
+        "source": "server_speak",
+        "request_id": ws.json_messages[0]["request_id"],
+    }
+    assert ws.binary_messages == [b"audio"]
 
 
 def test_handle_speak_request_rejects_invalid_timeout():
@@ -1304,6 +1511,7 @@ def test_handle_ws_builds_turn_transcriber_with_backend_vad_disabled(monkeypatch
     assert captured_settings["default_backend"] == "faster-whisper"
     assert captured_settings["language"] == "de"
     assert captured_settings["vad_filter"] is False
+    assert captured_settings["speech_precheck"] is False
 
 
 def test_handle_interrupt_probe_returns_pause_action(monkeypatch):

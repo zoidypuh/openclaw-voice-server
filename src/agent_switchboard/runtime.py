@@ -112,6 +112,11 @@ class VoiceRuntime:
             # turns too aggressively, especially short commands and speech with
             # pauses.
             settings["vad_filter"] = False
+            # The fast Silero pre-check is great for interrupt probes, but on
+            # full live turns it can produce false negatives and skip Whisper
+            # entirely, which shows up as "speech input detected ... but STT
+            # returned no transcript" in the logs.
+            settings["speech_precheck"] = False
         return settings
 
     @staticmethod
@@ -225,6 +230,34 @@ class VoiceRuntime:
                     "speaker",
                     override.get("piper_speaker"),
                 )
+        elif provider == "pockettts":
+            voice = str(override.get("voice") or override.get("pockettts_voice") or "").strip()
+            if voice:
+                base_tts_settings["pockettts_voice"] = voice
+        elif provider == "supertonic":
+            python_path = str(
+                override.get("python_path") or override.get("supertonic_python_path") or ""
+            ).strip()
+            if python_path:
+                base_tts_settings["supertonic_python_path"] = python_path
+            voice = str(override.get("voice") or override.get("supertonic_voice") or "").strip()
+            if voice:
+                base_tts_settings["supertonic_voice"] = voice
+            language = str(
+                override.get("language") or override.get("supertonic_language") or ""
+            ).strip()
+            if language:
+                base_tts_settings["supertonic_language"] = language
+            if "total_steps" in override or "supertonic_total_steps" in override:
+                base_tts_settings["supertonic_total_steps"] = override.get(
+                    "total_steps",
+                    override.get("supertonic_total_steps"),
+                )
+            if "speed" in override or "supertonic_speed" in override:
+                base_tts_settings["supertonic_speed"] = override.get(
+                    "speed",
+                    override.get("supertonic_speed"),
+                )
 
         return base_tts_settings
 
@@ -245,6 +278,17 @@ class VoiceRuntime:
             synthesizer = build_synthesizer(tts_settings, settings["secrets"])
         audio_mime_type = getattr(synthesizer, "audio_mime_type", "audio/mpeg")
         return synthesizer, audio_mime_type
+
+    @classmethod
+    def _tts_requires_buffered_reply(
+        cls,
+        settings: dict,
+        *,
+        speaker_name: str | None = None,
+    ) -> bool:
+        tts_settings = cls._tts_settings_for_speaker(settings, speaker_name)
+        provider = str(tts_settings.get("default_provider") or "").strip().lower()
+        return provider == "pockettts"
 
     @staticmethod
     def _conversation_backend(settings: dict) -> str:
@@ -416,6 +460,7 @@ class VoiceRuntime:
         request_id = uuid.uuid4().hex
         wait_for_playback_accept = await self._active_ws_requires_playback_accept(ws)
         accept_future: asyncio.Future[None] | None = None
+        speaking_sent = False
         if wait_for_playback_accept:
             accept_future = await self._register_playback_accept(request_id)
         try:
@@ -427,6 +472,7 @@ class VoiceRuntime:
             if audio_mime_type != "audio/mpeg":
                 speaking_payload["audio_mime_type"] = audio_mime_type
             await ws.send_json(speaking_payload)
+            speaking_sent = True
             await ws.send_bytes(audio)
             if accept_future is not None:
                 await accept_future
@@ -437,6 +483,19 @@ class VoiceRuntime:
                     "request_id": request_id,
                 }
             )
+        except asyncio.CancelledError:
+            if speaking_sent:
+                try:
+                    await ws.send_json(
+                        {
+                            "status": "idle",
+                            "source": "server_speak",
+                            "request_id": request_id,
+                        }
+                    )
+                except ConnectionResetError:
+                    await self._clear_active_ws(ws)
+            raise
         except ConnectionResetError as exc:
             await self._clear_active_ws(ws)
             if accept_future is not None:
@@ -572,16 +631,28 @@ class VoiceRuntime:
         manual_finish_enabled = True
         manual_finish_phrases = command_send_phrases(command_language)
         pending_transcript_prefix = ""
+        pending_turn_commit_meta: dict[str, object] | None = None
 
         async def process_audio(
             audio_bytes: bytes,
             task_abort_event: asyncio.Event,
             *,
             transcript_prefix: str = "",
+            turn_commit_meta: dict[str, object] | None = None,
         ) -> None:
             nonlocal manual_finish_enabled, manual_finish_phrases
             loop = asyncio.get_running_loop()
             turn = VoiceTurnMetrics()
+            if turn_commit_meta:
+                LOGGER.info(
+                    "[client] turn commit reason=%s speech=%sms silence=%sms threshold=%s level=%s wait=%sms",
+                    str(turn_commit_meta.get("reason") or "-"),
+                    int(turn_commit_meta.get("speech_ms") or 0),
+                    int(turn_commit_meta.get("silence_ms") or 0),
+                    turn_commit_meta.get("threshold_db"),
+                    turn_commit_meta.get("level_db"),
+                    int(turn_commit_meta.get("wait_after_speak_ms") or 0),
+                )
             await ws.send_json({"status": "thinking"})
             stt_started_at = time.perf_counter()
             result = await loop.run_in_executor(None, transcriber.transcribe, audio_bytes)
@@ -657,6 +728,8 @@ class VoiceRuntime:
                 _format_elapsed(turn.stt_seconds),
                 _format_elapsed(turn.speech_duration_seconds),
             )
+            await ws.send_json({"type": "transcript", "text": turn.transcript})
+            await ws.send_json({"type": "reply-text", "text": "", "replace": True})
 
             speaking_started = False
             reply_style: str | None = None
@@ -664,6 +737,7 @@ class VoiceRuntime:
             intro_buffer = ""
             directives_resolved = False
             reply_started_at = time.perf_counter()
+            buffered_reply_text = ""
             synth_cache: dict[str, tuple[object, str]] = {
                 "": (synthesizer, getattr(synthesizer, "audio_mime_type", "audio/mpeg"))
             }
@@ -689,6 +763,7 @@ class VoiceRuntime:
                         _summarize_text(chunk_text),
                     )
                     return
+                await ws.send_json({"type": "reply-text", "text": chunk_text, "append": True})
                 if tts_disabled:
                     if turn.ttft_seconds is None:
                         turn.ttft_seconds = time.perf_counter() - reply_started_at
@@ -696,6 +771,16 @@ class VoiceRuntime:
                     LOGGER.info(
                         "[dim]tts disabled, reply not spoken: %s[/dim]",
                         _summarize_text(chunk_text),
+                    )
+                    return
+                if self._tts_requires_buffered_reply(settings, speaker_name=reply_speaker):
+                    if turn.ttft_seconds is None:
+                        turn.ttft_seconds = time.perf_counter() - reply_started_at
+                    nonlocal buffered_reply_text
+                    buffered_reply_text = (
+                        f"{buffered_reply_text} {chunk_text}".strip()
+                        if buffered_reply_text
+                        else chunk_text
                     )
                     return
                 current_synthesizer, current_audio_mime_type = resolve_chunk_synthesizer(reply_speaker)
@@ -764,6 +849,32 @@ class VoiceRuntime:
                             reply_style = detected_style
                         intro_buffer = remaining_text
                 await send_reply_chunk(intro_buffer)
+            if buffered_reply_text and not task_abort_event.is_set():
+                current_synthesizer, current_audio_mime_type = resolve_chunk_synthesizer(reply_speaker)
+                tts_started_at = time.perf_counter()
+                audio = await current_synthesizer.synthesize(buffered_reply_text, preset_name=reply_style)
+                tts_elapsed = time.perf_counter() - tts_started_at
+                turn.total_tts_seconds += tts_elapsed
+                if audio:
+                    turn.reply_chunks.append(_summarize_text(buffered_reply_text))
+                    if turn.first_tts_seconds is None:
+                        turn.first_tts_seconds = tts_elapsed
+                    if not speaking_started:
+                        speaking_started = True
+                        speaking_payload = {"status": "speaking"}
+                        if current_audio_mime_type != "audio/mpeg":
+                            speaking_payload["audio_mime_type"] = current_audio_mime_type
+                        await ws.send_json(speaking_payload)
+                    await ws.send_bytes(audio)
+                    if turn.first_audio_seconds is None:
+                        turn.first_audio_seconds = time.perf_counter() - turn.started_at
+                        LOGGER.info(
+                            "[bold green]🔊 %s[/bold green]  [dim]llm=%s  tts=%s  total=%s[/dim]",
+                            _summarize_text(turn.reply_chunks[0]),
+                            _format_elapsed(turn.ttft_seconds),
+                            _format_elapsed(turn.first_tts_seconds),
+                            _format_elapsed(turn.first_audio_seconds),
+                        )
             if task_abort_event.is_set():
                 return
             total_elapsed = time.perf_counter() - turn.started_at
@@ -793,6 +904,7 @@ class VoiceRuntime:
             task_abort_event: asyncio.Event,
             *,
             transcript_prefix: str = "",
+            turn_commit_meta: dict[str, object] | None = None,
         ) -> None:
             nonlocal active_task
             async with self._turn_lock:
@@ -801,6 +913,7 @@ class VoiceRuntime:
                         audio_bytes,
                         task_abort_event,
                         transcript_prefix=transcript_prefix,
+                        turn_commit_meta=turn_commit_meta,
                     )
                 except ValidationError as exc:
                     await ws.send_json({"status": "idle", "error": str(exc)})
@@ -842,6 +955,15 @@ class VoiceRuntime:
                         pending_transcript_prefix = ""
                     elif msg_type == "set-transcript-prefix":
                         pending_transcript_prefix = str(payload.get("prefix_text") or "").strip()
+                    elif msg_type == "turn-commit":
+                        pending_turn_commit_meta = {
+                            "reason": str(payload.get("reason") or "").strip(),
+                            "speech_ms": int(payload.get("speech_ms") or 0),
+                            "silence_ms": int(payload.get("silence_ms") or 0),
+                            "threshold_db": payload.get("threshold_db"),
+                            "level_db": payload.get("level_db"),
+                            "wait_after_speak_ms": int(payload.get("wait_after_speak_ms") or 0),
+                        }
                     elif msg_type == "set-capture-mode":
                         manual_finish_enabled = bool(payload.get("manual_finish"))
                         manual_finish_phrases = command_send_phrases(command_language)
@@ -854,12 +976,15 @@ class VoiceRuntime:
                     continue
                 abort_event = asyncio.Event()
                 transcript_prefix = pending_transcript_prefix
+                turn_commit_meta = pending_turn_commit_meta
                 pending_transcript_prefix = ""
+                pending_turn_commit_meta = None
                 active_task = asyncio.create_task(
                     run_audio_task(
                         message.data,
                         abort_event,
                         transcript_prefix=transcript_prefix,
+                        turn_commit_meta=turn_commit_meta,
                     )
                 )
         finally:

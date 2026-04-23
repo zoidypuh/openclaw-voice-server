@@ -43,6 +43,31 @@ from .piper import (
     normalize_piper_speaker,
     validate_piper_voice,
 )
+from .pockettts import (
+    POCKETTTS_DEFAULT_VARIANT,
+    POCKETTTS_DEFAULT_VOICE,
+    POCKETTTS_PRESET_VOICES,
+    PocketTTSSynthesizer,
+    normalize_pockettts_variant,
+    normalize_pockettts_voice,
+    validate_pockettts_voice,
+)
+from .supertonic import (
+    SUPERTONIC_DEFAULT_LANGUAGE,
+    SUPERTONIC_DEFAULT_SPEED,
+    SUPERTONIC_DEFAULT_TOTAL_STEPS,
+    SUPERTONIC_DEFAULT_VOICE,
+    SUPERTONIC_SUPPORTED_LANGUAGES,
+    SUPERTONIC_SUPPORTED_VOICES,
+    SupertonicSynthesizer,
+    detect_supertonic_python_path,
+    normalize_supertonic_language,
+    normalize_supertonic_speed,
+    normalize_supertonic_total_steps,
+    normalize_supertonic_voice,
+    resolve_supertonic_python_path,
+    validate_supertonic_voice,
+)
 from .vibevoice import (
     VibeVoiceSynthesizer,
     _fetch_vibevoice_config,
@@ -79,6 +104,19 @@ def build_synthesizer(tts_settings: dict, secrets: dict[str, str]) -> BaseSynthe
             device=tts_settings.get("chatterbox_device", CHATTERBOX_DEFAULT_DEVICE),
             language=tts_settings.get("chatterbox_language", CHATTERBOX_DEFAULT_LANGUAGE),
             voice=tts_settings.get("chatterbox_voice", "default"),
+        )
+    if provider == "pockettts":
+        return PocketTTSSynthesizer(
+            voice=tts_settings.get("pockettts_voice", POCKETTTS_DEFAULT_VOICE),
+            variant=tts_settings.get("pockettts_variant", POCKETTTS_DEFAULT_VARIANT),
+        )
+    if provider == "supertonic":
+        return SupertonicSynthesizer(
+            python_path=tts_settings.get("supertonic_python_path", ""),
+            voice=tts_settings.get("supertonic_voice", SUPERTONIC_DEFAULT_VOICE),
+            language=tts_settings.get("supertonic_language", SUPERTONIC_DEFAULT_LANGUAGE),
+            total_steps=tts_settings.get("supertonic_total_steps", SUPERTONIC_DEFAULT_TOTAL_STEPS),
+            speed=tts_settings.get("supertonic_speed", SUPERTONIC_DEFAULT_SPEED),
         )
     if provider == "vibevoice":
         return VibeVoiceSynthesizer(

@@ -31,13 +31,22 @@ from .catalog import (
 from .config_store import ConfigStore
 from .errors import ValidationError
 from .gateway import normalize_gateway_url, validate_gateway_connection
-from .installer import module_available
+from .installer import ensure_python_package, module_available
 from .stt import normalize_stt_device, validate_stt_selection as validate_stt_selection_step
 from .tts import (
     CHATTERBOX_SUPPORTED_DEVICES,
     CHATTERBOX_SUPPORTED_MODELS,
     NEUTTS_SUPPORTED_DEVICES,
+    POCKETTTS_DEFAULT_VOICE,
+    POCKETTTS_PRESET_VOICES,
+    SUPERTONIC_DEFAULT_LANGUAGE,
+    SUPERTONIC_DEFAULT_SPEED,
+    SUPERTONIC_DEFAULT_TOTAL_STEPS,
+    SUPERTONIC_DEFAULT_VOICE,
+    SUPERTONIC_SUPPORTED_LANGUAGES,
+    SUPERTONIC_SUPPORTED_VOICES,
     default_piper_config_path,
+    detect_supertonic_python_path,
     list_local_chatterbox_voices,
     list_local_neutts_voices,
     list_edge_voices,
@@ -49,15 +58,23 @@ from .tts import (
     normalize_neutts_device,
     normalize_piper_model_path,
     normalize_piper_speaker,
+    normalize_pockettts_voice,
+    normalize_supertonic_language,
+    normalize_supertonic_speed,
+    normalize_supertonic_total_steps,
+    normalize_supertonic_voice,
     normalize_vibevoice_base_url,
     resolve_chatterbox_voice,
     resolve_neutts_voice,
+    resolve_supertonic_python_path,
     validate_chatterbox_voice as validate_chatterbox_voice_step,
     validate_edge_voice,
     validate_elevenlabs_api_key as validate_elevenlabs_api_key_step,
     validate_elevenlabs_voice as validate_elevenlabs_voice_step,
     validate_neutts_voice as validate_neutts_voice_step,
     validate_piper_voice as validate_piper_voice_step,
+    validate_pockettts_voice as validate_pockettts_voice_step,
+    validate_supertonic_voice as validate_supertonic_voice_step,
     validate_vibevoice_voice as validate_vibevoice_voice_step,
 )
 
@@ -65,6 +82,14 @@ from .tts import (
 class SetupService:
     def __init__(self, store: ConfigStore):
         self.store = store
+
+    @staticmethod
+    def _pockettts_requires_english(settings: dict[str, Any]) -> None:
+        language = str(((settings.get("stt") or {}).get("language")) or "").strip().lower()
+        if language != "en":
+            raise ValidationError(
+                "Pocket TTS is English-only right now. Set the validated STT language to 'en' before using Pocket TTS."
+            )
 
     @staticmethod
     def _resolve_ssh_hostname(alias: str) -> str:
@@ -377,6 +402,16 @@ class SetupService:
                 and str(tts.get("chatterbox_language") or "").strip()
                 and str(tts.get("chatterbox_voice") or "").strip()
             )
+        if provider_id == "pockettts":
+            if str((settings.get("stt") or {}).get("language") or "").strip().lower() != "en":
+                return False
+            return bool(str(tts.get("pockettts_voice") or "").strip())
+        if provider_id == "supertonic":
+            return bool(
+                str(tts.get("supertonic_python_path") or "").strip()
+                and str(tts.get("supertonic_voice") or "").strip()
+                and str(tts.get("supertonic_language") or "").strip()
+            )
         if provider_id == "vibevoice":
             return bool(
                 str(tts.get("vibevoice_base_url") or "").strip()
@@ -509,6 +544,28 @@ class SetupService:
             chatterbox_snapshot,
             validation["chatterbox"],
         )
+        pockettts_snapshot = {
+            "voice": settings["tts"].get("pockettts_voice", ""),
+        }
+        pockettts_language_ok = str((settings.get("stt") or {}).get("language") or "").strip().lower() == "en"
+        pockettts_ready = "pockettts" not in settings["tts"]["enabled_providers"] or (
+            pockettts_language_ok
+            and self._validated_config_matches(
+                pockettts_snapshot,
+                validation.get("pockettts", {}),
+            )
+        )
+        supertonic_snapshot = {
+            "python_path": settings["tts"].get("supertonic_python_path", ""),
+            "voice": settings["tts"].get("supertonic_voice", ""),
+            "language": settings["tts"].get("supertonic_language", ""),
+            "total_steps": settings["tts"].get("supertonic_total_steps", SUPERTONIC_DEFAULT_TOTAL_STEPS),
+            "speed": settings["tts"].get("supertonic_speed", SUPERTONIC_DEFAULT_SPEED),
+        }
+        supertonic_ready = "supertonic" not in settings["tts"]["enabled_providers"] or self._validated_config_matches(
+            supertonic_snapshot,
+            validation.get("supertonic", {}),
+        )
         vibevoice_snapshot = {
             "base_url": settings["tts"]["vibevoice_base_url"],
             "voice": settings["tts"]["vibevoice_voice"],
@@ -565,6 +622,8 @@ class SetupService:
             "eleven_voice_ready": eleven_voice_ready,
             "piper_ready": piper_ready,
             "chatterbox_ready": chatterbox_ready,
+            "pockettts_ready": pockettts_ready,
+            "supertonic_ready": supertonic_ready,
             "vibevoice_ready": vibevoice_ready,
             "neutts_ready": neutts_ready,
             "runtime_ready": runtime_ready,
@@ -603,6 +662,18 @@ class SetupService:
                 ],
                 "chatterbox_voices": [{"id": "default", "label": "Built-In Default"}]
                 + [{"id": item["id"], "label": item["label"]} for item in local_chatterbox_voices],
+                "pockettts_voices": [
+                    {"id": voice_id, "label": label}
+                    for voice_id, label in POCKETTTS_PRESET_VOICES.items()
+                ],
+                "supertonic_languages": [
+                    {"id": language_id, "label": label}
+                    for language_id, label in SUPERTONIC_SUPPORTED_LANGUAGES.items()
+                ],
+                "supertonic_voices": [
+                    {"id": voice_id, "label": label}
+                    for voice_id, label in SUPERTONIC_SUPPORTED_VOICES.items()
+                ],
                 "neutts_devices": [
                     {"id": device_id, "label": device_id.upper() if device_id != "auto" else "Auto"}
                     for device_id in sorted(NEUTTS_SUPPORTED_DEVICES, key=lambda item: ("auto" != item, item))
@@ -666,6 +737,22 @@ class SetupService:
                 "default_chatterbox_model": CHATTERBOX_DEFAULT_MODEL,
                 "default_chatterbox_device": CHATTERBOX_DEFAULT_DEVICE,
                 "default_chatterbox_voice": "default",
+                "default_pockettts_voice": POCKETTTS_DEFAULT_VOICE,
+                "pockettts_note": (
+                    "Pocket TTS runs locally and is currently English-only. "
+                    "Use it only when the validated STT language is English. "
+                    "Choose one of the built-in preset voices or enter a local audio/.safetensors path or an http(s)/hf:// voice reference."
+                ),
+                "default_supertonic_python_path": detect_supertonic_python_path(),
+                "default_supertonic_voice": SUPERTONIC_DEFAULT_VOICE,
+                "default_supertonic_language": SUPERTONIC_DEFAULT_LANGUAGE,
+                "default_supertonic_total_steps": SUPERTONIC_DEFAULT_TOTAL_STEPS,
+                "default_supertonic_speed": SUPERTONIC_DEFAULT_SPEED,
+                "supertonic_note": (
+                    "Supertonic is a very fast local TTS engine, but it currently works best from a dedicated Python 3.12/3.13 environment. "
+                    "Point Python Executable at a venv that already has the supertonic package installed. "
+                    "Lower Total Steps reduces latency further; 3 is the current realtime default here."
+                ),
                 "default_neutts_backbone": "neuphonic/neutts-nano-german",
                 "default_neutts_codec": "neuphonic/neucodec",
                 "default_neutts_device": "auto",
@@ -699,16 +786,8 @@ class SetupService:
         backend = normalize_agent_backend(payload.get("backend") or agent_settings.get("backend"))
         if backend == "hermes":
             hermes_root = str(payload.get("hermes_root") or agent_settings.get("hermes_root") or DEFAULT_HERMES_ROOT).strip()
-            gateway_settings = settings.get("gateway") or {}
-            gateway_secrets = settings.get("secrets") or {}
-            gateway_url = str(gateway_settings.get("url") or "").strip()
-            gateway_token = str(gateway_secrets.get("gateway_token") or "").strip()
-            gateway_model = str(gateway_settings.get("model") or "").strip()
             result = await validate_hermes_connection(
                 project_root=hermes_root,
-                gateway_url=normalize_gateway_url(gateway_url) if gateway_url and gateway_token and gateway_model else None,
-                gateway_token=gateway_token or None,
-                gateway_model=gateway_model or None,
             )
             resolved_root = str(result["project_root"])
             self.store.update_config(
@@ -820,6 +899,11 @@ class SetupService:
         if "chatterbox" in enabled:
             normalize_chatterbox_model(self.store.load_config()["tts"].get("chatterbox_model", CHATTERBOX_DEFAULT_MODEL))
             resolve_chatterbox_voice(self.store.load_config()["tts"].get("chatterbox_voice", "default"))
+        if "pockettts" in enabled:
+            self._pockettts_requires_english(self.store.load_runtime_settings())
+            descriptor = SUPPORTED_TTS_PROVIDERS["pockettts"]
+            ensure_python_package(descriptor["package"], descriptor["import_name"])
+            normalize_pockettts_voice(self.store.load_config()["tts"].get("pockettts_voice", POCKETTTS_DEFAULT_VOICE))
         self.store.update_config(
             {
                 "tts": {"enabled_providers": enabled, "default_provider": default_provider},
@@ -915,6 +999,96 @@ class SetupService:
                                 "model_path": saved_tts["piper_model_path"],
                                 "config_path": saved_tts["piper_config_path"],
                                 "speaker": saved_tts["piper_speaker"],
+                            }
+                        ),
+                    }
+                },
+            }
+        )
+        return result
+
+    async def validate_pockettts(self, payload: dict[str, Any]) -> dict[str, Any]:
+        settings = self.store.load_runtime_settings()
+        self._pockettts_requires_english(settings)
+        current_tts = settings["tts"]
+        voice = normalize_pockettts_voice(
+            str(payload.get("voice") or current_tts.get("pockettts_voice") or POCKETTTS_DEFAULT_VOICE).strip()
+        )
+        result = await validate_pockettts_voice_step(voice=voice)
+        self.store.update_config(
+            {
+                "tts": {
+                    "pockettts_voice": result["voice"],
+                },
+                "validation": {
+                    "pockettts": {
+                        "config_hash": self._config_hash({"voice": result["voice"]}),
+                    }
+                },
+            }
+        )
+        return result
+
+    async def validate_supertonic(self, payload: dict[str, Any]) -> dict[str, Any]:
+        settings = self.store.load_runtime_settings()
+        current_tts = settings["tts"]
+        stt_language = str((settings.get("stt") or {}).get("language") or "").strip().lower()
+        resolved_language_hint = (
+            stt_language if stt_language in SUPERTONIC_SUPPORTED_LANGUAGES else SUPERTONIC_DEFAULT_LANGUAGE
+        )
+        python_path = resolve_supertonic_python_path(
+            str(
+                payload.get("python_path")
+                if "python_path" in payload
+                else current_tts.get("supertonic_python_path") or ""
+            ).strip()
+        )
+        voice = normalize_supertonic_voice(
+            str(payload.get("voice") or current_tts.get("supertonic_voice") or SUPERTONIC_DEFAULT_VOICE).strip()
+        )
+        language = normalize_supertonic_language(
+            str(
+                payload.get("language")
+                if "language" in payload
+                else current_tts.get("supertonic_language") or resolved_language_hint
+            ).strip()
+        )
+        total_steps = normalize_supertonic_total_steps(
+            payload.get("total_steps")
+            if "total_steps" in payload
+            else current_tts.get("supertonic_total_steps", SUPERTONIC_DEFAULT_TOTAL_STEPS)
+        )
+        speed = normalize_supertonic_speed(
+            payload.get("speed")
+            if "speed" in payload
+            else current_tts.get("supertonic_speed", SUPERTONIC_DEFAULT_SPEED)
+        )
+        result = await validate_supertonic_voice_step(
+            python_path=python_path,
+            voice=voice,
+            language=language,
+            total_steps=total_steps,
+            speed=speed,
+        )
+        saved_tts = {
+            "supertonic_python_path": result["python_path"],
+            "supertonic_voice": result["voice"],
+            "supertonic_language": result["language"],
+            "supertonic_total_steps": result["total_steps"],
+            "supertonic_speed": result["speed"],
+        }
+        self.store.update_config(
+            {
+                "tts": saved_tts,
+                "validation": {
+                    "supertonic": {
+                        "config_hash": self._config_hash(
+                            {
+                                "python_path": saved_tts["supertonic_python_path"],
+                                "voice": saved_tts["supertonic_voice"],
+                                "language": saved_tts["supertonic_language"],
+                                "total_steps": saved_tts["supertonic_total_steps"],
+                                "speed": saved_tts["supertonic_speed"],
                             }
                         ),
                     }

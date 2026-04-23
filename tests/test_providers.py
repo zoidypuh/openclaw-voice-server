@@ -10,7 +10,9 @@ from agent_switchboard.tts import backends as tts_module
 from agent_switchboard.tts import chatterbox as chatterbox_module
 from agent_switchboard.tts import edge as edge_module
 from agent_switchboard.tts import elevenlabs as elevenlabs_module
+from agent_switchboard.tts import pockettts as pockettts_module
 from agent_switchboard.tts import piper as piper_module
+from agent_switchboard.tts import supertonic as supertonic_module
 from agent_switchboard.tts.backends import (
     ElevenLabsSynthesizer,
     _piper_command,
@@ -19,10 +21,13 @@ from agent_switchboard.tts.backends import (
     normalize_chatterbox_language,
     normalize_elevenlabs_preset,
     normalize_piper_speaker,
+    normalize_supertonic_voice,
     validate_chatterbox_voice,
     validate_elevenlabs_voice,
     validate_edge_voice,
+    validate_pockettts_voice,
     validate_piper_voice,
+    validate_supertonic_voice,
 )
 
 
@@ -204,6 +209,128 @@ def test_validate_chatterbox_voice_resolves_auto_device_and_returns_audio(monkey
         "voice_name": "Chatterbox Multilingual",
     }
     assert install_calls == [("chatterbox-tts>=0.1.7", "chatterbox")]
+
+
+def test_validate_pockettts_voice_uses_builtin_voice_and_returns_audio(monkeypatch):
+    install_calls = []
+
+    class FakeTensor:
+        def __init__(self, values):
+            self._values = np.asarray(values, dtype=np.float32)
+
+        def detach(self):
+            return self
+
+        def cpu(self):
+            return self
+
+        def numpy(self):
+            return self._values
+
+    class FakeModel:
+        sample_rate = 24_000
+
+        def get_state_for_audio_prompt(self, voice):
+            assert voice == "alba"
+            return {"voice": voice}
+
+        def generate_audio(self, model_state, text_to_generate, copy_state=True):
+            assert model_state == {"voice": "alba"}
+            assert text_to_generate
+            assert copy_state is True
+            return FakeTensor([0.0, 0.1, -0.1, 0.0])
+
+    class FakeTTSModel:
+        @staticmethod
+        def load_model(config):
+            assert config == "b6369a24"
+            return FakeModel()
+
+    monkeypatch.setattr(
+        pockettts_module,
+        "ensure_python_package",
+        lambda requirement, import_name: install_calls.append((requirement, import_name)) or {"installed": False},
+    )
+    monkeypatch.setitem(sys.modules, "pocket_tts", types.SimpleNamespace(TTSModel=FakeTTSModel))
+
+    result = asyncio.run(validate_pockettts_voice(voice="alba"))
+
+    assert result == {
+        "ok": True,
+        "voice": "alba",
+        "voice_name": "Alba",
+        "variant": "b6369a24",
+    }
+    assert install_calls == [("pocket-tts>=1.1.1", "pocket_tts")]
+
+
+def test_validate_supertonic_voice_uses_external_python_and_returns_audio(monkeypatch, tmp_path):
+    python_path = tmp_path / "python"
+    python_path.write_text("#!/bin/sh\n", encoding="utf-8")
+    python_path.chmod(0o755)
+    calls = []
+
+    def fake_run(
+        text,
+        *,
+        python_path,
+        voice,
+        language,
+        total_steps,
+        speed,
+    ):
+        calls.append(
+            {
+                "text": text,
+                "python_path": python_path,
+                "voice": voice,
+                "language": language,
+                "total_steps": total_steps,
+                "speed": speed,
+            }
+        )
+        return b"RIFFdemo"
+
+    monkeypatch.setattr(supertonic_module, "_run_supertonic_synthesis", fake_run)
+
+    result = asyncio.run(
+        validate_supertonic_voice(
+            python_path=str(python_path),
+            voice="m4",
+            language="en",
+            total_steps="2",
+            speed="1.1",
+        )
+    )
+
+    assert calls == [
+        {
+            "text": "Agent Switchboard setup validation.",
+            "python_path": str(python_path.resolve()),
+            "voice": "M4",
+            "language": "en",
+            "total_steps": 2,
+            "speed": 1.1,
+        }
+    ]
+    assert result == {
+        "ok": True,
+        "python_path": str(python_path.resolve()),
+        "voice": "M4",
+        "voice_name": "Male 4",
+        "language": "en",
+        "language_name": "English",
+        "total_steps": 2,
+        "speed": 1.1,
+    }
+
+
+def test_normalize_supertonic_voice_uppercases_known_voice():
+    assert normalize_supertonic_voice("m4") == "M4"
+
+
+def test_normalize_supertonic_total_steps_defaults_to_three():
+    assert supertonic_module.normalize_supertonic_total_steps(None) == 3
 
 
 def test_chatterbox_language_normalizes_original_to_english():

@@ -44,6 +44,18 @@ def test_setup_html_supports_disabled_tts_and_neutts_state_tracking():
     setup_html = (_static_dir() / "setup.html").read_text(encoding="utf-8")
 
     assert "provider === 'disabled'" in setup_html
+    assert "provider === 'pockettts'" in setup_html
+    assert "provider === 'supertonic'" in setup_html
+    assert 'id="pockettts-section"' in setup_html
+    assert 'id="pockettts-voice-select"' in setup_html
+    assert 'id="validate-pockettts"' in setup_html
+    assert 'id="supertonic-section"' in setup_html
+    assert 'id="supertonic-python-path"' in setup_html
+    assert 'id="validate-supertonic"' in setup_html
+    assert "renderPocketTtsVoiceOptions(" in setup_html
+    assert "syncPocketTtsSelectionFromInput()" in setup_html
+    assert "api/setup/validate-pockettts" in setup_html
+    assert "api/setup/validate-supertonic" in setup_html
     assert "return 'gateway-section';" in setup_html
     assert "(state.catalog.neutts_devices || []).map((item) => item.id)" in setup_html
     assert "document.getElementById('neutts-device').addEventListener('change', updateFlowVisibility);" in setup_html
@@ -60,3 +72,10 @@ def test_setup_html_has_conversation_agent_selector_and_hermes_controls():
     assert "function renderConversationBackendControls() {" in setup_html
     assert "api/setup/validate-agent" in setup_html
     assert "Validated Hermes reply" in setup_html
+
+
+def test_setup_html_uses_root_app_base_so_trailing_slash_urls_do_not_404():
+    setup_html = (_static_dir() / "setup.html").read_text(encoding="utf-8")
+
+    assert "function resolveAppBase()" in setup_html
+    assert "return new URL('/', window.location.href);" in setup_html

@@ -17,12 +17,14 @@ class FasterWhisperTranscriber(BaseTranscriber):
         *,
         vad_filter: bool = True,
         vad_min_silence_duration_ms: int = 500,
+        speech_precheck: bool = True,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self._model = None
         self.vad_filter = bool(vad_filter)
         self.vad_min_silence_duration_ms = max(0, int(vad_min_silence_duration_ms))
+        self.speech_precheck = bool(speech_precheck)
 
     def load(self) -> None:
         if self._model is not None:
@@ -52,11 +54,14 @@ class FasterWhisperTranscriber(BaseTranscriber):
         duration = len(samples) / 16000
 
         # Fast Silero VAD pre-check: skip Whisper entirely if no speech detected.
-        from .silero_vad import audio_contains_speech
+        # For live turn transcription this can be too aggressive, so runtime can
+        # disable it via speech_precheck=False.
+        if self.speech_precheck:
+            from .silero_vad import audio_contains_speech
 
-        if not audio_contains_speech(audio_bytes):
-            LOGGER.debug("Silero VAD: no speech detected, skipping Whisper")
-            return TranscriptionResult(text="", duration_seconds=duration)
+            if not audio_contains_speech(audio_bytes):
+                LOGGER.debug("Silero VAD: no speech detected, skipping Whisper")
+                return TranscriptionResult(text="", duration_seconds=duration)
 
         transcribe_kwargs = {
             "language": self.language,

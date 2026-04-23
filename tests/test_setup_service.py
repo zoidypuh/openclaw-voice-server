@@ -169,6 +169,84 @@ def test_validate_chatterbox_persists_resolved_settings(tmp_path, monkeypatch):
     assert saved["validation"]["chatterbox"]["config_hash"]
 
 
+def test_validate_pockettts_persists_resolved_voice(tmp_path, monkeypatch):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+    store.update_config({"stt": {"language": "en"}})
+
+    async def fake_validate_pockettts(*, voice):
+        assert voice == "alba"
+        return {
+            "ok": True,
+            "voice": "alba",
+            "voice_name": "Alba",
+            "variant": "b6369a24",
+        }
+
+    monkeypatch.setattr("agent_switchboard.setup_service.validate_pockettts_voice_step", fake_validate_pockettts)
+    monkeypatch.setattr("agent_switchboard.setup_service.normalize_pockettts_voice", lambda value: (value or "alba").strip().lower())
+
+    result = asyncio.run(service.validate_pockettts({"voice": "Alba"}))
+    saved = store.load_config()
+
+    assert result["ok"] is True
+    assert saved["tts"]["pockettts_voice"] == "alba"
+    assert saved["validation"]["pockettts"]["config_hash"]
+
+
+def test_validate_pockettts_rejects_non_english_stt_language(tmp_path):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+    store.update_config({"stt": {"language": "de"}})
+
+    with pytest.raises(ValidationError, match="Pocket TTS is English-only right now."):
+        asyncio.run(service.validate_pockettts({"voice": "alba"}))
+
+
+def test_validate_supertonic_persists_resolved_settings(tmp_path, monkeypatch):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+    python_path = tmp_path / "python"
+    python_path.write_text("#!/bin/sh\n", encoding="utf-8")
+    python_path.chmod(0o755)
+
+    async def fake_validate_supertonic(*, python_path, voice, language, total_steps, speed):
+        return {
+            "ok": True,
+            "python_path": python_path,
+            "voice": voice,
+            "voice_name": "Male 4",
+            "language": language,
+            "language_name": "English",
+            "total_steps": total_steps,
+            "speed": speed,
+        }
+
+    monkeypatch.setattr("agent_switchboard.setup_service.validate_supertonic_voice_step", fake_validate_supertonic)
+
+    result = asyncio.run(
+        service.validate_supertonic(
+            {
+                "python_path": str(python_path),
+                "voice": "M4",
+                "language": "en",
+                "total_steps": "2",
+                "speed": "1.1",
+            }
+        )
+    )
+
+    saved = store.load_config()
+
+    assert result["voice"] == "M4"
+    assert saved["tts"]["supertonic_python_path"] == str(python_path.resolve())
+    assert saved["tts"]["supertonic_voice"] == "M4"
+    assert saved["tts"]["supertonic_language"] == "en"
+    assert saved["tts"]["supertonic_total_steps"] == 2
+    assert saved["tts"]["supertonic_speed"] == 1.1
+    assert saved["validation"]["supertonic"]["config_hash"]
+
+
 def test_validate_gateway_saves_secret_and_config(tmp_path, monkeypatch):
     store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
     service = SetupService(store)
@@ -210,21 +288,18 @@ def test_validate_agent_saves_hermes_root_and_backend(tmp_path, monkeypatch):
     store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
     service = SetupService(store)
     resolved_root = str((tmp_path / "hermes-agent").resolve())
-    store.update_config(
-        {
-            "gateway": {
-                "url": "http://127.0.0.1:18789/v1/chat/completions",
-                "model": "openclaw:main",
-            }
-        }
-    )
-    store.update_secrets({"AGENT_SWITCHBOARD_GATEWAY_TOKEN": "gw-secret"})
 
-    async def fake_validate_hermes_connection(*, project_root, gateway_url, gateway_token, gateway_model):
+    async def fake_validate_hermes_connection(
+        *,
+        project_root,
+        gateway_url=None,
+        gateway_token=None,
+        gateway_model=None,
+    ):
         assert project_root == "/tmp/hermes-agent"
-        assert gateway_url == "http://127.0.0.1:18789/v1/chat/completions"
-        assert gateway_token == "gw-secret"
-        assert gateway_model == "openclaw:main"
+        assert gateway_url is None
+        assert gateway_token is None
+        assert gateway_model is None
         return {"ok": True, "project_root": resolved_root, "reply_preview": "OK"}
 
     monkeypatch.setattr(
@@ -444,6 +519,7 @@ def test_runtime_ready_requires_provider_specific_live_config(tmp_path, monkeypa
             "stt": {
                 "enabled_backends": ["whisper"],
                 "default_backend": "whisper",
+                "language": "en",
                 "whisper_endpoint_url": "http://127.0.0.1:18000/v1/audio/transcriptions",
             },
             "tts": {
@@ -474,6 +550,7 @@ def test_runtime_ready_accepts_vibevoice_live_config(tmp_path, monkeypatch):
             "stt": {
                 "enabled_backends": ["whisper"],
                 "default_backend": "whisper",
+                "language": "en",
                 "whisper_endpoint_url": "http://127.0.0.1:18000/v1/audio/transcriptions",
             },
             "tts": {
@@ -519,6 +596,183 @@ def test_runtime_ready_accepts_vibevoice_live_config(tmp_path, monkeypatch):
 
     assert state["status"]["vibevoice_ready"] is True
     assert state["status"]["runtime_ready"] is True
+
+
+def test_runtime_ready_accepts_supertonic_live_config(tmp_path, monkeypatch):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+    store.update_config(
+        {
+            "stt": {
+                "enabled_backends": ["whisper"],
+                "default_backend": "whisper",
+                "language": "en",
+                "whisper_endpoint_url": "http://127.0.0.1:18000/v1/audio/transcriptions",
+            },
+            "tts": {
+                "enabled_providers": ["supertonic"],
+                "default_provider": "supertonic",
+                "supertonic_python_path": "/tmp/supertonic-python",
+                "supertonic_voice": "M4",
+                "supertonic_language": "en",
+                "supertonic_total_steps": 2,
+                "supertonic_speed": 1.05,
+            },
+            "gateway": {
+                "url": "http://127.0.0.1:18789/v1/chat/completions",
+                "model": "openclaw:main",
+                "session_key": "voice-main",
+            },
+            "validation": {
+                "tts": {
+                    "config_hash": service._config_hash(
+                        {"enabled_providers": ["supertonic"], "default_provider": "supertonic"}
+                    )
+                },
+                "supertonic": {
+                    "config_hash": service._config_hash(
+                        {
+                            "python_path": "/tmp/supertonic-python",
+                            "voice": "M4",
+                            "language": "en",
+                            "total_steps": 2,
+                            "speed": 1.05,
+                        }
+                    )
+                },
+                "gateway": {
+                    "config_hash": service._config_hash(
+                        {
+                            "url": "http://127.0.0.1:18789/v1/chat/completions",
+                            "model": "openclaw:main",
+                            "session_key": "voice-main",
+                        }
+                    ),
+                    "token_fingerprint": service._fingerprint_secret("gw-secret"),
+                },
+            },
+        }
+    )
+    store.update_secrets({"AGENT_SWITCHBOARD_GATEWAY_TOKEN": "gw-secret"})
+
+    monkeypatch.setattr("agent_switchboard.setup_service.module_available", lambda import_name: import_name is None)
+
+    state = service.state()
+
+    assert state["status"]["supertonic_ready"] is True
+    assert state["status"]["runtime_ready"] is True
+
+
+def test_runtime_ready_accepts_pockettts_live_config(tmp_path, monkeypatch):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+    store.update_config(
+        {
+            "stt": {
+                "enabled_backends": ["whisper"],
+                "default_backend": "whisper",
+                "language": "en",
+                "whisper_endpoint_url": "http://127.0.0.1:18000/v1/audio/transcriptions",
+            },
+            "tts": {
+                "enabled_providers": ["pockettts"],
+                "default_provider": "pockettts",
+                "pockettts_voice": "alba",
+            },
+            "gateway": {
+                "url": "http://127.0.0.1:18789/v1/chat/completions",
+                "model": "openclaw:main",
+                "session_key": "voice-main",
+            },
+            "validation": {
+                "tts": {
+                    "config_hash": service._config_hash(
+                        {"enabled_providers": ["pockettts"], "default_provider": "pockettts"}
+                    )
+                },
+                "pockettts": {
+                    "config_hash": service._config_hash({"voice": "alba"})
+                },
+                "gateway": {
+                    "config_hash": service._config_hash(
+                        {
+                            "url": "http://127.0.0.1:18789/v1/chat/completions",
+                            "model": "openclaw:main",
+                            "session_key": "voice-main",
+                        }
+                    ),
+                    "token_fingerprint": service._fingerprint_secret("gw-secret"),
+                },
+            },
+        }
+    )
+    store.update_secrets({"AGENT_SWITCHBOARD_GATEWAY_TOKEN": "gw-secret"})
+
+    monkeypatch.setattr(
+        "agent_switchboard.setup_service.module_available",
+        lambda import_name: import_name in {"pocket_tts", None},
+    )
+
+    state = service.state()
+
+    assert state["status"]["pockettts_ready"] is True
+    assert state["status"]["runtime_ready"] is True
+
+
+def test_runtime_ready_rejects_pockettts_when_stt_language_is_not_english(tmp_path, monkeypatch):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+    store.update_config(
+        {
+            "stt": {
+                "enabled_backends": ["whisper"],
+                "default_backend": "whisper",
+                "language": "de",
+                "whisper_endpoint_url": "http://127.0.0.1:18000/v1/audio/transcriptions",
+            },
+            "tts": {
+                "enabled_providers": ["pockettts"],
+                "default_provider": "pockettts",
+                "pockettts_voice": "alba",
+            },
+            "gateway": {
+                "url": "http://127.0.0.1:18789/v1/chat/completions",
+                "model": "openclaw:main",
+                "session_key": "voice-main",
+            },
+            "validation": {
+                "tts": {
+                    "config_hash": service._config_hash(
+                        {"enabled_providers": ["pockettts"], "default_provider": "pockettts"}
+                    )
+                },
+                "pockettts": {
+                    "config_hash": service._config_hash({"voice": "alba"})
+                },
+                "gateway": {
+                    "config_hash": service._config_hash(
+                        {
+                            "url": "http://127.0.0.1:18789/v1/chat/completions",
+                            "model": "openclaw:main",
+                            "session_key": "voice-main",
+                        }
+                    ),
+                    "token_fingerprint": service._fingerprint_secret("gw-secret"),
+                },
+            },
+        }
+    )
+    store.update_secrets({"AGENT_SWITCHBOARD_GATEWAY_TOKEN": "gw-secret"})
+
+    monkeypatch.setattr(
+        "agent_switchboard.setup_service.module_available",
+        lambda import_name: import_name in {"pocket_tts", None},
+    )
+
+    state = service.state()
+
+    assert state["status"]["pockettts_ready"] is False
+    assert state["status"]["runtime_ready"] is False
 
 
 def test_runtime_ready_accepts_neutts_live_config(tmp_path, monkeypatch):

@@ -63,7 +63,7 @@
     color: #ececec;
   }
   main {
-    width: min(72vw, 360px);
+    width: min(92vw, 560px);
     display: grid;
     gap: 18px;
     justify-items: center;
@@ -76,7 +76,7 @@
   #utility-bar {
     width: 100%;
     display: flex;
-    justify-content: flex-end;
+    justify-content: center;
     gap: 0.5rem;
   }
   .control-btn {
@@ -137,10 +137,6 @@
   }
   #mute-btn {
     min-width: 5.2rem;
-  }
-  body[data-state="paused"] #crab {
-    opacity: 0.72;
-    filter: saturate(0.85);
   }
   #status {
     width: 100%;
@@ -251,11 +247,85 @@
   .hidden {
     display: none !important;
   }
-  #crab {
+  #state-visual-shell {
+    position: relative;
+    width: 100%;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 22px;
+    overflow: hidden;
+    background: linear-gradient(180deg, #0d1419 0%, #070b0f 100%);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
+    cursor: pointer;
+  }
+  #state-visual {
     width: 100%;
     display: block;
-    user-select: none;
-    -webkit-user-drag: none;
+  }
+  #state-visual-overlay {
+    position: absolute;
+    inset: auto 0 0 0;
+    display: grid;
+    gap: 0.55rem;
+    padding: 1rem 1rem 0.95rem;
+    background: linear-gradient(180deg, rgba(7,11,15,0) 0%, rgba(7,11,15,0.72) 26%, rgba(7,11,15,0.92) 100%);
+    pointer-events: none;
+  }
+  .visual-caption {
+    display: grid;
+    gap: 0.18rem;
+    min-height: 2.5rem;
+    padding: 0.45rem 0.65rem 0.5rem;
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 14px;
+    background: rgba(0,0,0,0.22);
+    backdrop-filter: blur(6px);
+  }
+  .visual-caption-label {
+    color: #8c939d;
+    font-size: 0.66rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .visual-caption-log {
+    color: #d9dde2;
+    font-size: 0.9rem;
+    line-height: 1.32;
+    max-height: 11.8rem;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.18) transparent;
+  }
+  .visual-caption-log::-webkit-scrollbar {
+    width: 8px;
+  }
+  .visual-caption-log::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.18);
+    border-radius: 999px;
+  }
+  .visual-caption-log::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .visual-caption-log-entry {
+    display: grid;
+    gap: 0.12rem;
+    padding: 0.18rem 0;
+  }
+  .visual-caption-log-entry + .visual-caption-log-entry {
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+  .visual-caption-log-label {
+    color: #8c939d;
+    font-size: 0.64rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .visual-caption-log-text {
+    color: #d9dde2;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .visual-caption.empty .visual-caption-log {
+    color: #6d747d;
   }
 </style>
 </head>
@@ -269,6 +339,7 @@
   <div id="status">listening</div>
   <div id="status-hint"></div>
   <div id="utility-bar">
+    <button id="push-to-talk-btn" class="mini-btn" type="button">talk on</button>
     <button id="interrupt-btn" class="mini-btn" type="button">interrupt</button>
     <button id="mute-btn" class="mini-btn" type="button">mute</button>
     <button id="sliders-toggle" class="mini-btn active" type="button">threshold</button>
@@ -292,7 +363,7 @@
         <span>wait after speak</span>
         <span id="wait-after-speak-value" class="tuning-value"></span>
       </span>
-      <input id="wait-after-speak" class="tuning-slider" type="range" min="250" max="4000" step="50">
+      <input id="wait-after-speak" class="tuning-slider" type="range" min="1500" max="4000" step="50">
     </label>
     <label class="tuning-row" for="turn-end-threshold">
       <span class="tuning-label">
@@ -303,25 +374,29 @@
     </label>
   </section>
   <div id="thinking-timer" class="hidden"></div>
-  <img id="crab" src="" alt="">
+  <div id="state-visual-shell" aria-label="voice state display">
+    <canvas id="state-visual" width="520" height="312"></canvas>
+    <div id="state-visual-overlay">
+      <div id="transcript-caption" class="visual-caption empty">
+        <div class="visual-caption-label">conversation</div>
+        <div id="transcript-log" class="visual-caption-log"></div>
+      </div>
+    </div>
+  </div>
 </main>
 
 <script>
 function resolveAppBase() {
-  return new URL('.', window.location.href);
+  return new URL('/', window.location.href);
 }
 
 const APP_BASE = resolveAppBase();
 const appUrl = (path) => new URL(path, APP_BASE).toString();
 const SHELL_STATUS_ID = new URLSearchParams(window.location.search).get('shell_id') || '';
-const CRAB_IMAGES = {
-  listening: [appUrl('static/media/listening_transparent.png')],
-  paused: [appUrl('static/media/listening_transparent.png')],
-  thinking: [appUrl('static/media/thinking_transparent.png')],
-  interrupting: [appUrl('static/media/thinking_transparent.png')],
-  reconnecting: [appUrl('static/media/listening_transparent.png')],
-  speaking: [appUrl('static/media/speaking1_transparent.png'), appUrl('static/media/speaking2_transparent.png')],
-};
+const STATE_VISUAL_WIDTH = 520;
+const STATE_VISUAL_HEIGHT = 312;
+const stateVisualCanvas = document.getElementById('state-visual');
+const stateVisualCtx = stateVisualCanvas.getContext('2d');
 
 function isTauriShell() {
   return (navigator.userAgent || '').includes('Tauri');
@@ -357,8 +432,6 @@ let muted = false;
 let interruptPending = false;
 let currentState = 'paused';
 let replyActive = false;
-let speakingTimer = null;
-let speakingFrame = 0;
 let audioQueue = [];
 let currentAudio = null;
 let currentAudioUrl = null;
@@ -379,6 +452,8 @@ let interruptProbePending = false;
 let bargeInChunks = [];
 let bargeInSpeechMs = 0;
 let bargeInSilenceMs = 0;
+let bargeInConfidence = 0;
+let bargeInConfidenceQualified = false;
 let bargeInProbePending = false;
 let bargeInPending = false;
 let playbackSoftPaused = false;
@@ -386,6 +461,7 @@ let playbackSessionStarted = false;
 let bargeInGraceUntil = 0;
 let pendingBargeInAudio = null;
 let pendingBargeInPrefixText = '';
+let pendingBargeInCommitMeta = null;
 let holdContinuationActive = false;
 let heldTurnPrefixText = '';
 let manualFinishProbePending = false;
@@ -398,10 +474,17 @@ let lastAudioProcessAt = 0;
 let audioRecoveryPromise = null;
 let captureWatchdogTimer = null;
 let audioRecoveryHooksBound = false;
+let pushToTalkActive = false;
+let pushToTalkEnabled = true;
 let windowsClientShortcuts = {
   pause_resume: '',
   interrupt: '',
 };
+let heardTranscriptText = '';
+let spokenReplyText = '';
+let transcriptLogEntries = [];
+let activeReplyEntryId = '';
+let transcriptEntryCounter = 0;
 let settings = {
   silence_ms: 1700,
   silence_threshold: 0.015,
@@ -412,16 +495,19 @@ const TUNING_STORAGE_KEY = 'agent-switchboard.voice.tuning.v1';
 const TUNING_PANEL_STORAGE_KEY = 'agent-switchboard.voice.tuning-panel.v1';
 const INTERRUPT_MODE_STORAGE_KEY = 'agent-switchboard.voice.interrupt-mode.v1';
 const INTERRUPT_PANEL_STORAGE_KEY = 'agent-switchboard.voice.interrupt-panel.v1';
+const PUSH_TO_TALK_STORAGE_KEY = 'agent-switchboard.voice.push-to-talk.v1';
 const DEFAULT_TUNING = {
   inputThresholdDb: -41,
   waitAfterSpeakMs: 1700,
 };
+const WAIT_AFTER_SPEAK_STORAGE_LOCK_KEY = 'waitAfterSpeakMsLocked';
 const TURN_COMMIT_MIN_SPEECH_MS = 650;
 const LEVEL_DB_FLOOR = -60;
 const LEVEL_DB_CEILING = 0;
 const LEVEL_PEAK_HOLD_MS = 5000;
-const WAIT_AFTER_SPEAK_MIN_MS = 250;
+const WAIT_AFTER_SPEAK_MIN_MS = 1500;
 const WAIT_AFTER_SPEAK_MAX_MS = 4000;
+const MAX_BUFFERED_TURN_MS = 12000;
 const TARGET_CAPTURE_SAMPLE_RATE = 16000;
 const SPEECH_ZCR_MIN = 0.008;
 const SPEECH_ZCR_MAX = 0.24;
@@ -441,6 +527,9 @@ const PLAYBACK_NO_BARGE_IN_MS = 800;
 const BARGE_IN_MIN_SPEECH_MS = 450;
 const BARGE_IN_SILENCE_MS = 220;
 const BARGE_IN_MAX_MS = 1600;
+const BARGE_IN_ARM_CONFIDENCE = 0.32;
+const BARGE_IN_READY_CONFIDENCE = 0.78;
+const BARGE_IN_CONFIDENCE_MAX = 1.25;
 const APPLE_PLAYBACK_NO_BARGE_IN_MS = 1800;
 const APPLE_BARGE_IN_MIN_SPEECH_MS = 220;
 const APPLE_BARGE_IN_SILENCE_MS = 220;
@@ -456,7 +545,7 @@ let tuningStorageState = {
   inputThresholdDb: false,
   waitAfterSpeakMs: false,
 };
-const manualFinishEnabled = true;
+const manualFinishEnabled = false;
 let interruptMode = 'barge-in';
 
 function amplitudeToDb(amplitude) {
@@ -581,6 +670,109 @@ function setStatusText(text) {
   document.getElementById('status').textContent = text;
 }
 
+function scrollTranscriptOverlayToBottom() {
+  const transcriptLog = document.getElementById('transcript-log');
+  if (!transcriptLog) {
+    return;
+  }
+  requestAnimationFrame(() => {
+    transcriptLog.scrollTop = transcriptLog.scrollHeight;
+  });
+}
+
+function renderTranscriptOverlay() {
+  const transcriptCaption = document.getElementById('transcript-caption');
+  const transcriptLog = document.getElementById('transcript-log');
+  transcriptLog.replaceChildren();
+  const fragment = document.createDocumentFragment();
+  for (const entry of transcriptLogEntries) {
+    const entryNode = document.createElement('div');
+    entryNode.className = 'visual-caption-log-entry';
+
+    const labelNode = document.createElement('div');
+    labelNode.className = 'visual-caption-log-label';
+    labelNode.textContent = entry.role;
+
+    const textNode = document.createElement('div');
+    textNode.className = 'visual-caption-log-text';
+    textNode.textContent = entry.text;
+
+    entryNode.append(labelNode, textNode);
+    fragment.appendChild(entryNode);
+  }
+  transcriptLog.appendChild(fragment);
+  transcriptCaption.classList.toggle('empty', transcriptLogEntries.length === 0);
+  scrollTranscriptOverlayToBottom();
+}
+
+function pushTranscriptEntry(role, text) {
+  const nextText = String(text || '').trim();
+  if (!nextText) {
+    return null;
+  }
+  const entry = {
+    id: `entry-${++transcriptEntryCounter}`,
+    role,
+    text: nextText,
+  };
+  transcriptLogEntries.push(entry);
+  return entry;
+}
+
+function setHeardTranscript(text) {
+  heardTranscriptText = String(text || '').trim();
+  spokenReplyText = '';
+  activeReplyEntryId = '';
+  pushTranscriptEntry('heard', heardTranscriptText);
+  renderTranscriptOverlay();
+}
+
+function appendSpokenReply(text) {
+  const nextText = String(text || '').trim();
+  if (!nextText) {
+    return;
+  }
+  if (!activeReplyEntryId) {
+    const entry = pushTranscriptEntry('reply', nextText);
+    activeReplyEntryId = entry ? entry.id : '';
+    spokenReplyText = entry ? entry.text : nextText;
+    renderTranscriptOverlay();
+    return;
+  }
+  const activeEntry = transcriptLogEntries.find((entry) => entry.id === activeReplyEntryId);
+  if (!activeEntry) {
+    activeReplyEntryId = '';
+    appendSpokenReply(nextText);
+    return;
+  }
+  activeEntry.text = activeEntry.text ? `${activeEntry.text} ${nextText}` : nextText;
+  spokenReplyText = activeEntry.text;
+  renderTranscriptOverlay();
+}
+
+function replaceSpokenReply(text) {
+  spokenReplyText = String(text || '').trim();
+  if (!spokenReplyText) {
+    renderTranscriptOverlay();
+    return;
+  }
+  if (!activeReplyEntryId) {
+    const entry = pushTranscriptEntry('reply', spokenReplyText);
+    activeReplyEntryId = entry ? entry.id : '';
+    renderTranscriptOverlay();
+    return;
+  }
+  const activeEntry = transcriptLogEntries.find((entry) => entry.id === activeReplyEntryId);
+  if (!activeEntry) {
+    const entry = pushTranscriptEntry('reply', spokenReplyText);
+    activeReplyEntryId = entry ? entry.id : '';
+    renderTranscriptOverlay();
+    return;
+  }
+  activeEntry.text = spokenReplyText;
+  renderTranscriptOverlay();
+}
+
 function sendPlaybackAcceptance(requestId) {
   if (!requestId || !ws || ws.readyState !== WebSocket.OPEN) {
     return;
@@ -606,12 +798,49 @@ function sendTranscriptPrefix(prefixText) {
   ws.send(JSON.stringify({ type: 'set-transcript-prefix', prefix_text: prefixText }));
 }
 
+function sendTurnCommitMeta(meta) {
+  if (!meta || !ws || ws.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  ws.send(JSON.stringify({
+    type: 'turn-commit',
+    reason: String(meta.reason || '').trim(),
+    speech_ms: Math.max(0, Math.round(Number(meta.speechMs) || 0)),
+    silence_ms: Math.max(0, Math.round(Number(meta.silenceMs) || 0)),
+    threshold_db: Number.isFinite(Number(meta.thresholdDb)) ? Number(meta.thresholdDb) : null,
+    level_db: Number.isFinite(Number(meta.levelDb)) ? Number(meta.levelDb) : null,
+    wait_after_speak_ms: Math.max(0, Math.round(Number(meta.waitAfterSpeakMs) || 0)),
+  }));
+}
+
 function clampNumber(value, min, max, fallback) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
     return fallback;
   }
   return Math.min(max, Math.max(min, parsed));
+}
+
+function updateBargeInConfidence(displayedLevel, speechLike, thresholdDb, frameMs) {
+  const levelHeadroom = clampNumber(
+    (displayedLevel - (thresholdDb - 3)) / 9,
+    0,
+    1.25,
+    0,
+  );
+  let nextConfidence = bargeInConfidence;
+  if (speechLike && levelHeadroom > 0) {
+    // Require a short run of voice-like frames before we treat playback as a real interruption attempt.
+    nextConfidence += (frameMs / 180) * (0.45 + (Math.min(levelHeadroom, 1) * 0.85));
+  } else {
+    const decayWindowMs = speechLike ? 260 : 120;
+    nextConfidence -= frameMs / decayWindowMs;
+  }
+  bargeInConfidence = clampNumber(nextConfidence, 0, BARGE_IN_CONFIDENCE_MAX, 0);
+  if (bargeInConfidence >= BARGE_IN_READY_CONFIDENCE) {
+    bargeInConfidenceQualified = true;
+  }
+  return bargeInConfidence;
 }
 
 function loadTuning() {
@@ -635,20 +864,26 @@ function loadTuning() {
         tuningStorageState.inputThresholdDb = true;
       }
       if (typeof parsed.waitAfterSpeakMs !== 'undefined') {
-        tuning.waitAfterSpeakMs = clampNumber(
-          parsed.waitAfterSpeakMs,
-          WAIT_AFTER_SPEAK_MIN_MS,
-          WAIT_AFTER_SPEAK_MAX_MS,
-          DEFAULT_TUNING.waitAfterSpeakMs,
-        );
-        tuningStorageState.waitAfterSpeakMs = true;
+        const waitAfterSpeakLocked = parsed[WAIT_AFTER_SPEAK_STORAGE_LOCK_KEY] === true;
+        if (waitAfterSpeakLocked) {
+          tuning.waitAfterSpeakMs = clampNumber(
+            parsed.waitAfterSpeakMs,
+            WAIT_AFTER_SPEAK_MIN_MS,
+            WAIT_AFTER_SPEAK_MAX_MS,
+            DEFAULT_TUNING.waitAfterSpeakMs,
+          );
+          tuningStorageState.waitAfterSpeakMs = true;
+        }
       }
     }
   } catch (_) {}
 }
 
 function saveTuning() {
-  localStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify(tuning));
+  localStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify({
+    ...tuning,
+    [WAIT_AFTER_SPEAK_STORAGE_LOCK_KEY]: tuningStorageState.waitAfterSpeakMs,
+  }));
 }
 
 function loadTuningPanelVisibility() {
@@ -736,6 +971,23 @@ function normalizeTranscriptPrefix(text) {
   return String(text || '').trim().replace(/\s+/g, ' ');
 }
 
+function loadPushToTalkEnabled() {
+  try {
+    const raw = localStorage.getItem(PUSH_TO_TALK_STORAGE_KEY);
+    if (raw === 'off') {
+      pushToTalkEnabled = false;
+      return;
+    }
+  } catch (_) {}
+  pushToTalkEnabled = true;
+}
+
+function savePushToTalkEnabled() {
+  try {
+    localStorage.setItem(PUSH_TO_TALK_STORAGE_KEY, pushToTalkEnabled ? 'on' : 'off');
+  } catch (_) {}
+}
+
 function applyRuntimeShortcuts(windowsClientSettings) {
   const shortcuts = windowsClientSettings?.shortcuts || {};
   windowsClientShortcuts = {
@@ -746,7 +998,13 @@ function applyRuntimeShortcuts(windowsClientSettings) {
 }
 
 function formatShortcutHint() {
-  const parts = [];
+  if (pushToTalkActive) {
+    return 'push-to-talk live · release to send';
+  }
+  const parts = ['talk Ctrl+Shift+S'];
+  if (!pushToTalkEnabled) {
+    parts[0] = 'talk off';
+  }
   if (windowsClientShortcuts.pause_resume) {
     parts.push(`pause ${windowsClientShortcuts.pause_resume}`);
   }
@@ -797,14 +1055,15 @@ function isHeldTurnActive() {
   return holdContinuationActive;
 }
 
-function queuePendingTurn(audioBuffer, { prefixText = '' } = {}) {
+function queuePendingTurn(audioBuffer, { prefixText = '', commitMeta = null } = {}) {
   pendingBargeInAudio = audioBuffer;
   pendingBargeInPrefixText = normalizeTranscriptPrefix(prefixText);
+  pendingBargeInCommitMeta = commitMeta;
   clearHeldTurnState();
   requestInterrupt({ keepPaused: false, preservePendingInput: true });
 }
 
-function sendBufferedTurn(audioBuffer, { prefixText = '' } = {}) {
+function sendBufferedTurn(audioBuffer, { prefixText = '', commitMeta = null } = {}) {
   if (!audioBuffer || !ws || ws.readyState !== WebSocket.OPEN) {
     return false;
   }
@@ -817,12 +1076,13 @@ function sendBufferedTurn(audioBuffer, { prefixText = '' } = {}) {
     || audioQueue.length > 0
     || currentState === 'speaking'
   ) {
-    queuePendingTurn(audioBuffer, { prefixText: normalizedPrefix });
+    queuePendingTurn(audioBuffer, { prefixText: normalizedPrefix, commitMeta });
     return true;
   }
   if (normalizedPrefix) {
     sendTranscriptPrefix(normalizedPrefix);
   }
+  sendTurnCommitMeta(commitMeta);
   busy = true;
   pendingIdle = false;
   setState('thinking');
@@ -888,6 +1148,7 @@ function configureTuningControls() {
       WAIT_AFTER_SPEAK_MAX_MS,
       DEFAULT_TUNING.waitAfterSpeakMs,
     );
+    tuningStorageState.waitAfterSpeakMs = true;
     renderTuningControls();
     saveTuning();
   });
@@ -953,8 +1214,11 @@ function scheduleListeningStatusRestore() {
 }
 
 function updateControlStates() {
+  const pushToTalkBtn = document.getElementById('push-to-talk-btn');
   const pauseBtn = document.getElementById('pause-btn');
   const muteBtn = document.getElementById('mute-btn');
+  pushToTalkBtn.textContent = pushToTalkEnabled ? 'talk on' : 'talk off';
+  pushToTalkBtn.classList.toggle('active', pushToTalkEnabled);
   pauseBtn.textContent = paused ? 'resume' : 'pause';
   pauseBtn.classList.toggle('active', paused);
   muteBtn.textContent = muted ? 'unmute' : 'mute';
@@ -1352,6 +1616,253 @@ function updateIndicatorVisibility(state) {
   }
 }
 
+function visualStateFor(state) {
+  if (state === 'thinking' || state === 'interrupting') {
+    return 'thinking';
+  }
+  if (state === 'speaking') {
+    return 'speaking';
+  }
+  if (state === 'paused' || state === 'reconnecting') {
+    return 'paused';
+  }
+  return 'listening';
+}
+
+function visualThemeFor(state) {
+  switch (state) {
+    case 'listening':
+      return { accent: '#74d7ff', glow: 'rgba(116, 215, 255, 0.34)', line: 'rgba(201, 241, 255, 0.88)' };
+    case 'thinking':
+      return { accent: '#f0c784', glow: 'rgba(240, 199, 132, 0.30)', line: 'rgba(255, 239, 211, 0.88)' };
+    case 'speaking':
+      return { accent: '#ff8f66', glow: 'rgba(255, 143, 102, 0.32)', line: 'rgba(255, 232, 220, 0.9)' };
+    default:
+      return { accent: '#98a2b5', glow: 'rgba(152, 162, 181, 0.24)', line: 'rgba(222, 228, 236, 0.76)' };
+  }
+}
+
+function visualMeterEnergy() {
+  return clampNumber(
+    (currentLevelDb - LEVEL_DB_FLOOR) / (LEVEL_DB_CEILING - LEVEL_DB_FLOOR),
+    0,
+    1,
+    0,
+  );
+}
+
+function visualEnergyFor(state, nowMs) {
+  const meter = visualMeterEnergy();
+  const pulse = 0.5 + 0.5 * Math.sin(nowMs * 0.0064);
+  if (state === 'speaking') {
+    return clampNumber(0.48 + pulse * 0.42 + meter * 0.28, 0, 1, 0.58);
+  }
+  if (state === 'thinking') {
+    return clampNumber(0.12 + pulse * 0.12, 0, 1, 0.18);
+  }
+  if (state === 'listening') {
+    return clampNumber(0.05 + meter * 1.45, 0, 1, 0.08);
+  }
+  return 0.05;
+}
+
+function resizeStateVisual() {
+  const shell = document.getElementById('state-visual-shell');
+  if (!shell || !stateVisualCanvas || !stateVisualCtx) {
+    return;
+  }
+  const dpr = Math.max(window.devicePixelRatio || 1, 1);
+  const width = Math.max(Math.round(shell.clientWidth || STATE_VISUAL_WIDTH), 260);
+  const height = Math.round(width * (STATE_VISUAL_HEIGHT / STATE_VISUAL_WIDTH));
+  stateVisualCanvas.width = Math.round(width * dpr);
+  stateVisualCanvas.height = Math.round(height * dpr);
+  stateVisualCanvas.style.height = `${height}px`;
+  stateVisualCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function drawStateVisualBackdrop(ctx, width, height, theme) {
+  ctx.clearRect(0, 0, width, height);
+  const gradient = ctx.createLinearGradient(0, 0, 0, height);
+  gradient.addColorStop(0, '#0d1419');
+  gradient.addColorStop(1, '#070b0f');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+  for (let row = 12; row < height; row += 12) {
+    for (let col = 12; col < width; col += 12) {
+      ctx.fillRect(col, row, 1, 1);
+    }
+  }
+
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, 0.5, width - 1, height - 1);
+
+  ctx.strokeStyle = theme.glow;
+  ctx.strokeRect(10.5, 10.5, width - 21, height - 21);
+}
+
+function drawStateVisualRings(ctx, width, height, state, nowSeconds, energy, theme) {
+  const maxRadius = Math.min(width, height) * 0.56;
+  const orbit = state === 'thinking'
+    ? 18
+    : (state === 'listening' ? 12 + energy * 8 : 5 + energy * 4);
+  const centerX = width * 0.5 + Math.cos(nowSeconds * (state === 'thinking' ? 0.9 : 0.55)) * orbit;
+  const centerY = height * 0.46 + Math.sin(nowSeconds * (state === 'thinking' ? 1.1 : 0.72)) * orbit * 0.7;
+  const ringCount = state === 'speaking' ? 9 : (state === 'thinking' ? 7 : 6);
+  const speed = state === 'speaking' ? 0.8 : (state === 'thinking' ? 0.22 : 0.34);
+  const ellipticX = state === 'thinking' ? 1.08 : 1;
+  const ellipticY = state === 'speaking' ? 0.94 : 1;
+  const swirl = state === 'speaking' ? nowSeconds * 0.22 : nowSeconds * 0.08;
+
+  for (let index = 0; index < ringCount; index += 1) {
+    const phase = (nowSeconds * speed + index / ringCount) % 1;
+    const fade = 1 - phase;
+    const radius = 20 + phase * maxRadius;
+    const lineWidth = state === 'speaking'
+      ? 1.7 + energy * 3.6 * fade
+      : (state === 'thinking' ? 1.1 + fade * 1.1 : 1.3 + energy * 1.2 + fade * 1.0);
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate(swirl + index * 0.08 * (state === 'thinking' ? 1 : 0.25));
+    ctx.scale(ellipticX, ellipticY);
+    ctx.strokeStyle = index % 2 === 0
+      ? `rgba(255, 255, 255, ${0.08 + fade * 0.18})`
+      : `rgba(255, 255, 255, ${0.03 + fade * 0.12})`;
+    if (state === 'speaking') {
+      ctx.strokeStyle = index % 2 === 0
+        ? `rgba(255, 232, 220, ${0.18 + fade * 0.34})`
+        : `rgba(255, 143, 102, ${0.14 + fade * 0.24})`;
+    } else if (state === 'listening') {
+      ctx.strokeStyle = index % 2 === 0
+        ? `rgba(201, 241, 255, ${0.12 + fade * 0.26})`
+        : `rgba(116, 215, 255, ${0.08 + fade * 0.18})`;
+    } else if (state === 'thinking') {
+      ctx.strokeStyle = index % 2 === 0
+        ? `rgba(255, 239, 211, ${0.12 + fade * 0.28})`
+        : `rgba(240, 199, 132, ${0.08 + fade * 0.18})`;
+    }
+    ctx.lineWidth = lineWidth;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  const halo = ctx.createRadialGradient(centerX, centerY, 4, centerX, centerY, maxRadius * 0.45);
+  halo.addColorStop(0, theme.glow);
+  halo.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, maxRadius * 0.45, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = theme.line;
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, 6 + energy * 9, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawStateVisualListeningSweep(ctx, width, height, nowSeconds, energy, theme) {
+  const sweepX = 22 + ((Math.sin(nowSeconds * 0.88) * 0.5 + 0.5) * (width - 44));
+  ctx.strokeStyle = theme.line;
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(sweepX, 26);
+  ctx.lineTo(sweepX, height - 54);
+  ctx.stroke();
+
+  const barCount = 16;
+  const gap = 5;
+  const barWidth = (width - 48 - gap * (barCount - 1)) / barCount;
+  const baseY = height - 18;
+  for (let index = 0; index < barCount; index += 1) {
+    const local = 0.24 + 0.76 * Math.pow(Math.sin(nowSeconds * 1.8 + index * 0.68), 2);
+    const barHeight = 8 + local * 14 + energy * 28;
+    const x = 24 + index * (barWidth + gap);
+    ctx.fillStyle = index % 2 === 0 ? theme.glow : theme.line;
+    ctx.fillRect(x, baseY - barHeight, barWidth, barHeight);
+  }
+}
+
+function drawStateVisualThinkingOrbit(ctx, width, height, nowSeconds, theme) {
+  const centerX = width / 2;
+  const centerY = height * 0.46;
+  for (let index = 0; index < 6; index += 1) {
+    const angle = nowSeconds * (0.55 + index * 0.04) + (index * Math.PI * 2) / 6;
+    const radius = index % 2 === 0 ? 34 : 50;
+    const x = centerX + Math.cos(angle) * radius;
+    const y = centerY + Math.sin(angle) * radius;
+    ctx.fillStyle = index % 2 === 0 ? theme.line : theme.glow;
+    ctx.beginPath();
+    ctx.arc(x, y, index % 2 === 0 ? 4.6 : 3.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawStateVisualSpeakingWave(ctx, width, height, nowSeconds, energy, theme) {
+  ctx.strokeStyle = theme.line;
+  ctx.lineWidth = 2.3 + energy * 0.6;
+  ctx.beginPath();
+  for (let x = 20; x <= width - 20; x += 1) {
+    const progress = (x - 20) / (width - 40);
+    const amplitude = (11 + energy * 26) * (0.24 + 0.8 * Math.sin(progress * Math.PI) ** 2);
+    const y = height - 34 + Math.sin(progress * Math.PI * 8 + nowSeconds * 10.5) * amplitude;
+    if (x === 20) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  }
+  ctx.stroke();
+}
+
+function drawStateVisualPausedHold(ctx, width, height, nowSeconds, theme) {
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const breath = 0.5 + 0.5 * Math.sin(nowSeconds * 0.8);
+  ctx.strokeStyle = theme.glow;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, 32 + breath * 3, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = theme.line;
+  ctx.fillRect(centerX - 10, centerY - 16, 7, 32);
+  ctx.fillRect(centerX + 3, centerY - 16, 7, 32);
+}
+
+function drawStateVisualFrame(nowMs) {
+  if (!stateVisualCanvas || !stateVisualCtx) {
+    return;
+  }
+  const width = stateVisualCanvas.width / Math.max(window.devicePixelRatio || 1, 1);
+  const height = stateVisualCanvas.height / Math.max(window.devicePixelRatio || 1, 1);
+  const nowSeconds = nowMs / 1000;
+  const state = visualStateFor(currentState);
+  const theme = visualThemeFor(state);
+  const energy = visualEnergyFor(state, nowMs);
+
+  drawStateVisualBackdrop(stateVisualCtx, width, height, theme);
+  drawStateVisualRings(stateVisualCtx, width, height, state, nowSeconds, energy, theme);
+
+  if (state === 'listening') {
+    drawStateVisualListeningSweep(stateVisualCtx, width, height, nowSeconds, energy, theme);
+  } else if (state === 'thinking') {
+    drawStateVisualThinkingOrbit(stateVisualCtx, width, height, nowSeconds, theme);
+  } else if (state === 'speaking') {
+    drawStateVisualSpeakingWave(stateVisualCtx, width, height, nowSeconds, energy, theme);
+  } else {
+    drawStateVisualPausedHold(stateVisualCtx, width, height, nowSeconds, theme);
+  }
+}
+
+function animateStateVisual(nowMs) {
+  drawStateVisualFrame(nowMs);
+  requestAnimationFrame(animateStateVisual);
+}
+
 function setState(state) {
   currentState = state;
   document.body.dataset.state = state;
@@ -1365,24 +1876,7 @@ function setState(state) {
     thinkingStartedAt = null;
   }
   updateIndicatorVisibility(state);
-  const crab = document.getElementById('crab');
-  if (state !== 'speaking') {
-    if (speakingTimer) {
-      clearInterval(speakingTimer);
-      speakingTimer = null;
-    }
-    crab.src = CRAB_IMAGES[state][0];
-    updateControlStates();
-    syncShellState();
-    return;
-  }
-  speakingFrame = 0;
-  crab.src = CRAB_IMAGES.speaking[speakingFrame];
-  if (speakingTimer) clearInterval(speakingTimer);
-  speakingTimer = setInterval(() => {
-    speakingFrame = speakingFrame === 0 ? 1 : 0;
-    crab.src = CRAB_IMAGES.speaking[speakingFrame];
-  }, 240);
+  drawStateVisualFrame(performance.now());
   updateControlStates();
   syncShellState();
 }
@@ -1441,6 +1935,8 @@ function resetBargeInCapture() {
   bargeInChunks = [];
   bargeInSpeechMs = 0;
   bargeInSilenceMs = 0;
+  bargeInConfidence = 0;
+  bargeInConfidenceQualified = false;
   bargeInProbePending = false;
   bargeInPending = false;
 }
@@ -1742,7 +2238,13 @@ function maybeCaptureBargeInProbe(pcm, displayedLevel, speechLike, frameMs, now)
     return false;
   }
 
-  if (!bargeInPending) {
+  const confidence = updateBargeInConfidence(displayedLevel, speechLike, bargeThreshold, frameMs);
+  if (!bargeInPending && hasCapture && !aboveThreshold && confidence <= 0) {
+    resetBargeInCapture();
+    return false;
+  }
+
+  if (!bargeInPending && confidence >= BARGE_IN_ARM_CONFIDENCE) {
     bargeInPending = true;
     if (allowFreeformBargeIn) {
       pausePlaybackForBargeIn();
@@ -1758,8 +2260,17 @@ function maybeCaptureBargeInProbe(pcm, displayedLevel, speechLike, frameMs, now)
   }
 
   const totalMs = bargeInSpeechMs + bargeInSilenceMs;
+  if (!bargeInConfidenceQualified && totalMs >= allowedBargeInMaxMs) {
+    if (playbackSoftPaused) {
+      resumePlaybackAfterBargeIn();
+      return true;
+    }
+    resetBargeInCapture();
+    return false;
+  }
   const shouldProbe = (
-    bargeInSpeechMs >= requiredBargeInSpeechMs
+    bargeInConfidenceQualified
+    && bargeInSpeechMs >= requiredBargeInSpeechMs
     && (
       bargeInSilenceMs >= requiredBargeInSilenceMs
       || totalMs >= allowedBargeInMaxMs
@@ -1831,6 +2342,7 @@ function requestInterrupt({ keepPaused = paused, preservePendingInput = false } 
   if (!preservePendingInput) {
     pendingBargeInAudio = null;
     pendingBargeInPrefixText = '';
+    pendingBargeInCommitMeta = null;
     clearHeldTurnState();
   }
   pendingIdle = false;
@@ -1848,6 +2360,7 @@ function requestInterrupt({ keepPaused = paused, preservePendingInput = false } 
     if (!preservePendingInput) {
       pendingBargeInAudio = null;
       pendingBargeInPrefixText = '';
+      pendingBargeInCommitMeta = null;
     }
     setState(keepPaused ? 'paused' : 'listening');
     return;
@@ -1863,8 +2376,59 @@ function manualInterrupt() {
   requestInterrupt({ keepPaused: false });
 }
 
+async function beginPushToTalk() {
+  if (!pushToTalkEnabled || pushToTalkActive) {
+    return;
+  }
+  pushToTalkActive = true;
+  if (paused) {
+    await setPausedState(false);
+  }
+  armHeldTurn('');
+  if (busy || replyActive || currentAudio || audioQueue.length > 0 || currentState === 'speaking' || currentState === 'thinking') {
+    requestInterrupt({ keepPaused: false, preservePendingInput: true });
+    return;
+  }
+  if (!interruptPending) {
+    pendingIdle = false;
+    setState('listening');
+  }
+}
+
+function endPushToTalk() {
+  if (!pushToTalkActive) {
+    return false;
+  }
+  pushToTalkActive = false;
+  if (commitBufferedTurnNow()) {
+    return true;
+  }
+  clearHeldTurnState();
+  if (!paused && !busy && !interruptPending) {
+    pendingIdle = false;
+    setState('listening');
+  }
+  return false;
+}
+
+function setPushToTalkEnabled(nextEnabled) {
+  pushToTalkEnabled = Boolean(nextEnabled);
+  if (!pushToTalkEnabled) {
+    pushToTalkActive = false;
+    clearHeldTurnState();
+    resetCaptureBuffer();
+    if (!paused && !busy && !interruptPending) {
+      pendingIdle = false;
+      setState('listening');
+    }
+  }
+  savePushToTalkEnabled();
+  updateControlStates();
+}
+
 async function setPausedState(nextPaused, { forceInterrupt = false } = {}) {
   paused = Boolean(nextPaused);
+  pushToTalkActive = false;
   if (paused) {
     pendingBargeInAudio = null;
     pendingBargeInPrefixText = '';
@@ -1891,6 +2455,7 @@ async function setPausedState(nextPaused, { forceInterrupt = false } = {}) {
   pendingIdle = false;
   pendingBargeInAudio = null;
   pendingBargeInPrefixText = '';
+  pendingBargeInCommitMeta = null;
   if (forceInterrupt) {
     stopPlayback();
   }
@@ -1976,12 +2541,13 @@ async function connect() {
   ws.onclose = () => {
     busy = false;
     pendingIdle = false;
-    interruptPending = false;
-    pendingBargeInAudio = null;
-    pendingBargeInPrefixText = '';
-    clearHeldTurnState();
-    setReplyActive(false);
-    stopPlayback();
+      interruptPending = false;
+      pendingBargeInAudio = null;
+      pendingBargeInPrefixText = '';
+      pendingBargeInCommitMeta = null;
+      clearHeldTurnState();
+      setReplyActive(false);
+      stopPlayback();
     setState('reconnecting');
     updateControlStates();
     syncShellState({ force: true });
@@ -2026,6 +2592,7 @@ async function connect() {
       interruptPending = false;
       pendingBargeInAudio = null;
       pendingBargeInPrefixText = '';
+      pendingBargeInCommitMeta = null;
       clearHeldTurnState();
       setReplyActive(false);
       if (paused) {
@@ -2037,6 +2604,18 @@ async function connect() {
       }
       updateControlStates();
       syncShellState();
+      return;
+    }
+    if (data.type === 'transcript') {
+      setHeardTranscript(data.text);
+      return;
+    }
+    if (data.type === 'reply-text') {
+      if (data.replace) {
+        replaceSpokenReply(data.text);
+      } else if (data.append) {
+        appendSpokenReply(data.text);
+      }
       return;
     }
     if (data.type === 'voice-command') {
@@ -2084,11 +2663,14 @@ async function connect() {
       if (pendingBargeInAudio && !paused && ws && ws.readyState === WebSocket.OPEN) {
         const bufferedAudio = pendingBargeInAudio;
         const prefixText = pendingBargeInPrefixText;
+        const commitMeta = pendingBargeInCommitMeta;
         pendingBargeInAudio = null;
         pendingBargeInPrefixText = '';
+        pendingBargeInCommitMeta = null;
         if (prefixText) {
           sendTranscriptPrefix(prefixText);
         }
+        sendTurnCommitMeta(commitMeta);
         busy = true;
         pendingIdle = false;
         setState('thinking');
@@ -2233,6 +2815,13 @@ function onAudioProcess(event) {
   const displayedLevel = Math.max(baseLevel, currentLevelDb - (speechLike ? 1.2 : 2.8));
   setLevelDb(displayedLevel);
   const frameMs = (pcm.length / TARGET_CAPTURE_SAMPLE_RATE) * 1000;
+  if (pushToTalkEnabled && !pushToTalkActive) {
+    resetCaptureBuffer();
+    resetInterruptSpeechDetection();
+    resetInterruptProbeCapture();
+    resetBargeInCapture();
+    return;
+  }
   if (maybeCaptureBargeInProbe(pcm, displayedLevel, interruptSpeechLike, frameMs, now)) {
     return;
   }
@@ -2246,14 +2835,33 @@ function onAudioProcess(event) {
   if (!isHeldTurnActive() && (busy || currentAudio || audioQueue.length > 0 || currentState === 'speaking')) {
     return;
   }
-  const turnActiveThreshold = speechLike
-    ? tuning.inputThresholdDb + gainMultiplierToDb(0.72)
-    : tuning.inputThresholdDb;
-  if (displayedLevel > turnActiveThreshold) {
+  const turnThresholdDb = tuning.inputThresholdDb;
+  const turnAboveThreshold = baseLevel > turnThresholdDb;
+  if (turnAboveThreshold) {
     if (!speechStart) speechStart = now;
-    silenceStart = null;
     hasSpeech = true;
     audioChunks.push(pcm);
+    silenceStart = null;
+    const speechDuration = speechStart ? now - speechStart : 0;
+    const minSpeechDuration = Math.max(settings.min_speech_ms, TURN_COMMIT_MIN_SPEECH_MS);
+    const turnEndSilenceMs = resolveWaitAfterSpeakMs();
+    if (
+      speechDuration >= minSpeechDuration
+      && speechDuration >= MAX_BUFFERED_TURN_MS
+    ) {
+      sendBufferedTurn(flattenAudio(audioChunks), {
+        prefixText: heldTurnPrefixText,
+        commitMeta: {
+          reason: 'max-buffer',
+          speechMs: speechDuration,
+          silenceMs: 0,
+          thresholdDb: turnThresholdDb,
+          levelDb: baseLevel,
+          waitAfterSpeakMs: turnEndSilenceMs,
+        },
+      });
+      resetCaptureBuffer();
+    }
     return;
   }
   if (!hasSpeech) return;
@@ -2264,10 +2872,29 @@ function onAudioProcess(event) {
   if (maybeProbeManualFinish(now, speechDuration, silenceDuration)) {
     return;
   }
+  if (manualFinishProbePending) {
+    return;
+  }
   const minSpeechDuration = Math.max(settings.min_speech_ms, TURN_COMMIT_MIN_SPEECH_MS);
   const turnEndSilenceMs = resolveWaitAfterSpeakMs();
-  if (speechDuration >= minSpeechDuration && silenceDuration >= turnEndSilenceMs) {
-    sendBufferedTurn(flattenAudio(audioChunks), { prefixText: heldTurnPrefixText });
+  if (
+    speechDuration >= minSpeechDuration
+    && (
+      silenceDuration >= turnEndSilenceMs
+      || speechDuration >= MAX_BUFFERED_TURN_MS
+    )
+  ) {
+    sendBufferedTurn(flattenAudio(audioChunks), {
+      prefixText: heldTurnPrefixText,
+      commitMeta: {
+        reason: silenceDuration >= turnEndSilenceMs ? 'silence-timeout' : 'max-buffer',
+        speechMs: speechDuration,
+        silenceMs: silenceDuration,
+        thresholdDb: turnThresholdDb,
+        levelDb: baseLevel,
+        waitAfterSpeakMs: turnEndSilenceMs,
+      },
+    });
     resetCaptureBuffer();
   }
 }
@@ -2318,7 +2945,7 @@ function animateLevelDecay() {
   requestAnimationFrame(animateLevelDecay);
 }
 
-document.getElementById('crab').addEventListener('click', () => {
+document.getElementById('state-visual-shell').addEventListener('click', () => {
   document.getElementById('pause-btn').click();
 });
 
@@ -2331,15 +2958,28 @@ document.getElementById('mute-btn').addEventListener('click', () => {
 });
 
 setState('paused');
+resizeStateVisual();
 configureSetupLink();
 configureTuningControls();
+loadPushToTalkEnabled();
 updateControlStates();
+document.getElementById('push-to-talk-btn').addEventListener('click', () => {
+  setPushToTalkEnabled(!pushToTalkEnabled);
+});
+
 window.__agentSwitchboardManualInterrupt = manualInterrupt;
+window.__agentSwitchboardPushToTalkStart = beginPushToTalk;
+window.__agentSwitchboardPushToTalkEnd = endPushToTalk;
 window.__agentSwitchboardToggleVoiceInterrupt = () => setInterruptMode(
   interruptMode === 'off' ? 'barge-in' : (interruptMode === 'barge-in' ? 'keyword' : 'off')
 );
 startShellStatusHeartbeat();
 animateLevelDecay();
+requestAnimationFrame(animateStateVisual);
+window.addEventListener('resize', () => {
+  resizeStateVisual();
+  drawStateVisualFrame(performance.now());
+});
 </script>
 </body>
 </html>

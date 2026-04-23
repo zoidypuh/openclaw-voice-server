@@ -35,6 +35,9 @@ _ALWAYS_DROP = {
     "vielen dank fürs zuschauen",
 }
 _POLITE_NOISE_WORDS = {"vielen", "dank", "danke", "schoen", "schön"}
+_IMPOSSIBLE_TRANSCRIPT_MIN_WORDS = 7
+_IMPOSSIBLE_TRANSCRIPT_MAX_WORDS_PER_SECOND = 6.0
+_IMPOSSIBLE_TRANSCRIPT_MAX_CHARS_PER_SECOND = 24.0
 _COMMAND_KEYWORDS = {
     "de": {
         "interrupt": {"stopp", "halt"},
@@ -190,6 +193,18 @@ def _is_polite_noise_transcript(words: list[str]) -> bool:
     return bool(words) and all(word in _POLITE_NOISE_WORDS for word in words)
 
 
+
+def _looks_like_impossibly_dense_transcript(words: list[str], duration: float) -> bool:
+    if duration <= 0 or len(words) < _IMPOSSIBLE_TRANSCRIPT_MIN_WORDS:
+        return False
+    word_rate = len(words) / duration
+    if word_rate <= _IMPOSSIBLE_TRANSCRIPT_MAX_WORDS_PER_SECOND:
+        return False
+    char_rate = len("".join(words)) / duration
+    return char_rate >= _IMPOSSIBLE_TRANSCRIPT_MAX_CHARS_PER_SECOND
+
+
+
 def should_drop_stt_false_positive(text: str, duration: float, min_duration: float) -> bool:
     normalized = normalize_voice_text(text)
     if not normalized:
@@ -199,6 +214,8 @@ def should_drop_stt_false_positive(text: str, duration: float, min_duration: flo
     if not words:
         return True
     if normalized in _COMMON_NOISE and (duration < min_duration or len(words) <= 4):
+        return True
+    if _looks_like_impossibly_dense_transcript(words, duration):
         return True
     return False
 
@@ -233,6 +250,9 @@ def should_drop_voice_transcript(
 
     words = _trim_transcript_fillers(normalized.split())
     if not words:
+        return True
+
+    if _looks_like_impossibly_dense_transcript(words, duration):
         return True
     return len(words) < max(1, min_words)
 

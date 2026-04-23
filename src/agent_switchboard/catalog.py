@@ -125,6 +125,18 @@ SUPPORTED_TTS_PROVIDERS = {
         "package": "chatterbox-tts>=0.1.7",
         "import_name": "chatterbox",
     },
+    "pockettts": {
+        "id": "pockettts",
+        "label": "Pocket TTS",
+        "package": "pocket-tts>=1.1.1",
+        "import_name": "pocket_tts",
+    },
+    "supertonic": {
+        "id": "supertonic",
+        "label": "Supertonic",
+        "package": None,
+        "import_name": None,
+    },
     "elevenlabs": {
         "id": "elevenlabs",
         "label": "ElevenLabs",
@@ -227,6 +239,9 @@ DEFAULT_CONFIG = {
     "agent": {
         "backend": "gateway",
         "hermes_root": DEFAULT_HERMES_ROOT,
+        "use_context_files": True,
+        "use_memory": True,
+        "toolsets": ["browser", "file", "web"],
     },
     "stt": {
         "enabled_backends": ["faster-whisper"],
@@ -257,6 +272,13 @@ DEFAULT_CONFIG = {
         "chatterbox_device": CHATTERBOX_DEFAULT_DEVICE,
         "chatterbox_language": "de",
         "chatterbox_voice": CHATTERBOX_DEFAULT_VOICE,
+        "pockettts_voice": "alba",
+        "pockettts_variant": "b6369a24",
+        "supertonic_python_path": "",
+        "supertonic_voice": "M4",
+        "supertonic_language": "en",
+        "supertonic_total_steps": 3,
+        "supertonic_speed": 1.05,
         "speaker_voice_ids": {},
         "speaker_overrides": {},
         "news_speakers": [],
@@ -296,6 +318,12 @@ DEFAULT_CONFIG = {
             "config_hash": "",
         },
         "chatterbox": {
+            "config_hash": "",
+        },
+        "pockettts": {
+            "config_hash": "",
+        },
+        "supertonic": {
             "config_hash": "",
         },
         "vibevoice": {

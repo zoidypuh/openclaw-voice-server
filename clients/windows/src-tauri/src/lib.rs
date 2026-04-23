@@ -32,6 +32,7 @@ const STATUS_POLL_INTERVAL: Duration = Duration::from_millis(1200);
 const DEFAULT_TOGGLE_WINDOW_SHORTCUT: &str = "Ctrl+Shift+Space";
 const DEFAULT_PAUSE_RESUME_SHORTCUT: &str = "Ctrl+Shift+P";
 const DEFAULT_INTERRUPT_SHORTCUT: &str = "Ctrl+Alt+A";
+const PUSH_TO_TALK_SHORTCUT: &str = "Ctrl+Shift+S";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum TrayState {
@@ -655,6 +656,11 @@ fn run_inner() -> tauri::Result<()> {
         &shortcut_config.interrupt,
         DEFAULT_INTERRUPT_SHORTCUT,
     )];
+    let push_to_talk_shortcut = parse_shortcut_value(
+        "push-to-talk",
+        PUSH_TO_TALK_SHORTCUT,
+        PUSH_TO_TALK_SHORTCUT,
+    );
 
     let shortcut_ids = [
         show_hide_shortcut.id(),
@@ -680,18 +686,63 @@ fn run_inner() -> tauri::Result<()> {
         )];
     }
 
+    if show_hide_shortcut.id() == push_to_talk_shortcut.id() {
+        eprintln!(
+            "show/hide shortcut conflicts with push-to-talk ({PUSH_TO_TALK_SHORTCUT}). Falling back to default."
+        );
+        show_hide_shortcut = parse_shortcut_value(
+            "show/hide window",
+            DEFAULT_TOGGLE_WINDOW_SHORTCUT,
+            DEFAULT_TOGGLE_WINDOW_SHORTCUT,
+        );
+    }
+    if pause_shortcut.id() == push_to_talk_shortcut.id() {
+        eprintln!(
+            "pause/resume shortcut conflicts with push-to-talk ({PUSH_TO_TALK_SHORTCUT}). Falling back to default."
+        );
+        pause_shortcut = parse_shortcut_value(
+            "pause/resume",
+            DEFAULT_PAUSE_RESUME_SHORTCUT,
+            DEFAULT_PAUSE_RESUME_SHORTCUT,
+        );
+    }
+    if interrupt_shortcuts[0].id() == push_to_talk_shortcut.id() {
+        eprintln!(
+            "interrupt shortcut conflicts with push-to-talk ({PUSH_TO_TALK_SHORTCUT}). Falling back to default."
+        );
+        interrupt_shortcuts = vec![parse_shortcut_value(
+            "interrupt",
+            DEFAULT_INTERRUPT_SHORTCUT,
+            DEFAULT_INTERRUPT_SHORTCUT,
+        )];
+    }
+
     let show_hide_shortcut_id = show_hide_shortcut.id();
     let pause_shortcut_id = pause_shortcut.id();
     let interrupt_shortcut_ids: Vec<_> = interrupt_shortcuts.iter().map(|shortcut| shortcut.id()).collect();
+    let push_to_talk_shortcut_id = push_to_talk_shortcut.id();
 
     let mut shortcuts = vec![show_hide_shortcut, pause_shortcut];
     shortcuts.extend(interrupt_shortcuts);
+    shortcuts.push(push_to_talk_shortcut);
 
     let shortcut_plugin = GlobalShortcutBuilder::new()
         .with_shortcuts(shortcuts).map_err(|error| {
             io::Error::other(format!("failed to register global shortcuts: {error}"))
         })?
         .with_handler(move |app, shortcut, event| {
+            if shortcut.id() == push_to_talk_shortcut_id {
+                match event.state {
+                    ShortcutState::Pressed => {
+                        invoke_voice_action(app, "__agentSwitchboardPushToTalkStart");
+                    }
+                    ShortcutState::Released => {
+                        invoke_voice_action(app, "__agentSwitchboardPushToTalkEnd");
+                    }
+                }
+                return;
+            }
+
             if event.state != ShortcutState::Pressed {
                 return;
             }

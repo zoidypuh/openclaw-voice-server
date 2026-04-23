@@ -150,6 +150,7 @@ pip install -e .[dev,stt-faster-whisper,stt-whisper,tts-edge,tts-piper,tts-chatt
 Notes:
 
 - the setup page can install some missing Python packages while validating providers
+- Pocket TTS is currently installed on demand during validation
 - NeuTTS is currently installed on demand during validation
 - VibeVoice runs in its own separate environment and server
 
@@ -160,6 +161,7 @@ Currently supported:
 - Edge TTS
 - Piper
 - Chatterbox
+- Pocket TTS
 - ElevenLabs
 - NeuTTS
 - VibeVoice Realtime
@@ -268,6 +270,49 @@ Help:
 ```bash
 source .venv/bin/activate
 agent-switchboard-calibrate --help
+```
+
+## Speak Paragraphs via HTTP
+
+The runtime exposes `POST /api/runtime/speak` on the same host/port as the web UI (default `http://127.0.0.1:8765`).
+That endpoint waits for an active voice client, synthesizes the provided text, and pushes playback to the connected browser/app.
+
+Raw curl example:
+
+```bash
+curl -sS http://127.0.0.1:8765/api/runtime/speak \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "text": "First paragraph.",
+    "timeout_seconds": 15,
+    "preset_name": "expressive",
+    "speaker_name": "Speaker-B"
+  }'
+```
+
+If you want to feed a longer reply and send each paragraph separately, use the helper:
+
+```bash
+source .venv/bin/activate
+printf 'First paragraph.\n\nSecond paragraph.\n' | agent-switchboard-speak
+```
+
+It also accepts inline text or a file:
+
+```bash
+source .venv/bin/activate
+agent-switchboard-speak --preset-name expressive --speaker-name Speaker-B \
+  "First paragraph."
+
+source .venv/bin/activate
+agent-switchboard-speak --file reply.txt
+```
+
+Help:
+
+```bash
+source .venv/bin/activate
+agent-switchboard-speak --help
 ```
 
 ## Troubleshooting

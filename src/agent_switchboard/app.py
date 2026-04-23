@@ -3,10 +3,11 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
+from typing import NoReturn
 
 from aiohttp import web
 
-from .catalog import APP_VERSION_LABEL
+from .catalog import APP_VERSION_LABEL, normalize_agent_backend
 from .config_store import ConfigStore
 from .errors import ValidationError
 from .runtime import VoiceRuntime
@@ -37,8 +38,39 @@ def _static_dir() -> Path:
     return Path(__file__).with_name("static")
 
 
+def _media_dir() -> Path:
+    repo_media = Path(__file__).resolve().parents[2] / "media"
+    if repo_media.is_dir():
+        return repo_media
+    return _static_dir() / "media"
+
+
+def _default_avatar_preset(saved: dict[str, object]) -> str:
+    agent = saved.get("agent") if isinstance(saved, dict) else {}
+    gateway = saved.get("gateway") if isinstance(saved, dict) else {}
+
+    backend = normalize_agent_backend((agent or {}).get("backend")) if isinstance(agent, dict) else "gateway"
+    if backend == "hermes":
+        return "girl"
+
+    model = str((gateway or {}).get("model") or "").strip().lower() if isinstance(gateway, dict) else ""
+    if any(token in model for token in ("openclaw", "claw", "lobster")):
+        return "lobster"
+    if any(token in model for token in ("hermes", "mara", "claude", "sonnet", "gpt")):
+        return "girl"
+    return "girl"
+
+
 def _runtime_ready(setup_service: SetupService) -> bool:
     return bool(setup_service.state()["status"]["runtime_ready"])
+
+
+def _html_file_response(path: Path) -> web.FileResponse:
+    response = web.FileResponse(path)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 def create_app() -> web.Application:
@@ -47,20 +79,40 @@ def create_app() -> web.Application:
     runtime = VoiceRuntime(store)
     windows_client_state = WindowsClientStateStore()
     static_dir = _static_dir()
+    media_dir = _media_dir()
+    legacy_ui_prefixes = ("/voice", "/setup")
+
+    def add_route(method: str, path: str, handler) -> None:
+        app.router.add_route(method, path, handler)
+        if path.startswith("/api/") or path.startswith("/ws/"):
+            for prefix in legacy_ui_prefixes:
+                app.router.add_route(method, f"{prefix}{path}", handler)
 
     async def root(request: web.Request) -> web.StreamResponse:
         if _runtime_ready(setup_service):
-            return web.FileResponse(static_dir / "voice.html")
-        return web.FileResponse(static_dir / "setup.html")
+            return _html_file_response(static_dir / "voice.html")
+        return _html_file_response(static_dir / "setup.html")
+
+    def canonical_path_redirect(target: str) -> None:
+        raise web.HTTPPermanentRedirect(location=target)
 
     async def setup_page(request: web.Request) -> web.FileResponse:
-        return web.FileResponse(static_dir / "setup.html")
+        return _html_file_response(static_dir / "setup.html")
+
+    async def setup_page_slash(request: web.Request) -> NoReturn:
+        canonical_path_redirect("/setup")
 
     async def voice_page(request: web.Request) -> web.StreamResponse:
-        return web.FileResponse(static_dir / "voice.html")
+        return _html_file_response(static_dir / "voice.html")
+
+    async def voice_page_slash(request: web.Request) -> NoReturn:
+        canonical_path_redirect("/voice")
 
     async def record_page(request: web.Request) -> web.StreamResponse:
-        return web.FileResponse(static_dir / "record.html")
+        return _html_file_response(static_dir / "record.html")
+
+    async def record_page_slash(request: web.Request) -> NoReturn:
+        canonical_path_redirect("/record")
 
     async def health(request: web.Request) -> web.Response:
         state = setup_service.state()
@@ -84,6 +136,9 @@ def create_app() -> web.Application:
                 "version_label": APP_VERSION_LABEL,
                 "runtime_ready": state["status"]["runtime_ready"],
                 "audio": state["saved"]["audio"],
+                "avatar": {
+                    "default_preset": _default_avatar_preset(state["saved"]),
+                },
                 "windows_client": state["saved"]["windows_client"],
             }
         )
@@ -161,6 +216,16 @@ def create_app() -> web.Application:
         result = await setup_service.validate_chatterbox(payload)
         return web.json_response(result)
 
+    async def validate_pockettts(request: web.Request) -> web.Response:
+        payload = await parse_json(request)
+        result = await setup_service.validate_pockettts(payload)
+        return web.json_response(result)
+
+    async def validate_supertonic(request: web.Request) -> web.Response:
+        payload = await parse_json(request)
+        result = await setup_service.validate_supertonic(payload)
+        return web.json_response(result)
+
     async def eleven_voices(request: web.Request) -> web.Response:
         result = await setup_service.elevenlabs_voices()
         return web.json_response(result)
@@ -193,35 +258,41 @@ def create_app() -> web.Application:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
 
     app = web.Application(middlewares=[error_middleware])
-    app.router.add_get("/", root)
-    app.router.add_get("/setup", setup_page)
-    app.router.add_get("/voice", voice_page)
-    app.router.add_get("/record", record_page)
-    app.router.add_get("/health", health)
-    app.router.add_get("/api/setup/state", setup_state)
-    app.router.add_get("/api/runtime/state", runtime_state)
-    app.router.add_post("/api/runtime/interrupt-probe", runtime_interrupt_probe)
-    app.router.add_post("/api/runtime/speak", runtime_speak)
-    app.router.add_get("/api/windows-client/status", windows_client_status)
-    app.router.add_post("/api/windows-client/status", update_windows_client_status)
-    app.router.add_post("/api/setup/validate-gateway", validate_gateway)
-    app.router.add_post("/api/setup/validate-agent", validate_agent)
-    app.router.add_post("/api/setup/validate-windows-client", validate_windows_client)
-    app.router.add_post("/api/setup/validate-stt", validate_stt)
-    app.router.add_post("/api/setup/validate-tts", validate_tts)
-    app.router.add_get("/api/setup/edge-voices", edge_voices)
-    app.router.add_post("/api/setup/validate-edge", validate_edge)
-    app.router.add_post("/api/setup/validate-eleven-key", validate_eleven_key)
-    app.router.add_post("/api/setup/validate-piper", validate_piper)
-    app.router.add_post("/api/setup/validate-chatterbox", validate_chatterbox)
-    app.router.add_get("/api/setup/eleven-voices", eleven_voices)
-    app.router.add_post("/api/setup/validate-eleven-voice", validate_eleven_voice)
-    app.router.add_get("/api/setup/vibevoice-voices", vibevoice_voices)
-    app.router.add_post("/api/setup/vibevoice-voices", vibevoice_voices)
-    app.router.add_post("/api/setup/validate-vibevoice", validate_vibevoice)
-    app.router.add_post("/api/setup/validate-neutts", validate_neutts)
-    app.router.add_get("/ws/voice", runtime.handle_ws)
+    add_route("GET", "/", root)
+    add_route("GET", "/setup", setup_page)
+    add_route("GET", "/setup/", setup_page_slash)
+    add_route("GET", "/voice", voice_page)
+    add_route("GET", "/voice/", voice_page_slash)
+    add_route("GET", "/record", record_page)
+    add_route("GET", "/record/", record_page_slash)
+    add_route("GET", "/health", health)
+    add_route("GET", "/api/setup/state", setup_state)
+    add_route("GET", "/api/runtime/state", runtime_state)
+    add_route("POST", "/api/runtime/interrupt-probe", runtime_interrupt_probe)
+    add_route("POST", "/api/runtime/speak", runtime_speak)
+    add_route("GET", "/api/windows-client/status", windows_client_status)
+    add_route("POST", "/api/windows-client/status", update_windows_client_status)
+    add_route("POST", "/api/setup/validate-gateway", validate_gateway)
+    add_route("POST", "/api/setup/validate-agent", validate_agent)
+    add_route("POST", "/api/setup/validate-windows-client", validate_windows_client)
+    add_route("POST", "/api/setup/validate-stt", validate_stt)
+    add_route("POST", "/api/setup/validate-tts", validate_tts)
+    add_route("GET", "/api/setup/edge-voices", edge_voices)
+    add_route("POST", "/api/setup/validate-edge", validate_edge)
+    add_route("POST", "/api/setup/validate-eleven-key", validate_eleven_key)
+    add_route("POST", "/api/setup/validate-piper", validate_piper)
+    add_route("POST", "/api/setup/validate-chatterbox", validate_chatterbox)
+    add_route("POST", "/api/setup/validate-pockettts", validate_pockettts)
+    add_route("POST", "/api/setup/validate-supertonic", validate_supertonic)
+    add_route("GET", "/api/setup/eleven-voices", eleven_voices)
+    add_route("POST", "/api/setup/validate-eleven-voice", validate_eleven_voice)
+    add_route("GET", "/api/setup/vibevoice-voices", vibevoice_voices)
+    add_route("POST", "/api/setup/vibevoice-voices", vibevoice_voices)
+    add_route("POST", "/api/setup/validate-vibevoice", validate_vibevoice)
+    add_route("POST", "/api/setup/validate-neutts", validate_neutts)
+    add_route("GET", "/ws/voice", runtime.handle_ws)
     app.router.add_static("/static", static_dir)
+    app.router.add_static("/media", media_dir)
     return app
 
 

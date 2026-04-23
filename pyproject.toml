@@ -11,8 +11,7 @@ requires-python = ">=3.11"
 dependencies = [
   "aiohttp>=3.11.0",
   "httpx>=0.28.0",
-  "numpy>=1.24.0,<2.0.0; python_version < '3.13'",
-  "numpy>=2.0.0; python_version >= '3.13'",
+  "numpy>=1.24.0",
 ]
 
 [project.optional-dependencies]
@@ -43,6 +42,7 @@ tts-chatterbox = [
 [project.scripts]
 agent-switchboard = "agent_switchboard.app:main"
 agent-switchboard-calibrate = "agent_switchboard.calibrate_commands:main"
+agent-switchboard-speak = "agent_switchboard.speak_paragraphs:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agent_switchboard"]

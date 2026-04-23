@@ -48,6 +48,13 @@ def cmd(argv: list[str], **kwargs) -> subprocess.CompletedProcess:
     return subprocess.run(argv, **kwargs)
 
 
+def run_or_exit(argv: list[str], *, error_message: str, **kwargs) -> None:
+    result = cmd(argv, **kwargs)
+    if result.returncode != 0:
+        print(f"ERROR: {error_message}")
+        sys.exit(result.returncode or 1)
+
+
 def rmtree(path: Path) -> None:
     def onerror(func, path2, exc_info):
         os.chmod(path2, stat.S_IWRITE)
@@ -83,10 +90,18 @@ def main() -> None:
 
     if uv_exe.exists():
         print("  Using uv (fast, preferred) ...")
-        cmd([str(uv_exe), "pip", "install", "-e", str(REPO_ROOT)], cwd=str(REPO_ROOT))
+        run_or_exit(
+            [str(uv_exe), "pip", "install", "-e", str(REPO_ROOT)],
+            cwd=str(REPO_ROOT),
+            error_message="Dependency installation failed.",
+        )
     elif pip_exe.exists():
         print("  Using pip ...")
-        cmd([str(pip_exe), "install", "-e", str(REPO_ROOT)], cwd=str(REPO_ROOT))
+        run_or_exit(
+            [str(pip_exe), "install", "-e", str(REPO_ROOT)],
+            cwd=str(REPO_ROOT),
+            error_message="Dependency installation failed.",
+        )
     else:
         print("ERROR: Neither uv nor pip found inside .venv.")
         sys.exit(1)

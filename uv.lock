@@ -29,6 +29,61 @@ resolution-markers = [
 ]
 
 [[package]]
+name = "agent-switchboard"
+version = "0.0.4"
+source = { editable = "." }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "httpx" },
+    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
+    { name = "numpy", version = "2.4.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+]
+stt-faster-whisper = [
+    { name = "faster-whisper" },
+]
+stt-whisper = [
+    { name = "openai-whisper" },
+]
+tts-chatterbox = [
+    { name = "chatterbox-tts" },
+    { name = "torch", version = "2.6.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
+    { name = "torch", version = "2.11.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14'" },
+    { name = "torchaudio", version = "2.6.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
+    { name = "torchaudio", version = "2.11.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14'" },
+]
+tts-edge = [
+    { name = "edge-tts" },
+]
+tts-piper = [
+    { name = "pathvalidate" },
+    { name = "piper-tts" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiohttp", specifier = ">=3.11.0" },
+    { name = "chatterbox-tts", marker = "extra == 'tts-chatterbox'", specifier = ">=0.1.7" },
+    { name = "edge-tts", marker = "extra == 'tts-edge'", specifier = ">=6.1.0" },
+    { name = "faster-whisper", marker = "extra == 'stt-faster-whisper'", specifier = ">=1.1.0" },
+    { name = "httpx", specifier = ">=0.28.0" },
+    { name = "numpy", specifier = ">=1.24.0" },
+    { name = "openai-whisper", marker = "extra == 'stt-whisper'", specifier = ">=20240930" },
+    { name = "pathvalidate", marker = "extra == 'tts-piper'", specifier = ">=3.2.0" },
+    { name = "piper-tts", marker = "extra == 'tts-piper'", specifier = ">=1.4.1" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
+    { name = "torch", marker = "python_full_version >= '3.14' and extra == 'tts-chatterbox'", specifier = "==2.11.0" },
+    { name = "torch", marker = "python_full_version < '3.14' and extra == 'tts-chatterbox'", specifier = "==2.6.0" },
+    { name = "torchaudio", marker = "python_full_version >= '3.14' and extra == 'tts-chatterbox'", specifier = "==2.11.0" },
+    { name = "torchaudio", marker = "python_full_version < '3.14' and extra == 'tts-chatterbox'", specifier = "==2.6.0" },
+]
+provides-extras = ["dev", "stt-faster-whisper", "stt-whisper", "tts-edge", "tts-piper", "tts-chatterbox"]
+
+[[package]]
 name = "aiofiles"
 version = "24.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2118,62 +2173,6 @@ dependencies = [
     { name = "triton", version = "3.6.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.14' and platform_machine == 'x86_64' and sys_platform == 'linux') or (python_full_version >= '3.14' and sys_platform == 'linux2')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/35/8e/d36f8880bcf18ec026a55807d02fe4c7357da9f25aebd92f85178000c0dc/openai_whisper-20250625.tar.gz", hash = "sha256:37a91a3921809d9f44748ffc73c0a55c9f366c85a3ef5c2ae0cc09540432eb96", size = 803191, upload-time = "2025-06-26T01:06:13.34Z" }
-
-[[package]]
-name = "agent-switchboard"
-version = "0.0.4"
-source = { editable = "." }
-dependencies = [
-    { name = "aiohttp" },
-    { name = "httpx" },
-    { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
-    { name = "numpy", version = "2.4.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-]
-stt-faster-whisper = [
-    { name = "faster-whisper" },
-]
-stt-whisper = [
-    { name = "openai-whisper" },
-]
-tts-chatterbox = [
-    { name = "chatterbox-tts" },
-    { name = "torch", version = "2.6.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
-    { name = "torch", version = "2.11.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14'" },
-    { name = "torchaudio", version = "2.6.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
-    { name = "torchaudio", version = "2.11.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14'" },
-]
-tts-edge = [
-    { name = "edge-tts" },
-]
-tts-piper = [
-    { name = "pathvalidate" },
-    { name = "piper-tts" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiohttp", specifier = ">=3.11.0" },
-    { name = "chatterbox-tts", marker = "extra == 'tts-chatterbox'", specifier = ">=0.1.7" },
-    { name = "edge-tts", marker = "extra == 'tts-edge'", specifier = ">=6.1.0" },
-    { name = "faster-whisper", marker = "extra == 'stt-faster-whisper'", specifier = ">=1.1.0" },
-    { name = "httpx", specifier = ">=0.28.0" },
-    { name = "numpy", marker = "python_full_version < '3.13'", specifier = ">=1.24.0,<2.0.0" },
-    { name = "numpy", marker = "python_full_version >= '3.13'", specifier = ">=2.0.0" },
-    { name = "openai-whisper", marker = "extra == 'stt-whisper'", specifier = ">=20240930" },
-    { name = "pathvalidate", marker = "extra == 'tts-piper'", specifier = ">=3.2.0" },
-    { name = "piper-tts", marker = "extra == 'tts-piper'", specifier = ">=1.4.1" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
-    { name = "torch", marker = "python_full_version >= '3.14' and extra == 'tts-chatterbox'", specifier = "==2.11.0" },
-    { name = "torch", marker = "python_full_version < '3.14' and extra == 'tts-chatterbox'", specifier = "==2.6.0" },
-    { name = "torchaudio", marker = "python_full_version >= '3.14' and extra == 'tts-chatterbox'", specifier = "==2.11.0" },
-    { name = "torchaudio", marker = "python_full_version < '3.14' and extra == 'tts-chatterbox'", specifier = "==2.6.0" },
-]
-provides-extras = ["dev", "stt-faster-whisper", "stt-whisper", "tts-edge", "tts-piper", "tts-chatterbox"]
 
 [[package]]
 name = "orjson"

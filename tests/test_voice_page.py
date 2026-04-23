@@ -31,7 +31,16 @@ def test_voice_html_uses_echo_controls_and_apple_specific_barge_in_guard():
     assert "const INTERRUPT_COOLDOWN_MS = 300;" in voice_html
     assert "const PAUSED_COMMAND_MIN_SPEECH_MS = 220;" in voice_html
     assert "const APPLE_BARGE_IN_MIN_SPEECH_MS = 220;" in voice_html
+    assert "const BARGE_IN_ARM_CONFIDENCE = 0.32;" in voice_html
+    assert "const BARGE_IN_READY_CONFIDENCE = 0.78;" in voice_html
+    assert "let bargeInConfidence = 0;" in voice_html
+    assert "let bargeInConfidenceQualified = false;" in voice_html
     assert "function allowsFreeformBargeIn()" in voice_html
+    assert "function updateBargeInConfidence(displayedLevel, speechLike, thresholdDb, frameMs) {" in voice_html
+    assert "bargeInConfidenceQualified = true;" in voice_html
+    assert "if (!bargeInPending && confidence >= BARGE_IN_ARM_CONFIDENCE) {" in voice_html
+    assert "if (!bargeInConfidenceQualified && totalMs >= allowedBargeInMaxMs) {" in voice_html
+    assert "bargeInConfidenceQualified\n    && bargeInSpeechMs >= requiredBargeInSpeechMs" in voice_html
     assert "if (allowFreeformBargeIn) {\n      pausePlaybackForBargeIn();\n    }" in voice_html
     assert "if (result.action === 'hold' && !paused) {" in voice_html
     assert "armHeldTurn(result.content);" in voice_html
@@ -49,20 +58,78 @@ def test_voice_html_has_mute_button_and_mic_gate():
     voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
 
     assert '<a id="setup-link" href="./setup">setup</a>' in voice_html
+    assert '<button id="push-to-talk-btn" class="mini-btn" type="button">talk on</button>' in voice_html
     assert '<button id="interrupt-btn" class="mini-btn" type="button">interrupt</button>' in voice_html
     assert '<button id="mute-btn" class="mini-btn" type="button">mute</button>' in voice_html
     assert "let muted = false;" in voice_html
     assert "let interruptMode = 'barge-in';" in voice_html
     assert "const INTERRUPT_MODE_STORAGE_KEY = 'agent-switchboard.voice.interrupt-mode.v1';" in voice_html
+    assert "const PUSH_TO_TALK_STORAGE_KEY = 'agent-switchboard.voice.push-to-talk.v1';" in voice_html
     assert "function voiceInterruptDisabled() {" in voice_html
     assert "function setInterruptMode(nextMode) {" in voice_html
     assert "function commitBufferedTurnNow() {" in voice_html
+    assert "function loadPushToTalkEnabled() {" in voice_html
+    assert "function setPushToTalkEnabled(nextEnabled) {" in voice_html
+    assert "async function beginPushToTalk() {" in voice_html
+    assert "function endPushToTalk() {" in voice_html
     assert "function setMutedState(nextMuted) {" in voice_html
     assert "if (!commitBufferedTurnNow()) {" in voice_html
     assert "track.enabled = !muted;" in voice_html
     assert "if (muted) {" in voice_html
+    assert "document.getElementById('push-to-talk-btn').addEventListener('click', () => {" in voice_html
     assert "document.getElementById('interrupt-btn').addEventListener('click', () => {" in voice_html
     assert "document.getElementById('mute-btn').addEventListener('click', () => {" in voice_html
+    assert "window.__agentSwitchboardPushToTalkStart = beginPushToTalk;" in voice_html
+    assert "window.__agentSwitchboardPushToTalkEnd = endPushToTalk;" in voice_html
+
+
+def test_voice_html_uses_root_app_base_so_trailing_slash_urls_do_not_404():
+    voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
+
+    assert "function resolveAppBase()" in voice_html
+    assert "return new URL('/', window.location.href);" in voice_html
+
+
+def test_voice_html_uses_state_wave_visual_instead_of_avatar_assets():
+    voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
+
+    assert '<div id="state-visual-shell" aria-label="voice state display">' in voice_html
+    assert '<canvas id="state-visual" width="520" height="312"></canvas>' in voice_html
+    assert 'id="state-visual-overlay"' in voice_html
+    assert 'id="transcript-caption"' in voice_html
+    assert 'id="transcript-log"' in voice_html
+    assert 'class="visual-caption-label">conversation</div>' in voice_html
+    assert "overflow-y: auto;" in voice_html
+    assert "-webkit-line-clamp" not in voice_html
+    assert "const STATE_VISUAL_WIDTH = 520;" in voice_html
+    assert "const STATE_VISUAL_HEIGHT = 312;" in voice_html
+    assert "const MAX_BUFFERED_TURN_MS = 12000;" in voice_html
+    assert "function visualStateFor(state) {" in voice_html
+    assert "function resizeStateVisual() {" in voice_html
+    assert "function scrollTranscriptOverlayToBottom() {" in voice_html
+    assert "function renderTranscriptOverlay() {" in voice_html
+    assert "function pushTranscriptEntry(role, text) {" in voice_html
+    assert "function setHeardTranscript(text) {" in voice_html
+    assert "function appendSpokenReply(text) {" in voice_html
+    assert "function replaceSpokenReply(text) {" in voice_html
+    assert "let transcriptLogEntries = [];" in voice_html
+    assert "let activeReplyEntryId = '';" in voice_html
+    assert "transcriptLog.scrollTop = transcriptLog.scrollHeight;" in voice_html
+    assert "transcriptCaption.classList.toggle('empty', transcriptLogEntries.length === 0);" in voice_html
+    assert "pushTranscriptEntry('heard', heardTranscriptText);" in voice_html
+    assert "const entry = pushTranscriptEntry('reply', nextText);" in voice_html
+    assert "function drawStateVisualRings(ctx, width, height, state, nowSeconds, energy, theme) {" in voice_html
+    assert "function drawStateVisualListeningSweep(ctx, width, height, nowSeconds, energy, theme) {" in voice_html
+    assert "function drawStateVisualThinkingOrbit(ctx, width, height, nowSeconds, theme) {" in voice_html
+    assert "function drawStateVisualSpeakingWave(ctx, width, height, nowSeconds, energy, theme) {" in voice_html
+    assert "function animateStateVisual(nowMs) {" in voice_html
+    assert "requestAnimationFrame(animateStateVisual);" in voice_html
+    assert "if (data.type === 'transcript') {" in voice_html
+    assert "if (data.type === 'reply-text') {" in voice_html
+    assert "|| speechDuration >= MAX_BUFFERED_TURN_MS" in voice_html
+    assert "static/media/listening_transparent.png" not in voice_html
+    assert "static/media/thinking_transparent.png" not in voice_html
+    assert "static/media/speaking1_transparent.png" not in voice_html
 
 
 def test_voice_html_uses_persistent_unlocked_playback_audio():
@@ -138,17 +205,22 @@ def test_voice_html_uses_db_threshold_and_wait_after_speak_slider():
     assert '<span>wait after speak</span>' in voice_html
     assert '<span>voice input threshold</span>' in voice_html
     assert 'id="wait-after-speak"' in voice_html
+    assert 'min="1500" max="4000" step="50"' in voice_html
     assert 'id="turn-end-threshold"' in voice_html
     assert 'min="-60" max="0" step="1"' in voice_html
     assert "const LEVEL_DB_FLOOR = -60;" in voice_html
-    assert "const WAIT_AFTER_SPEAK_MIN_MS = 250;" in voice_html
+    assert "const WAIT_AFTER_SPEAK_MIN_MS = 1500;" in voice_html
     assert "function formatDb(levelDb) {" in voice_html
     assert "function formatWaitAfterSpeak(ms) {" in voice_html
     assert "function setLevelDb(levelDb, { updatePeak = true } = {}) {" in voice_html
-    assert "function sendBufferedTurn(audioBuffer, { prefixText = '' } = {}) {" in voice_html
+    assert "function sendBufferedTurn(audioBuffer, { prefixText = '', commitMeta = null } = {}) {" in voice_html
     assert "function armHeldTurn(prefixText) {" in voice_html
     assert "function applyRuntimeShortcuts(windowsClientSettings) {" in voice_html
     assert "function updateStatusHint() {" in voice_html
+    assert "talk Ctrl+Shift+S" in voice_html
+    assert "push-to-talk live · release to send" in voice_html
+    assert "talk off" in voice_html
+    assert "if (pushToTalkEnabled && !pushToTalkActive) {" in voice_html
     assert "function renderInterruptControls() {" in voice_html
     assert "applyRuntimeShortcuts(runtimeState.windows_client);" in voice_html
     assert "document.getElementById('interrupt-mode-off').classList.toggle('active', interruptMode === 'off');" in voice_html
@@ -156,6 +228,14 @@ def test_voice_html_uses_db_threshold_and_wait_after_speak_slider():
     assert "&& !voiceInterruptDisabled()" in voice_html
     assert "tuning.inputThresholdDb" in voice_html
     assert "tuning.waitAfterSpeakMs" in voice_html
+    assert "const manualFinishEnabled = false;" in voice_html
+    assert "type: 'turn-commit'" in voice_html
+    assert "const turnThresholdDb = tuning.inputThresholdDb;" in voice_html
+    assert "const turnAboveThreshold = baseLevel > turnThresholdDb;" in voice_html
+    assert "const WAIT_AFTER_SPEAK_STORAGE_LOCK_KEY = 'waitAfterSpeakMsLocked';" in voice_html
+    assert "const waitAfterSpeakLocked = parsed[WAIT_AFTER_SPEAK_STORAGE_LOCK_KEY] === true;" in voice_html
+    assert "if (waitAfterSpeakLocked) {" in voice_html
+    assert "[WAIT_AFTER_SPEAK_STORAGE_LOCK_KEY]: tuningStorageState.waitAfterSpeakMs" in voice_html
     assert "applyRuntimeAudioSettings(runtimeState.audio);" in voice_html
     assert "const turnEndSilenceMs = resolveWaitAfterSpeakMs();" in voice_html
     assert "setLevelDb(LEVEL_DB_FLOOR);" in voice_html
