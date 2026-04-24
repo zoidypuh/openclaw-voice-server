@@ -67,6 +67,7 @@
     display: grid;
     gap: 16px;
     justify-items: center;
+    transform: translateY(-18px);
   }
   #ascii-title {
     width: 100%;
@@ -75,7 +76,9 @@
     display: grid;
     gap: 0.08rem;
     justify-items: center;
-    filter: drop-shadow(0 8px 14px rgba(0,0,0,0.72));
+    filter:
+      drop-shadow(0 10px 16px rgba(0,0,0,0.84))
+      drop-shadow(0 0 12px rgba(16,80,112,0.18));
   }
   .ascii-title-line {
     margin: 0;
@@ -91,15 +94,17 @@
     color: rgba(255, 152, 54, 0.66);
     text-shadow:
       0 -1px 0 rgba(255, 230, 177, 0.24),
-      0 0 7px rgba(255, 123, 45, 0.26),
-      0 3px 10px rgba(123, 30, 4, 0.4);
+      0 2px 1px rgba(0, 0, 0, 0.58),
+      0 0 9px rgba(255, 123, 45, 0.32),
+      0 8px 18px rgba(74, 15, 2, 0.72);
   }
   .ascii-title-switchboard {
     color: rgba(122, 216, 255, 0.58);
     text-shadow:
       0 -1px 0 rgba(237, 253, 255, 0.2),
-      0 0 7px rgba(109, 226, 255, 0.2),
-      0 3px 10px rgba(8, 48, 82, 0.4);
+      0 2px 1px rgba(0, 0, 0, 0.62),
+      0 0 9px rgba(109, 226, 255, 0.28),
+      0 8px 18px rgba(5, 32, 55, 0.74);
   }
   @media (min-width: 430px) {
     .ascii-title-line {
