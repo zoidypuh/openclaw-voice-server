@@ -4,7 +4,7 @@
 
 `agentic-switchboard` is a local voice frontend for text agents. It gives you a browser setup page at `/setup`, a voice UI at `/voice`, local or remote Whisper-family STT, multiple TTS backends, and an optional Windows tray client.
 
-This repo is still alpha. The main path works, but rough edges still exist.
+Current version: `0.1`. This repo is still alpha. The main path works, but rough edges still exist.
 
 ## What This Repo Does
 
@@ -33,6 +33,19 @@ The currently tested path is:
 
 Treat iOS, macOS Safari, and random remote mobile browser paths as unsupported unless you personally verify them.
 
+Install missing base tools:
+
+```bash
+# Debian/Ubuntu/WSL
+sudo apt update
+sudo apt install -y git python3 python3-venv python3-pip
+```
+
+```powershell
+# Windows, for the optional tray client
+winget install Git.Git OpenJS.NodeJS.LTS Rustlang.Rustup Microsoft.EdgeWebView2Runtime
+```
+
 ## Fast Start
 
 If you want the shortest route to a first working run, do this.
@@ -40,7 +53,7 @@ If you want the shortest route to a first working run, do this.
 1. Clone the repo.
 
 ```bash
-git clone <repo-url> agentic-switchboard
+git clone https://github.com/zoidypuh/openclaw-voice-server.git agentic-switchboard
 cd agentic-switchboard
 ```
 
@@ -117,6 +130,16 @@ If you only want to prove the pipeline works and do not care about spoken replie
 
 That removes TTS from the first-run debugging path.
 
+## Voice UI Notes
+
+- Browser and Windows client windows use the title `agentic switchboard`.
+- The talk on/off button is currently hidden; normal mic capture stays controlled by the top-row `paused` / `listening` button and mute.
+- Keyboard shortcut hints live in the top row next to the `paused` / `listening` button while the mic is active.
+- The `interrupt` button toggles between inactive and `barge in`. There is no separate interrupt mode panel.
+- The `mute` button keeps the same label and uses its active state to show whether mute is enabled.
+- The sliders button opens the two live tuning controls: voice threshold and wait-after-speak.
+- The state display uses a lower-resolution pixel spectrum renderer with cached ASCII backdrop art so it costs less per frame than the older high-resolution visual.
+
 ## Important Runtime Rule
 
 Run `agentic-switchboard` from the repo root unless you also set:
@@ -130,6 +153,42 @@ By default, the server reads:
 - `.env`
 
 from the current working directory.
+
+## Run In Background At Login
+
+On Linux or WSL with systemd enabled, install a user service from the repo root:
+
+```bash
+REPO_DIR="$(pwd)"
+mkdir -p ~/.config/systemd/user
+cat > ~/.config/systemd/user/agentic-switchboard.service <<EOF
+[Unit]
+Description=Agentic Switchboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=$REPO_DIR
+ExecStart=$REPO_DIR/.venv/bin/agentic-switchboard
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
+EOF
+
+systemctl --user daemon-reload
+systemctl --user enable --now agentic-switchboard.service
+loginctl enable-linger "$USER"
+```
+
+Check it later with:
+
+```bash
+systemctl --user status agentic-switchboard.service
+journalctl --user -u agentic-switchboard.service -f
+```
 
 ## Optional Python Extras
 

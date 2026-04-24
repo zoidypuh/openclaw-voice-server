@@ -67,12 +67,14 @@ def test_voice_html_uses_echo_controls_and_apple_specific_barge_in_guard():
 def test_voice_html_has_mute_button_and_mic_gate():
     voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
 
+    assert "<title>agentic switchboard</title>" in voice_html
     assert '<a id="setup-link" href="./setup">setup</a>' in voice_html
-    assert '<button id="push-to-talk-btn" class="mini-btn" type="button">talk on</button>' in voice_html
+    assert '<div id="version">v0.1 <span class="alpha">ALPHA</span></div>' in voice_html
+    assert '<button id="push-to-talk-btn" class="mini-btn hidden" type="button">talk on</button>' in voice_html
     assert '<button id="interrupt-btn" class="mini-btn" type="button">interrupt</button>' in voice_html
     assert '<button id="mute-btn" class="mini-btn" type="button">mute</button>' in voice_html
     assert "let muted = false;" in voice_html
-    assert "let interruptMode = 'barge-in';" in voice_html
+    assert "let interruptMode = 'off';" in voice_html
     assert "const INTERRUPT_MODE_STORAGE_KEY = 'agentic-switchboard.voice.interrupt-mode.v1';" in voice_html
     assert "const PUSH_TO_TALK_STORAGE_KEY = 'agentic-switchboard.voice.push-to-talk.v1';" in voice_html
     assert "function voiceInterruptDisabled() {" in voice_html
@@ -89,6 +91,7 @@ def test_voice_html_has_mute_button_and_mic_gate():
     assert "document.getElementById('push-to-talk-btn').addEventListener('click', () => {" in voice_html
     assert "document.getElementById('interrupt-btn').addEventListener('click', () => {" in voice_html
     assert "document.getElementById('mute-btn').addEventListener('click', () => {" in voice_html
+    assert "muteBtn.textContent = 'mute';" in voice_html
     assert "window.__agenticSwitchboardPushToTalkStart = beginPushToTalk;" in voice_html
     assert "window.__agenticSwitchboardPushToTalkEnd = endPushToTalk;" in voice_html
 
@@ -102,7 +105,7 @@ def test_voice_html_uses_root_app_base_so_trailing_slash_urls_do_not_404():
     assert "return new URL('/', window.location.href);" in voice_html
 
 
-def test_voice_html_uses_state_wave_visual_instead_of_avatar_assets():
+def test_voice_html_uses_pixel_meter_visual_instead_of_avatar_assets():
     voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
 
     assert '<div id="state-visual-shell" aria-label="voice state display">' in voice_html
@@ -130,10 +133,28 @@ def test_voice_html_uses_state_wave_visual_instead_of_avatar_assets():
     assert "transcriptCaption.classList.toggle('empty', transcriptLogEntries.length === 0);" in voice_html
     assert "pushTranscriptEntry('heard', heardTranscriptText);" in voice_html
     assert "const entry = pushTranscriptEntry('reply', nextText);" in voice_html
-    assert "function drawStateVisualRings(ctx, width, height, state, nowSeconds, energy, theme) {" in voice_html
-    assert "function drawStateVisualListeningSweep(ctx, width, height, nowSeconds, energy, theme) {" in voice_html
-    assert "function drawStateVisualThinkingOrbit(ctx, width, height, nowSeconds, theme) {" in voice_html
-    assert "function drawStateVisualSpeakingWave(ctx, width, height, nowSeconds, energy, theme) {" in voice_html
+    assert "const STATE_VISUAL_RENDER_SCALE = 0.58;" in voice_html
+    assert "const STATE_VISUAL_BANDS = 22;" in voice_html
+    assert "const ASCII_ART_URL = new URL('/media/ascii-art.txt', window.location.href).toString();" in voice_html
+    assert "let visualFrequencyData = null;" in voice_html
+    assert "let asciiArtLines = [];" in voice_html
+    assert "function loadAsciiArtBackdrop() {" in voice_html
+    assert "function drawStateVisualAsciiBackdrop(ctx, width, height, theme) {" in voice_html
+    assert "function asciiGlyphWeight(char) {" in voice_html
+    assert "function drawAsciiLineWithGlyphTones(ctx, line, x, y, tones) {" in voice_html
+    assert "function drawAsciiLightForRect(ctx, layout, x, y, width, height, fill) {" in voice_html
+    assert "function refreshVisualFrequencyData() {" in voice_html
+    assert "function visualLiveFrequencySample(index, bandCount) {" in voice_html
+    assert "function drawStateVisualPixelMeter(ctx, width, height, state, nowSeconds, energy, theme, asciiLayout) {" in voice_html
+    assert "function drawStateVisualReadout(ctx, width, height, state, nowSeconds, energy, theme) {" in voice_html
+    assert "ctx.fillText('Y+', 10, 34);" in voice_html
+    assert "ctx.fillText('Y-', 10, height - 84);" in voice_html
+    assert "drawAsciiLightForRect(ctx, asciiLayout" in voice_html
+    assert "ctx.shadowBlur = 3;" in voice_html
+    assert "ctx.fillStyle = asciiLayout ? 'rgba(255, 255, 255, 0.004)' : 'rgba(255, 255, 255, 0.075)';" in voice_html
+    assert "drawPixelMeterSegment(ctx, x, yPositive, barWidth, blockHeight, segmentFill, segmentGlow, asciiLayout);" in voice_html
+    assert "drawPixelMeterSegment(ctx, x, yNegative, barWidth, blockHeight, segmentFill, segmentGlow, asciiLayout);" in voice_html
+    assert "loadAsciiArtBackdrop();" in voice_html
     assert "function animateStateVisual(nowMs) {" in voice_html
     assert "requestAnimationFrame(animateStateVisual);" in voice_html
     assert "if (data.type === 'transcript') {" in voice_html
@@ -230,17 +251,19 @@ def test_voice_html_uses_db_threshold_and_wait_after_speak_slider():
     voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
 
     assert 'id="top-bar"' in voice_html
-    assert '<button id="pause-btn" class="control-btn" type="button">pause</button>' in voice_html
+    assert '<button id="pause-btn" class="control-btn" type="button">paused</button>' in voice_html
+    assert '<div id="status">listening</div>' not in voice_html
+    assert '#status {' not in voice_html
     assert '#setup-link {' in voice_html
     assert '#pause-btn {' in voice_html
     assert 'id="status-hint"' in voice_html
     assert 'id="level-row"' in voice_html
     assert 'id="level-value"' in voice_html
-    assert 'id="interrupt-panel"' in voice_html
-    assert 'id="interrupt-mode-off"' in voice_html
-    assert 'id="interrupt-mode-barge"' in voice_html
-    assert 'id="interrupt-mode-keyword"' in voice_html
-    assert '.panel-button-row {' in voice_html
+    assert 'id="interrupt-panel"' not in voice_html
+    assert 'id="interrupt-mode-off"' not in voice_html
+    assert 'id="interrupt-mode-barge"' not in voice_html
+    assert 'id="interrupt-mode-keyword"' not in voice_html
+    assert '.panel-button-row {' not in voice_html
     assert '#level-row {' in voice_html
     assert "#level-value.peak-held {" in voice_html
     assert "levelValue.textContent = formatDb(showPeak ? heldPeakLevelDb : currentLevelDb);" in voice_html
@@ -265,13 +288,18 @@ def test_voice_html_uses_db_threshold_and_wait_after_speak_slider():
     assert "function applyRuntimeShortcuts(windowsClientSettings) {" in voice_html
     assert "function updateStatusHint() {" in voice_html
     assert "talk Ctrl+Shift+S" in voice_html
+    assert "const text = !paused && currentState === 'listening' ? formatShortcutHint() : '';" in voice_html
+    assert "pauseBtn.textContent = paused ? 'paused' : 'listening';" in voice_html
+    assert "pauseBtn.classList.toggle('active', !paused);" in voice_html
     assert "push-to-talk live · release to send" in voice_html
     assert "talk off" in voice_html
     assert "if (pushToTalkEnabled && !pushToTalkActive) {" in voice_html
     assert "function renderInterruptControls() {" in voice_html
     assert "applyRuntimeShortcuts(runtimeState.windows_client);" in voice_html
-    assert "document.getElementById('interrupt-mode-off').classList.toggle('active', interruptMode === 'off');" in voice_html
-    assert "document.getElementById('interrupt-mode-barge').classList.toggle('active', interruptMode === 'barge-in');" in voice_html
+    assert "interruptBtn.textContent = interruptMode === 'barge-in' ? 'barge in' : 'interrupt';" in voice_html
+    assert "interruptBtn.classList.toggle('active', interruptMode === 'barge-in');" in voice_html
+    assert "setInterruptMode(interruptMode === 'barge-in' ? 'off' : 'barge-in');" in voice_html
+    assert "return mode === 'barge-in' ? 'barge-in' : 'off';" in voice_html
     assert "&& !voiceInterruptDisabled()" in voice_html
     assert "tuning.inputThresholdDb" in voice_html
     assert "tuning.waitAfterSpeakMs" in voice_html

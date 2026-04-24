@@ -30,7 +30,7 @@ resolution-markers = [
 
 [[package]]
 name = "agentic-switchboard"
-version = "0.0.4"
+version = "0.1"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title></title>
+<title>agentic switchboard</title>
 <style>
   :root {
     color-scheme: dark;
@@ -71,7 +71,10 @@
   #top-bar {
     width: 100%;
     display: flex;
+    align-items: center;
     justify-content: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
   }
   #utility-bar {
     width: 100%;
@@ -138,20 +141,10 @@
   #mute-btn {
     min-width: 5.2rem;
   }
-  #status {
-    width: 100%;
-    text-align: center;
-    font-size: 1.35rem;
-    line-height: 1.2;
-    color: #b7b7b7;
-    min-height: 1.3em;
-    text-transform: lowercase;
-  }
   #status-hint {
-    width: 100%;
-    min-height: 1.1em;
-    margin-top: -0.5rem;
-    text-align: center;
+    flex: 0 1 auto;
+    min-height: 0;
+    text-align: left;
     color: #7f7f7f;
     font-size: 0.73rem;
     letter-spacing: 0.04em;
@@ -211,11 +204,6 @@
     color: #cfcfcf;
     font-size: 0.88rem;
     line-height: 1.2;
-  }
-  .panel-button-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
   }
   .tuning-row {
     display: grid;
@@ -331,15 +319,14 @@
 </head>
 <body>
 <a id="setup-link" href="./setup">setup</a>
-<div id="version">v0.04 <span class="alpha">ALPHA</span></div>
+<div id="version">v0.1 <span class="alpha">ALPHA</span></div>
 <main>
   <div id="top-bar">
-    <button id="pause-btn" class="control-btn" type="button">pause</button>
+    <button id="pause-btn" class="control-btn" type="button">paused</button>
+    <div id="status-hint"></div>
   </div>
-  <div id="status">listening</div>
-  <div id="status-hint"></div>
   <div id="utility-bar">
-    <button id="push-to-talk-btn" class="mini-btn" type="button">talk on</button>
+    <button id="push-to-talk-btn" class="mini-btn hidden" type="button">talk on</button>
     <button id="interrupt-btn" class="mini-btn" type="button">interrupt</button>
     <button id="mute-btn" class="mini-btn" type="button">mute</button>
     <button id="play-reply-btn" class="mini-btn hidden" type="button">play reply</button>
@@ -349,15 +336,6 @@
     <div id="level" aria-hidden="true"><div id="level-bar"></div></div>
     <div id="level-value" aria-live="off">-60 dB</div>
   </div>
-  <section id="interrupt-panel" class="popup-panel hidden" aria-label="interrupt mode">
-    <div class="panel-title">interrupt mode</div>
-    <div class="panel-button-row">
-      <button id="interrupt-mode-off" class="mini-btn" type="button">off</button>
-      <button id="interrupt-mode-barge" class="mini-btn" type="button">barge-in</button>
-      <button id="interrupt-mode-keyword" class="mini-btn" type="button">keyword</button>
-    </div>
-    <div class="tuning-hint">`off` disables voice interruption while reply audio is playing. `barge-in` lets you cut in naturally. `keyword` only interrupts on `halt`.</div>
-  </section>
   <section id="tuning-panel" class="popup-panel" aria-label="voice tuning">
     <label class="tuning-row" for="wait-after-speak">
       <span class="tuning-label">
@@ -400,6 +378,9 @@ const appUrl = (path) => new URL(path, APP_BASE).toString();
 const SHELL_STATUS_ID = new URLSearchParams(window.location.search).get('shell_id') || '';
 const STATE_VISUAL_WIDTH = 520;
 const STATE_VISUAL_HEIGHT = 312;
+const STATE_VISUAL_RENDER_SCALE = 0.58;
+const STATE_VISUAL_BANDS = 22;
+const ASCII_ART_URL = new URL('/media/ascii-art.txt', window.location.href).toString();
 const stateVisualCanvas = document.getElementById('state-visual');
 const stateVisualCtx = stateVisualCanvas.getContext('2d');
 
@@ -442,6 +423,9 @@ let currentAudio = null;
 let currentAudioUrl = null;
 let currentLevelWidth = 0;
 let currentLevelDb = -60;
+let visualFrequencyData = null;
+let asciiArtLines = [];
+let asciiArtLoadStarted = false;
 let heldPeakLevelDb = -60;
 let heldPeakUntil = 0;
 let thinkingStartedAt = null;
@@ -503,7 +487,6 @@ let settings = {
 const TUNING_STORAGE_KEY = 'agentic-switchboard.voice.tuning.v1';
 const TUNING_PANEL_STORAGE_KEY = 'agentic-switchboard.voice.tuning-panel.v1';
 const INTERRUPT_MODE_STORAGE_KEY = 'agentic-switchboard.voice.interrupt-mode.v1';
-const INTERRUPT_PANEL_STORAGE_KEY = 'agentic-switchboard.voice.interrupt-panel.v1';
 const PUSH_TO_TALK_STORAGE_KEY = 'agentic-switchboard.voice.push-to-talk.v1';
 const DEFAULT_TUNING = {
   inputThresholdDb: -41,
@@ -551,13 +534,12 @@ const APPLE_AUDIO_STARTUP_RETRY_DELAYS_MS = [150, 350, 700];
 const SILENT_UNLOCK_WAV_DATA_URL = 'data:audio/wav;base64,UklGRhQBAABXQVZFZm10IBAAAAABAAEAwF0AAIC7AAACABAAZGF0YfAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
 let tuning = { ...DEFAULT_TUNING };
 let tuningPanelVisible = true;
-let interruptPanelVisible = false;
 let tuningStorageState = {
   inputThresholdDb: false,
   waitAfterSpeakMs: false,
 };
 const manualFinishEnabled = false;
-let interruptMode = 'barge-in';
+let interruptMode = 'off';
 
 function amplitudeToDb(amplitude) {
   return 20 * Math.log10(Math.max(Number(amplitude) || 0, 0.000001));
@@ -678,7 +660,14 @@ function setLevelDb(levelDb, { updatePeak = true } = {}) {
 }
 
 function setStatusText(text) {
-  document.getElementById('status').textContent = text;
+  const normalized = String(text || '').trim();
+  if (!normalized || normalized === 'listening' || normalized === 'paused') {
+    updateStatusHint();
+    return;
+  }
+  const hint = document.getElementById('status-hint');
+  hint.textContent = normalized;
+  hint.classList.remove('hidden');
 }
 
 function scrollTranscriptOverlayToBottom() {
@@ -923,14 +912,11 @@ function saveTuningPanelVisibility() {
 }
 
 function defaultInterruptMode() {
-  return isAppleVoiceClient() ? 'keyword' : 'barge-in';
+  return 'off';
 }
 
 function normalizeInterruptMode(mode) {
-  if (mode === 'off') {
-    return 'off';
-  }
-  return mode === 'keyword' ? 'keyword' : 'barge-in';
+  return mode === 'barge-in' ? 'barge-in' : 'off';
 }
 
 function loadInterruptMode() {
@@ -946,19 +932,6 @@ function loadInterruptMode() {
 
 function saveInterruptMode() {
   localStorage.setItem(INTERRUPT_MODE_STORAGE_KEY, interruptMode);
-}
-
-function loadInterruptPanelVisibility() {
-  try {
-    const raw = localStorage.getItem(INTERRUPT_PANEL_STORAGE_KEY);
-    if (raw === 'visible') {
-      interruptPanelVisible = true;
-    }
-  } catch (_) {}
-}
-
-function saveInterruptPanelVisibility() {
-  localStorage.setItem(INTERRUPT_PANEL_STORAGE_KEY, interruptPanelVisible ? 'visible' : 'hidden');
 }
 
 function formatDb(levelDb) {
@@ -983,7 +956,7 @@ function resolveWaitAfterSpeakMs() {
 }
 
 function usesKeywordInterruptOnly() {
-  return interruptMode === 'keyword';
+  return false;
 }
 
 function voiceInterruptDisabled() {
@@ -1039,7 +1012,7 @@ function formatShortcutHint() {
 
 function updateStatusHint() {
   const hint = document.getElementById('status-hint');
-  const text = currentState === 'listening' ? formatShortcutHint() : '';
+  const text = !paused && currentState === 'listening' ? formatShortcutHint() : '';
   hint.textContent = text;
   hint.classList.toggle('hidden', !text);
 }
@@ -1137,12 +1110,8 @@ function applyRuntimeAudioSettings(audioSettings) {
 
 function renderInterruptControls() {
   const interruptBtn = document.getElementById('interrupt-btn');
-  const interruptPanel = document.getElementById('interrupt-panel');
-  interruptBtn.classList.toggle('active', interruptPanelVisible);
-  interruptPanel.classList.toggle('hidden', !interruptPanelVisible);
-  document.getElementById('interrupt-mode-off').classList.toggle('active', interruptMode === 'off');
-  document.getElementById('interrupt-mode-barge').classList.toggle('active', interruptMode === 'barge-in');
-  document.getElementById('interrupt-mode-keyword').classList.toggle('active', interruptMode === 'keyword');
+  interruptBtn.textContent = interruptMode === 'barge-in' ? 'barge in' : 'interrupt';
+  interruptBtn.classList.toggle('active', interruptMode === 'barge-in');
 }
 
 function renderTuningControls() {
@@ -1160,7 +1129,6 @@ function configureTuningControls() {
   loadTuning();
   loadTuningPanelVisibility();
   loadInterruptMode();
-  loadInterruptPanelVisibility();
   renderInterruptControls();
   renderTuningControls();
 
@@ -1191,36 +1159,12 @@ function configureTuningControls() {
 
   document.getElementById('sliders-toggle').addEventListener('click', () => {
     tuningPanelVisible = !tuningPanelVisible;
-    if (tuningPanelVisible) {
-      interruptPanelVisible = false;
-      saveInterruptPanelVisibility();
-      renderInterruptControls();
-    }
     renderTuningControls();
     saveTuningPanelVisibility();
   });
 
   document.getElementById('interrupt-btn').addEventListener('click', () => {
-    interruptPanelVisible = !interruptPanelVisible;
-    if (interruptPanelVisible) {
-      tuningPanelVisible = false;
-      saveTuningPanelVisibility();
-      renderTuningControls();
-    }
-    renderInterruptControls();
-    saveInterruptPanelVisibility();
-  });
-
-  document.getElementById('interrupt-mode-barge').addEventListener('click', () => {
-    setInterruptMode('barge-in');
-  });
-
-  document.getElementById('interrupt-mode-keyword').addEventListener('click', () => {
-    setInterruptMode('keyword');
-  });
-
-  document.getElementById('interrupt-mode-off').addEventListener('click', () => {
-    setInterruptMode('off');
+    setInterruptMode(interruptMode === 'barge-in' ? 'off' : 'barge-in');
   });
 }
 
@@ -1242,11 +1186,12 @@ function updateControlStates() {
   const muteBtn = document.getElementById('mute-btn');
   pushToTalkBtn.textContent = pushToTalkEnabled ? 'talk on' : 'talk off';
   pushToTalkBtn.classList.toggle('active', pushToTalkEnabled);
-  pauseBtn.textContent = paused ? 'resume' : 'pause';
-  pauseBtn.classList.toggle('active', paused);
-  muteBtn.textContent = muted ? 'unmute' : 'mute';
+  pauseBtn.textContent = paused ? 'paused' : 'listening';
+  pauseBtn.classList.toggle('active', !paused);
+  muteBtn.textContent = 'mute';
   muteBtn.classList.toggle('active', muted);
   renderInterruptControls();
+  updateStatusHint();
 }
 
 function applyMicMuteState() {
@@ -1911,29 +1856,48 @@ function resizeStateVisual() {
   if (!shell || !stateVisualCanvas || !stateVisualCtx) {
     return;
   }
-  const dpr = Math.max(window.devicePixelRatio || 1, 1);
   const width = Math.max(Math.round(shell.clientWidth || STATE_VISUAL_WIDTH), 260);
   const height = Math.round(width * (STATE_VISUAL_HEIGHT / STATE_VISUAL_WIDTH));
-  stateVisualCanvas.width = Math.round(width * dpr);
-  stateVisualCanvas.height = Math.round(height * dpr);
+  const renderWidth = Math.max(Math.round(width * STATE_VISUAL_RENDER_SCALE), 220);
+  const renderHeight = Math.round(renderWidth * (STATE_VISUAL_HEIGHT / STATE_VISUAL_WIDTH));
+  stateVisualCanvas.width = renderWidth;
+  stateVisualCanvas.height = renderHeight;
   stateVisualCanvas.style.height = `${height}px`;
-  stateVisualCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  stateVisualCtx.setTransform(1, 0, 0, 1, 0, 0);
 }
 
 function drawStateVisualBackdrop(ctx, width, height, theme) {
   ctx.clearRect(0, 0, width, height);
   const gradient = ctx.createLinearGradient(0, 0, 0, height);
-  gradient.addColorStop(0, '#0d1419');
-  gradient.addColorStop(1, '#070b0f');
+  gradient.addColorStop(0, '#07131a');
+  gradient.addColorStop(0.55, '#050b10');
+  gradient.addColorStop(1, '#020507');
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, width, height);
 
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
-  for (let row = 12; row < height; row += 12) {
-    for (let col = 12; col < width; col += 12) {
-      ctx.fillRect(col, row, 1, 1);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.035)';
+  for (let row = 14; row < height - 12; row += 14) {
+    for (let col = 14; col < width - 12; col += 14) {
+      ctx.fillRect(Math.round(col), Math.round(row), 2, 2);
     }
   }
+
+  const midY = Math.round(height * 0.43);
+  const axisX = 24;
+  const axisRight = width - 22;
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+  for (let y = 26; y < height - 72; y += 8) {
+    ctx.fillRect(axisX, Math.round(y), 2, 5);
+  }
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.16)';
+  ctx.fillRect(axisX - 3, midY - 1, axisRight - axisX + 3, 2);
+  ctx.fillRect(axisX - 1, 24, 2, height - 96);
+
+  ctx.fillStyle = theme.line;
+  ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+  ctx.fillText('Y+', 10, 34);
+  ctx.fillText('0', 10, midY + 4);
+  ctx.fillText('Y-', 10, height - 84);
 
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
   ctx.lineWidth = 1;
@@ -1943,159 +1907,306 @@ function drawStateVisualBackdrop(ctx, width, height, theme) {
   ctx.strokeRect(10.5, 10.5, width - 21, height - 21);
 }
 
-function drawStateVisualRings(ctx, width, height, state, nowSeconds, energy, theme) {
-  const maxRadius = Math.min(width, height) * 0.56;
-  const orbit = state === 'thinking'
-    ? 18
-    : (state === 'listening' ? 12 + energy * 8 : 5 + energy * 4);
-  const centerX = width * 0.5 + Math.cos(nowSeconds * (state === 'thinking' ? 0.9 : 0.55)) * orbit;
-  const centerY = height * 0.46 + Math.sin(nowSeconds * (state === 'thinking' ? 1.1 : 0.72)) * orbit * 0.7;
-  const ringCount = state === 'speaking' ? 9 : (state === 'thinking' ? 7 : 6);
-  const speed = state === 'speaking' ? 0.8 : (state === 'thinking' ? 0.22 : 0.34);
-  const ellipticX = state === 'thinking' ? 1.08 : 1;
-  const ellipticY = state === 'speaking' ? 0.94 : 1;
-  const swirl = state === 'speaking' ? nowSeconds * 0.22 : nowSeconds * 0.08;
+function loadAsciiArtBackdrop() {
+  if (asciiArtLoadStarted) {
+    return;
+  }
+  asciiArtLoadStarted = true;
+  fetch(ASCII_ART_URL, { cache: 'force-cache' })
+    .then((response) => (response.ok ? response.text() : ''))
+    .then((text) => {
+      asciiArtLines = text
+        .replace(/\r/g, '')
+        .split('\n')
+        .filter((line) => line.length > 0);
+    })
+    .catch((error) => {
+      console.warn('ascii art backdrop failed to load', error);
+      asciiArtLines = [];
+    });
+}
 
-  for (let index = 0; index < ringCount; index += 1) {
-    const phase = (nowSeconds * speed + index / ringCount) % 1;
-    const fade = 1 - phase;
-    const radius = 20 + phase * maxRadius;
-    const lineWidth = state === 'speaking'
-      ? 1.7 + energy * 3.6 * fade
-      : (state === 'thinking' ? 1.1 + fade * 1.1 : 1.3 + energy * 1.2 + fade * 1.0);
+function drawStateVisualAsciiBackdrop(ctx, width, height, theme) {
+  if (!asciiArtLines.length) {
+    return null;
+  }
+  const maxCols = asciiArtLines.reduce((max, line) => Math.max(max, line.length), 0);
+  if (!maxCols) {
+    return null;
+  }
+  const fontSize = clampNumber(Math.floor(width / 52), 5, 8, 7);
+  const lineHeight = fontSize + 1;
+  const visibleRows = Math.min(asciiArtLines.length, Math.floor((height - 24) / lineHeight));
+  const cropStart = Math.max(0, Math.floor((asciiArtLines.length - visibleRows) / 2));
+  const visibleLines = asciiArtLines.slice(cropStart, cropStart + visibleRows);
 
-    ctx.save();
-    ctx.translate(centerX, centerY);
-    ctx.rotate(swirl + index * 0.08 * (state === 'thinking' ? 1 : 0.25));
-    ctx.scale(ellipticX, ellipticY);
-    ctx.strokeStyle = index % 2 === 0
-      ? `rgba(255, 255, 255, ${0.08 + fade * 0.18})`
-      : `rgba(255, 255, 255, ${0.03 + fade * 0.12})`;
-    if (state === 'speaking') {
-      ctx.strokeStyle = index % 2 === 0
-        ? `rgba(255, 232, 220, ${0.18 + fade * 0.34})`
-        : `rgba(255, 143, 102, ${0.14 + fade * 0.24})`;
-    } else if (state === 'listening') {
-      ctx.strokeStyle = index % 2 === 0
-        ? `rgba(201, 241, 255, ${0.12 + fade * 0.26})`
-        : `rgba(116, 215, 255, ${0.08 + fade * 0.18})`;
-    } else if (state === 'thinking') {
-      ctx.strokeStyle = index % 2 === 0
-        ? `rgba(255, 239, 211, ${0.12 + fade * 0.28})`
-        : `rgba(240, 199, 132, ${0.08 + fade * 0.18})`;
+  ctx.save();
+  ctx.font = `${fontSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+  ctx.textBaseline = 'top';
+  const charWidth = ctx.measureText('M').width || fontSize * 0.62;
+  const startX = Math.round((width - maxCols * charWidth) / 2);
+  const startY = Math.round((height - visibleRows * lineHeight) / 2 - 6);
+  const layout = {
+    lines: visibleLines,
+    font: ctx.font,
+    charWidth,
+    lineHeight,
+    startX,
+    startY,
+  };
+
+  for (let row = 0; row < visibleLines.length; row += 1) {
+    drawAsciiLineWithGlyphTones(ctx, visibleLines[row], startX, startY + row * lineHeight, {
+      low: 'rgba(109, 153, 168, 0.075)',
+      mid: 'rgba(139, 192, 210, 0.22)',
+      high: 'rgba(181, 229, 242, 0.35)',
+    });
+  }
+  const wash = ctx.createLinearGradient(0, 0, 0, height);
+  wash.addColorStop(0, 'rgba(255, 255, 255, 0.01)');
+  wash.addColorStop(0.5, 'rgba(255, 255, 255, 0.025)');
+  wash.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = wash;
+  ctx.fillRect(20, 16, width - 40, height - 88);
+  ctx.restore();
+  return layout;
+}
+
+function asciiGlyphWeight(char) {
+  if (char === '█') {
+    return 1;
+  }
+  if (char === '▓') {
+    return 0.62;
+  }
+  if (char === '▒') {
+    return 0.18;
+  }
+  return char.trim() ? 0.5 : 0;
+}
+
+function drawAsciiLineWithGlyphTones(ctx, line, x, y, tones) {
+  let runStart = 0;
+  let runTone = null;
+  const toneForChar = (char) => {
+    const weight = asciiGlyphWeight(char);
+    if (weight >= 0.92) {
+      return tones.high;
     }
-    ctx.lineWidth = lineWidth;
-    ctx.beginPath();
-    ctx.arc(0, 0, radius, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
-  }
+    if (weight >= 0.58) {
+      return tones.mid;
+    }
+    if (weight > 0) {
+      return tones.low;
+    }
+    return '';
+  };
 
-  const halo = ctx.createRadialGradient(centerX, centerY, 4, centerX, centerY, maxRadius * 0.45);
-  halo.addColorStop(0, theme.glow);
-  halo.addColorStop(1, 'rgba(0, 0, 0, 0)');
-  ctx.fillStyle = halo;
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, maxRadius * 0.45, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = theme.line;
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, 6 + energy * 9, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function drawStateVisualListeningSweep(ctx, width, height, nowSeconds, energy, theme) {
-  const sweepX = 22 + ((Math.sin(nowSeconds * 0.88) * 0.5 + 0.5) * (width - 44));
-  ctx.strokeStyle = theme.line;
-  ctx.lineWidth = 1.4;
-  ctx.beginPath();
-  ctx.moveTo(sweepX, 26);
-  ctx.lineTo(sweepX, height - 54);
-  ctx.stroke();
-
-  const barCount = 16;
-  const gap = 5;
-  const barWidth = (width - 48 - gap * (barCount - 1)) / barCount;
-  const baseY = height - 18;
-  for (let index = 0; index < barCount; index += 1) {
-    const local = 0.24 + 0.76 * Math.pow(Math.sin(nowSeconds * 1.8 + index * 0.68), 2);
-    const barHeight = 8 + local * 14 + energy * 28;
-    const x = 24 + index * (barWidth + gap);
-    ctx.fillStyle = index % 2 === 0 ? theme.glow : theme.line;
-    ctx.fillRect(x, baseY - barHeight, barWidth, barHeight);
+  for (let index = 0; index <= line.length; index += 1) {
+    const tone = index < line.length ? toneForChar(line[index]) : null;
+    if (tone === runTone) {
+      continue;
+    }
+    if (runTone && index > runStart) {
+      ctx.fillStyle = runTone;
+      ctx.fillText(line.slice(runStart, index), x + runStart * ctx.measureText('M').width, y);
+    }
+    runStart = index;
+    runTone = tone;
   }
 }
 
-function drawStateVisualThinkingOrbit(ctx, width, height, nowSeconds, theme) {
-  const centerX = width / 2;
-  const centerY = height * 0.46;
-  for (let index = 0; index < 6; index += 1) {
-    const angle = nowSeconds * (0.55 + index * 0.04) + (index * Math.PI * 2) / 6;
-    const radius = index % 2 === 0 ? 34 : 50;
-    const x = centerX + Math.cos(angle) * radius;
-    const y = centerY + Math.sin(angle) * radius;
-    ctx.fillStyle = index % 2 === 0 ? theme.line : theme.glow;
-    ctx.beginPath();
-    ctx.arc(x, y, index % 2 === 0 ? 4.6 : 3.2, 0, Math.PI * 2);
-    ctx.fill();
+function drawAsciiLightForRect(ctx, layout, x, y, width, height, fill) {
+  if (!layout) {
+    return;
   }
-}
+  const rowStart = Math.max(0, Math.floor((y - layout.startY) / layout.lineHeight));
+  const rowEnd = Math.min(
+    layout.lines.length - 1,
+    Math.ceil((y + height - layout.startY) / layout.lineHeight),
+  );
+  const colStart = Math.max(0, Math.floor((x - layout.startX) / layout.charWidth));
+  const colEnd = Math.ceil((x + width - layout.startX) / layout.charWidth);
+  if (rowStart > rowEnd || colEnd < 0) {
+    return;
+  }
 
-function drawStateVisualSpeakingWave(ctx, width, height, nowSeconds, energy, theme) {
-  ctx.strokeStyle = theme.line;
-  ctx.lineWidth = 2.3 + energy * 0.6;
-  ctx.beginPath();
-  for (let x = 20; x <= width - 20; x += 1) {
-    const progress = (x - 20) / (width - 40);
-    const amplitude = (11 + energy * 26) * (0.24 + 0.8 * Math.sin(progress * Math.PI) ** 2);
-    const y = height - 34 + Math.sin(progress * Math.PI * 8 + nowSeconds * 10.5) * amplitude;
-    if (x === 20) {
-      ctx.moveTo(x, y);
-    } else {
-      ctx.lineTo(x, y);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.font = layout.font;
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = fill;
+  ctx.shadowColor = fill;
+  ctx.shadowBlur = 3;
+  for (let row = rowStart; row <= rowEnd; row += 2) {
+    const line = layout.lines[row] || '';
+    const safeEnd = Math.min(line.length, colEnd + 1);
+    if (colStart >= safeEnd) {
+      continue;
+    }
+    const slice = line.slice(colStart, safeEnd);
+    if (!slice.trim()) {
+      continue;
+    }
+    for (let column = colStart; column < safeEnd; column += 2) {
+      const char = line[column];
+      const weight = asciiGlyphWeight(char);
+      if (!weight) {
+        continue;
+      }
+      ctx.globalAlpha = 0.08 + (weight ** 1.45) * 0.36;
+      ctx.fillText(char, layout.startX + column * layout.charWidth, layout.startY + row * layout.lineHeight);
     }
   }
-  ctx.stroke();
+  ctx.restore();
 }
 
-function drawStateVisualPausedHold(ctx, width, height, nowSeconds, theme) {
-  const centerX = width / 2;
-  const centerY = height / 2;
-  const breath = 0.5 + 0.5 * Math.sin(nowSeconds * 0.8);
-  ctx.strokeStyle = theme.glow;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, 32 + breath * 3, 0, Math.PI * 2);
-  ctx.stroke();
+function refreshVisualFrequencyData() {
+  if (!analyser) {
+    visualFrequencyData = null;
+    return;
+  }
+  if (!visualFrequencyData || visualFrequencyData.length !== analyser.frequencyBinCount) {
+    visualFrequencyData = new Uint8Array(analyser.frequencyBinCount);
+  }
+  analyser.getByteFrequencyData(visualFrequencyData);
+}
+
+function visualLiveFrequencySample(index, bandCount) {
+  if (!visualFrequencyData) {
+    return 0;
+  }
+  const curved = (index / Math.max(bandCount - 1, 1)) ** 1.36;
+  const bin = Math.min(
+    visualFrequencyData.length - 1,
+    Math.max(0, Math.floor(curved * visualFrequencyData.length * 0.72)),
+  );
+  return visualFrequencyData[bin] / 255;
+}
+
+function visualBandLevel(index, bandCount, state, nowSeconds, energy) {
+  const progress = index / Math.max(bandCount - 1, 1);
+  const envelope = Math.sin(progress * Math.PI) ** 0.54;
+  const live = state === 'listening' ? visualLiveFrequencySample(index, bandCount) : 0;
+  const carrier = 0.5 + 0.5 * Math.sin(nowSeconds * 7.4 + index * 0.62);
+  const shimmer = 0.5 + 0.5 * Math.sin(nowSeconds * 2.1 + index * 1.73);
+
+  if (state === 'paused') {
+    const hold = 0.38 + 0.16 * Math.sin(nowSeconds * 1.1 + index * 0.38);
+    return clampNumber((0.08 + hold * 0.18) * envelope, 0.03, 0.28, 0.08);
+  }
+  if (state === 'thinking') {
+    const scan = ((index + Math.floor(nowSeconds * 8)) % 7 === 0) ? 0.62 : 0;
+    return clampNumber((0.13 + scan + carrier * 0.2 + shimmer * 0.18) * envelope, 0.04, 0.78, 0.18);
+  }
+  if (state === 'speaking') {
+    const speech = 0.42 + carrier * 0.36 + shimmer * 0.22 + energy * 0.42;
+    return clampNumber(speech * (0.34 + envelope * 0.82), 0.09, 1, 0.58);
+  }
+  const listening = Math.max(live * 1.34, 0.06 + carrier * 0.12 + energy * (0.36 + envelope * 0.72));
+  return clampNumber(listening * (0.28 + envelope * 0.86), 0.04, 1, 0.1);
+}
+
+function drawPixelMeterSegment(ctx, x, y, width, height, fill, glow, asciiLayout) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = asciiLayout ? 'rgba(255, 255, 255, 0.004)' : glow;
+  ctx.fillRect(x - 1, y - 1, width + 2, height + 2);
+  ctx.fillStyle = asciiLayout ? 'rgba(255, 255, 255, 0.004)' : 'rgba(255, 255, 255, 0.075)';
+  ctx.fillRect(x, y, width, height);
+  ctx.restore();
+  drawAsciiLightForRect(ctx, asciiLayout, x - 1, y - 1, width + 2, height + 2, fill);
+}
+
+function drawStateVisualPixelMeter(ctx, width, height, state, nowSeconds, energy, theme, asciiLayout) {
+  const bandCount = STATE_VISUAL_BANDS;
+  const marginX = 40;
+  const midY = Math.round(height * 0.43);
+  const bottomLimit = height - 74;
+  const topLimit = 34;
+  const gap = Math.max(3, Math.floor(width / 150));
+  const barWidth = Math.max(5, Math.floor((width - marginX * 2 - gap * (bandCount - 1)) / bandCount));
+  const blockHeight = Math.max(4, Math.floor(height / 64));
+  const blockGap = 2;
+  const blockPitch = blockHeight + blockGap;
+  const positiveSteps = Math.max(2, Math.floor((midY - topLimit) / blockPitch));
+  const negativeSteps = Math.max(2, Math.floor((bottomLimit - midY) / blockPitch));
+  const scanBand = Math.floor((nowSeconds * (state === 'thinking' ? 13 : 8)) % bandCount);
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.018)';
+  for (let index = 0; index < bandCount; index += 1) {
+    const x = Math.round(marginX + index * (barWidth + gap));
+    ctx.fillRect(x, topLimit, Math.max(1, Math.floor(barWidth / 3)), bottomLimit - topLimit);
+  }
+
+  for (let index = 0; index < bandCount; index += 1) {
+    const x = Math.round(marginX + index * (barWidth + gap));
+    const level = visualBandLevel(index, bandCount, state, nowSeconds, energy);
+    const steps = Math.max(1, Math.round(level * Math.min(positiveSteps, negativeSteps)));
+    const brightness = clampNumber(0.45 + level * 0.55, 0, 1, 0.6);
+    const isScan = Math.abs(index - scanBand) <= 1;
+    const fill = isScan
+      ? 'rgba(255, 255, 255, 0.54)'
+      : theme.line.replace(/[\d.]+\)$/u, `${0.26 + brightness * 0.24})`);
+    const glow = isScan ? theme.glow : `rgba(255, 255, 255, ${0.012 + level * 0.04})`;
+    for (let step = 0; step < steps; step += 1) {
+      const fade = 1 - step / Math.max(steps, 1);
+      const segmentFill = step >= steps - 2
+        ? fill
+        : theme.accent;
+      const segmentGlow = step % 2 === 0 ? glow : `rgba(255, 255, 255, ${0.018 + fade * 0.035})`;
+      const yPositive = midY - 3 - (step + 1) * blockPitch;
+      const yNegative = midY + 4 + step * blockPitch;
+      drawPixelMeterSegment(ctx, x, yPositive, barWidth, blockHeight, segmentFill, segmentGlow, asciiLayout);
+      drawPixelMeterSegment(ctx, x, yNegative, barWidth, blockHeight, segmentFill, segmentGlow, asciiLayout);
+    }
+  }
+}
+
+function drawStateVisualReadout(ctx, width, height, state, nowSeconds, energy, theme) {
+  const midY = Math.round(height * 0.43);
+  const label = {
+    listening: 'INPUT SPECTRUM',
+    thinking: 'BUFFER / THINK',
+    speaking: 'OUTPUT SPECTRUM',
+    paused: 'HOLD',
+  }[state] || 'METER';
+  const levelText = `${formatDb(currentLevelDb)}  ${Math.round(energy * 100).toString().padStart(3, '0')}%`;
+  ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.24)';
+  ctx.fillText('125 250 500 1K 2K 4K 8K', 42, height - 50);
   ctx.fillStyle = theme.line;
-  ctx.fillRect(centerX - 10, centerY - 16, 7, 32);
-  ctx.fillRect(centerX + 3, centerY - 16, 7, 32);
+  ctx.fillText(label, 42, 26);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.58)';
+  ctx.fillText(levelText, width - 118, 26);
+
+  const cursorX = 42 + ((Math.sin(nowSeconds * 0.95) * 0.5 + 0.5) * (width - 84));
+  ctx.fillStyle = theme.line;
+  ctx.fillRect(Math.round(cursorX), midY - 5, 2, 10);
 }
 
 function drawStateVisualFrame(nowMs) {
   if (!stateVisualCanvas || !stateVisualCtx) {
     return;
   }
-  const width = stateVisualCanvas.width / Math.max(window.devicePixelRatio || 1, 1);
-  const height = stateVisualCanvas.height / Math.max(window.devicePixelRatio || 1, 1);
+  const width = stateVisualCanvas.width;
+  const height = stateVisualCanvas.height;
   const nowSeconds = nowMs / 1000;
   const state = visualStateFor(currentState);
   const theme = visualThemeFor(state);
   const energy = visualEnergyFor(state, nowMs);
 
-  drawStateVisualBackdrop(stateVisualCtx, width, height, theme);
-  drawStateVisualRings(stateVisualCtx, width, height, state, nowSeconds, energy, theme);
-
+  stateVisualCtx.imageSmoothingEnabled = false;
   if (state === 'listening') {
-    drawStateVisualListeningSweep(stateVisualCtx, width, height, nowSeconds, energy, theme);
-  } else if (state === 'thinking') {
-    drawStateVisualThinkingOrbit(stateVisualCtx, width, height, nowSeconds, theme);
-  } else if (state === 'speaking') {
-    drawStateVisualSpeakingWave(stateVisualCtx, width, height, nowSeconds, energy, theme);
+    refreshVisualFrequencyData();
   } else {
-    drawStateVisualPausedHold(stateVisualCtx, width, height, nowSeconds, theme);
+    visualFrequencyData = null;
   }
+  drawStateVisualBackdrop(stateVisualCtx, width, height, theme);
+  const asciiLayout = drawStateVisualAsciiBackdrop(stateVisualCtx, width, height, theme);
+  drawStateVisualPixelMeter(stateVisualCtx, width, height, state, nowSeconds, energy, theme, asciiLayout);
+  drawStateVisualReadout(stateVisualCtx, width, height, state, nowSeconds, energy, theme);
 }
 
 function animateStateVisual(nowMs) {
@@ -3211,10 +3322,11 @@ window.__agenticSwitchboardManualInterrupt = manualInterrupt;
 window.__agenticSwitchboardPushToTalkStart = beginPushToTalk;
 window.__agenticSwitchboardPushToTalkEnd = endPushToTalk;
 window.__agenticSwitchboardToggleVoiceInterrupt = () => setInterruptMode(
-  interruptMode === 'off' ? 'barge-in' : (interruptMode === 'barge-in' ? 'keyword' : 'off')
+  interruptMode === 'barge-in' ? 'off' : 'barge-in'
 );
 startShellStatusHeartbeat();
 animateLevelDecay();
+loadAsciiArtBackdrop();
 requestAnimationFrame(animateStateVisual);
 window.addEventListener('resize', () => {
   resizeStateVisual();

@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Agentic Switchboard",
+  "productName": "agentic switchboard",
   "version": "0.1.0",
   "identifier": "com.agentswitchboard.desktop",
   "build": {

@@ -8,7 +8,7 @@ It does not replace the Python backend. It opens the existing voice runtime at `
 
 - `Ctrl+Shift+Space`: show or hide the main window
 - `Ctrl+Shift+S`: hold to talk, release to send the current turn
-- `Ctrl+Shift+P`: click the existing pause or resume button in the voice UI
+- `Ctrl+Shift+P`: click the existing `paused` / `listening` button in the voice UI
 - immediate interrupt: `Ctrl+Alt+A`
 
 These are the default bindings. They can now be changed in the backend setup UI under `Windows Client`, and the Windows tray client will pick them up on next launch.

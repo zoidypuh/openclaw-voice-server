@@ -457,7 +457,7 @@ fn build_main_window<R: tauri::Runtime>(
         MAIN_WINDOW_LABEL,
         WebviewUrl::External(voice_url.clone()),
     )
-    .title("Agentic Switchboard")
+    .title("agentic switchboard")
     .inner_size(460.0, 620.0)
     .min_inner_size(360.0, 520.0)
     .resizable(true)
@@ -533,7 +533,8 @@ fn start_voice_runtime<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
                             }
                             return;
                         }
-                        const isPaused = document.body.dataset.state === 'paused' || button.classList.contains('active');
+                        const label = button.textContent.trim().toLowerCase();
+                        const isPaused = document.body.dataset.state === 'paused' || label === 'paused';
                         if (isPaused) button.click();
                     };
                     tryStart();

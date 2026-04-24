@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentic-switchboard"
-version = "0.0.4"
+version = "0.1"
 description = "Standalone browser voice runtime for text agents."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -38,16 +38,21 @@ packages = ["src/agentic_switchboard"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/agentic_switchboard/static" = "agentic_switchboard/static"
+"media/ascii-art.txt" = "agentic_switchboard/static/media/ascii-art.txt"
 
 [tool.hatch.build.targets.sdist]
 include = [
   "/src/agentic_switchboard/**/*.py",
   "/src/agentic_switchboard/static/**/*",
+  "/media/ascii-art.txt",
   "/tests/**/*",
   "/README.md",
   "/pyproject.toml",
   "/.env.example",
 ]
+
+[tool.hatch.build.targets.sdist.force-include]
+"media/ascii-art.txt" = "media/ascii-art.txt"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

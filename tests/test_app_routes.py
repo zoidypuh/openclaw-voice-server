@@ -39,6 +39,13 @@ def test_voice_page_disables_html_caching_to_avoid_stale_frontend_404s():
     assert headers.get("Expires") == "0"
 
 
+def test_ascii_art_backdrop_media_is_served():
+    status, _, body = asyncio.run(_fetch("/media/ascii-art.txt"))
+
+    assert status == 200
+    assert "\u2588" in body
+
+
 def test_legacy_voice_prefixed_runtime_state_route_still_works_for_stale_tabs():
     status, _, body = asyncio.run(_fetch("/voice/api/runtime/state"))
 

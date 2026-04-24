@@ -4,7 +4,7 @@ from copy import deepcopy
 from pathlib import Path
 
 
-APP_VERSION_LABEL = "v0.04"
+APP_VERSION_LABEL = "v0.1"
 DEFAULT_SAMPLE_TEXT = "Agentic Switchboard setup validation."
 DEFAULT_VOICE_SESSION_KEY = "agent:main:voice-chat-main"
 DEFAULT_LOCAL_GATEWAY_URL = "http://127.0.0.1:18789"
