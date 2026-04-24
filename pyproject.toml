@@ -3,7 +3,7 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [project]
-name = "agent-switchboard"
+name = "agentic-switchboard"
 version = "0.0.4"
 description = "Standalone browser voice runtime for text agents."
 readme = "README.md"
@@ -27,33 +27,22 @@ stt-whisper = [
 tts-edge = [
   "edge-tts>=6.1.0",
 ]
-tts-piper = [
-  "piper-tts>=1.4.1",
-  "pathvalidate>=3.2.0",
-]
-tts-chatterbox = [
-  "chatterbox-tts>=0.1.7",
-  "torch==2.6.0; python_version < '3.14'",
-  "torchaudio==2.6.0; python_version < '3.14'",
-  "torch==2.11.0; python_version >= '3.14'",
-  "torchaudio==2.11.0; python_version >= '3.14'",
-]
 
 [project.scripts]
-agent-switchboard = "agent_switchboard.app:main"
-agent-switchboard-calibrate = "agent_switchboard.calibrate_commands:main"
-agent-switchboard-speak = "agent_switchboard.speak_paragraphs:main"
+agentic-switchboard = "agentic_switchboard.app:main"
+agentic-switchboard-calibrate = "agentic_switchboard.calibrate_commands:main"
+agentic-switchboard-speak = "agentic_switchboard.speak_paragraphs:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/agent_switchboard"]
+packages = ["src/agentic_switchboard"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/agent_switchboard/static" = "agent_switchboard/static"
+"src/agentic_switchboard/static" = "agentic_switchboard/static"
 
 [tool.hatch.build.targets.sdist]
 include = [
-  "/src/agent_switchboard/**/*.py",
-  "/src/agent_switchboard/static/**/*",
+  "/src/agentic_switchboard/**/*.py",
+  "/src/agentic_switchboard/static/**/*",
   "/tests/**/*",
   "/README.md",
   "/pyproject.toml",

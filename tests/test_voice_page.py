@@ -1,4 +1,4 @@
-from agent_switchboard.app import _static_dir
+from agentic_switchboard.app import _static_dir
 
 
 def test_voice_html_has_start_of_playback_barge_in_grace_window():
@@ -16,7 +16,15 @@ def test_voice_html_resumes_audio_before_fetching_runtime_state_for_safari():
     voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
 
     assert "window.AudioContext || window.webkitAudioContext" in voice_html
-    assert "if (isAppleVoiceClient()) {\n    await unlockPlaybackAudio();\n    await ensureAudio();\n  } else {\n    await ensureAudio();\n    await unlockPlaybackAudio();\n  }\n  await loadRuntimeState();\n  await connect();" in voice_html
+    assert "function microphoneRequiresSecureContext()" in voice_html
+    assert "window.isSecureContext === false" in voice_html
+    assert "microphone requires https on iphone" in voice_html
+    assert "Microphone requires a secure browser context. Use HTTPS for iPhone/iPad remote access." in voice_html
+    assert "async function tryUnlockPlaybackAudio()" in voice_html
+    assert "playback unlock failed; continuing with microphone capture" in voice_html
+    assert "preferred microphone constraints failed; retrying with basic audio constraints" in voice_html
+    assert "stream = await getUserMedia({ audio: true });" in voice_html
+    assert "if (isAppleVoiceClient()) {\n    const playbackReady = tryUnlockPlaybackAudio();\n    await ensureAudio();\n    await playbackReady;\n  } else {\n    await ensureAudio();\n    await unlockPlaybackAudio();\n  }\n  await loadRuntimeState();\n  await connect();" in voice_html
     assert "await unlockPlaybackAudio();" in voice_html
     assert "playbackAudio = new Audio();" in voice_html
     assert "handleResumeFailure(error);" in voice_html
@@ -27,6 +35,8 @@ def test_voice_html_uses_echo_controls_and_apple_specific_barge_in_guard():
     voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
 
     assert "function isAppleVoiceClient()" in voice_html
+    assert "function isCriOSVoiceClient()" in voice_html
+    assert "chrome needs mic access in ios settings" in voice_html
     assert "const INTERRUPT_PROBE_MIN_SPEECH_MS = 220;" in voice_html
     assert "const INTERRUPT_COOLDOWN_MS = 300;" in voice_html
     assert "const PAUSED_COMMAND_MIN_SPEECH_MS = 220;" in voice_html
@@ -63,8 +73,8 @@ def test_voice_html_has_mute_button_and_mic_gate():
     assert '<button id="mute-btn" class="mini-btn" type="button">mute</button>' in voice_html
     assert "let muted = false;" in voice_html
     assert "let interruptMode = 'barge-in';" in voice_html
-    assert "const INTERRUPT_MODE_STORAGE_KEY = 'agent-switchboard.voice.interrupt-mode.v1';" in voice_html
-    assert "const PUSH_TO_TALK_STORAGE_KEY = 'agent-switchboard.voice.push-to-talk.v1';" in voice_html
+    assert "const INTERRUPT_MODE_STORAGE_KEY = 'agentic-switchboard.voice.interrupt-mode.v1';" in voice_html
+    assert "const PUSH_TO_TALK_STORAGE_KEY = 'agentic-switchboard.voice.push-to-talk.v1';" in voice_html
     assert "function voiceInterruptDisabled() {" in voice_html
     assert "function setInterruptMode(nextMode) {" in voice_html
     assert "function commitBufferedTurnNow() {" in voice_html
@@ -79,14 +89,16 @@ def test_voice_html_has_mute_button_and_mic_gate():
     assert "document.getElementById('push-to-talk-btn').addEventListener('click', () => {" in voice_html
     assert "document.getElementById('interrupt-btn').addEventListener('click', () => {" in voice_html
     assert "document.getElementById('mute-btn').addEventListener('click', () => {" in voice_html
-    assert "window.__agentSwitchboardPushToTalkStart = beginPushToTalk;" in voice_html
-    assert "window.__agentSwitchboardPushToTalkEnd = endPushToTalk;" in voice_html
+    assert "window.__agenticSwitchboardPushToTalkStart = beginPushToTalk;" in voice_html
+    assert "window.__agenticSwitchboardPushToTalkEnd = endPushToTalk;" in voice_html
 
 
 def test_voice_html_uses_root_app_base_so_trailing_slash_urls_do_not_404():
     voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
 
     assert "function resolveAppBase()" in voice_html
+    assert "path === '/voice' || path.startsWith('/voice/')" in voice_html
+    assert "return new URL('/voice/', window.location.href);" in voice_html
     assert "return new URL('/', window.location.href);" in voice_html
 
 
@@ -140,22 +152,57 @@ def test_voice_html_uses_persistent_unlocked_playback_audio():
     assert "function resetPlaybackElement({ preserveUnlocked = false } = {}) {" in voice_html
     assert "currentAudio = ensurePlaybackAudioElement();" in voice_html
     assert "setStatusText('tap resume to enable audio');" in voice_html
-    assert "setStatusText('audio playback failed');" in voice_html
+    assert "tap play reply" in voice_html
+    assert "document.getElementById('play-reply-btn').addEventListener('click'" in voice_html
 
 
 def test_voice_html_preserves_unlocked_playback_audio_for_retry_paths():
     voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
 
+    assert "const APPLE_AUDIO_STARTUP_RETRY_DELAYS_MS = [150, 350, 700];" in voice_html
+    assert "const SILENT_UNLOCK_WAV_DATA_URL = 'data:audio/wav;base64," in voice_html
+    assert "let audioStartupPromise = null;" in voice_html
+    assert "let webAudioUnlocked = false;" in voice_html
+    assert "let currentAudioSourceNode = null;" in voice_html
+    assert "async function unlockWebAudioPlayback() {" in voice_html
+    assert "await unlockWebAudioPlayback();" in voice_html
+    assert "audio.muted = false;" in voice_html
+    assert "audio.volume = 1;" in voice_html
+    assert "async function playAudioBufferWithWebAudio(arrayBuffer, { onStart = null } = {})" in voice_html
+    assert "audioCtx.decodeAudioData(arrayBuffer.slice(0))" in voice_html
+    assert "if (isAppleVoiceClient()) {\n    currentAudio = ensurePlaybackAudioElement();" in voice_html
     assert "if (preserveUnlocked) {\n    return;\n  }\n  playbackAudio = null;\n  playbackUnlocked = false;" in voice_html
     assert "teardownAudioCapture();\n    resetPlaybackElement({ preserveUnlocked: playbackUnlocked });\n    await ensureAudio();" in voice_html
-    assert "// Keep the original user-activated media element alive for the Safari retry." in voice_html
-    assert "teardownAudioCapture();\n    // Keep the original user-activated media element alive for the Safari retry.\n    resetPlaybackElement({ preserveUnlocked: playbackUnlocked });\n    await new Promise((resolve) => setTimeout(resolve, 150));\n    await init();" in voice_html
+    assert "if (audioStartupPromise) {\n    return audioStartupPromise;\n  }" in voice_html
+    assert "// Keep the original user-activated media element alive for Safari retries." in voice_html
+    assert "teardownAudioCapture();\n      // Keep the original user-activated media element alive for Safari retries.\n      resetPlaybackElement({ preserveUnlocked: playbackUnlocked });\n      await delay(retryDelays[attempt]);\n      attempt += 1;" in voice_html
+    assert "audio startup was interrupted, tap resume again" in voice_html
+
+
+def test_voice_html_only_accepts_server_playback_after_browser_play_starts():
+    voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
+
+    assert "function sendClientReady() {" in voice_html
+    assert "type: 'client-ready'," in voice_html
+    assert "playback_accept: true," in voice_html
+    assert "sendClientReady();" in voice_html
+    assert "const requestId = item && typeof item === 'object' && 'requestId' in item ? item.requestId : '';" in voice_html
+    assert "playAudioBufferWithWebAudio(nextBuffer.slice(0), {\n      onStart: () => sendPlaybackAcceptance(requestId)," in voice_html
+    assert "currentAudio.play().then(() => {\n    sendPlaybackAcceptance(requestId);" in voice_html
+    assert "if (item?.requestId) {\n    sendPlaybackRejection(item.requestId, describePlaybackError(error));\n  }" in voice_html
+    assert "requestId: serverSpeakRequestId," in voice_html
+    assert "if (serverSpeakRequestId) {\n        sendPlaybackAcceptance(serverSpeakRequestId);\n      }" not in voice_html
 
 
 def test_voice_html_has_audio_recovery_hooks_and_watchdog():
     voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
 
     assert "const AUDIO_CAPTURE_STALL_MS = 2600;" in voice_html
+    assert "function describeWebSocketClose(event) {" in voice_html
+    assert "reconnecting: websocket closed abnormally" in voice_html
+    assert "ws.onerror = (event) => {" in voice_html
+    assert "ws.onclose = (event) => {" in voice_html
+    assert "setStatusText(describeWebSocketClose(event));" in voice_html
     assert "function recoverAudioPipeline(reason) {" in voice_html
     assert "function bindAudioRecoveryHooks() {" in voice_html
     assert "function ensureCaptureWatchdog() {" in voice_html

@@ -5,9 +5,9 @@ import logging
 from aiohttp import WSMsgType
 import pytest
 
-from agent_switchboard import runtime as runtime_module
-from agent_switchboard.errors import ValidationError
-from agent_switchboard.runtime import VoiceRuntime
+from agentic_switchboard import runtime as runtime_module
+from agentic_switchboard.errors import ValidationError
+from agentic_switchboard.runtime import VoiceRuntime
 
 
 class FakeStore:
@@ -24,7 +24,7 @@ class FakeStore:
             "secrets": {"gateway_token": "token"},
             "gateway": {
                 "url": "http://127.0.0.1:18789/v1/chat/completions",
-                "model": "openclaw:test",
+                "model": "agentic-switchboard:test",
                 "session_key": "voice-main",
             },
         }
@@ -49,6 +49,7 @@ class FakeWebSocketResponse:
         self.json_messages = []
         self.binary_messages = []
         self.auto_accept_playback = False
+        self.close_payload = None
         FakeWebSocketResponse.created.append(self)
 
     async def prepare(self, request):
@@ -80,6 +81,9 @@ class FakeWebSocketResponse:
 
     async def send_bytes(self, payload):
         self.binary_messages.append(payload)
+
+    async def close(self, *, code=1000, message=b""):
+        self.close_payload = {"code": code, "message": message}
 
     def exception(self):
         return None
@@ -141,52 +145,6 @@ def test_turn_stt_settings_leave_non_faster_whisper_unchanged():
     assert "vad_filter" not in settings
 
 
-def test_tts_settings_for_speaker_applies_piper_override():
-    settings = {
-        "tts": {
-            "default_provider": "piper",
-            "piper_model_path": "/voices/base.onnx",
-            "piper_config_path": "/voices/base.onnx.json",
-            "piper_speaker": 0,
-            "speaker_overrides": {
-                "speaker-b": {
-                    "provider": "piper",
-                    "model_path": "/voices/speaker-b.onnx",
-                    "config_path": "/voices/speaker-b.onnx.json",
-                    "speaker": 2,
-                }
-            },
-        }
-    }
-
-    resolved = VoiceRuntime._tts_settings_for_speaker(settings, "Speaker B")
-
-    assert resolved["default_provider"] == "piper"
-    assert resolved["piper_model_path"] == "/voices/speaker-b.onnx"
-    assert resolved["piper_config_path"] == "/voices/speaker-b.onnx.json"
-    assert resolved["piper_speaker"] == 2
-
-
-def test_tts_settings_for_speaker_applies_pockettts_override():
-    settings = {
-        "tts": {
-            "default_provider": "pockettts",
-            "pockettts_voice": "alba",
-            "speaker_overrides": {
-                "speaker-b": {
-                    "provider": "pockettts",
-                    "voice": "/voices/speaker-b.wav",
-                }
-            },
-        }
-    }
-
-    resolved = VoiceRuntime._tts_settings_for_speaker(settings, "Speaker B")
-
-    assert resolved["default_provider"] == "pockettts"
-    assert resolved["pockettts_voice"] == "/voices/speaker-b.wav"
-
-
 def test_tts_settings_for_speaker_applies_supertonic_override():
     settings = {
         "tts": {
@@ -215,73 +173,6 @@ def test_tts_settings_for_speaker_applies_supertonic_override():
     assert resolved["supertonic_language"] == "fr"
     assert resolved["supertonic_total_steps"] == 3
     assert resolved["supertonic_speed"] == 1.2
-
-
-def test_handle_ws_buffers_pockettts_reply_into_single_synthesis(monkeypatch):
-    FakeWebSocketResponse.created.clear()
-    synth_calls = []
-
-    class PocketStore(FakeStore):
-        def load_runtime_settings(self):
-            settings = super().load_runtime_settings()
-            settings["tts"] = {
-                "default_provider": "pockettts",
-                "pockettts_voice": "alba",
-            }
-            return settings
-
-    class FakeTranscriber:
-        def transcribe(self, audio_bytes):
-            return type("Result", (), {"text": "say something", "duration_seconds": 1.0})()
-
-    class FakeSynthesizer:
-        audio_mime_type = "audio/wav"
-
-        async def synthesize(self, text, *, preset_name=None, voice_id=None):
-            synth_calls.append(
-                {
-                    "text": text,
-                    "preset_name": preset_name,
-                }
-            )
-            return b"audio"
-
-    class FakeGateway:
-        def __init__(self, **kwargs):
-            pass
-
-        async def stream_reply(self, text, abort_event):
-            yield "Nice."
-            yield "Then we continue."
-
-    monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
-    monkeypatch.setattr(runtime_module, "build_synthesizer", lambda tts, secrets: FakeSynthesizer())
-    monkeypatch.setattr(runtime_module, "DirectGatewayClient", lambda **kwargs: FakeGateway())
-    monkeypatch.setattr(runtime_module.web, "WebSocketResponse", FakeWebSocketResponse)
-
-    async def scenario():
-        runtime = VoiceRuntime(PocketStore())
-        handler_task = asyncio.create_task(runtime.handle_ws(object()))
-
-        while not FakeWebSocketResponse.created:
-            await asyncio.sleep(0)
-        ws = FakeWebSocketResponse.created[-1]
-        await ws.messages.put(FakeMessage(WSMsgType.BINARY, data=b"x" * 3200))
-        while ws.json_messages[-1:] != [{"status": "idle"}]:
-            await asyncio.sleep(0)
-        await ws.messages.put(FakeWebSocketResponse.STOP)
-        await handler_task
-        return ws
-
-    ws = asyncio.run(scenario())
-
-    assert synth_calls == [
-        {
-            "text": "Nice. Then we continue.",
-            "preset_name": None,
-        }
-    ]
-    assert ws.binary_messages == [b"audio"]
 
 
 def test_handle_ws_interrupts_active_stream_and_rejects_overlap(monkeypatch):
@@ -879,9 +770,12 @@ def test_speak_text_routes_speaker_tag_to_speaker_specific_provider(monkeypatch)
         def load_runtime_settings(self):
             settings = super().load_runtime_settings()
             settings["tts"] = {
-                "default_provider": "vibevoice",
-                "vibevoice_base_url": "http://127.0.0.1:3001",
-                "vibevoice_voice": "de-Spk1_woman",
+                "default_provider": "supertonic",
+                "supertonic_python_path": "/envs/supertonic/bin/python",
+                "supertonic_voice": "M4",
+                "supertonic_language": "en",
+                "supertonic_total_steps": 3,
+                "supertonic_speed": 1.05,
                 "speaker_overrides": {
                     "speaker-b": {
                         "provider": "elevenlabs",
@@ -1094,6 +988,44 @@ def test_speak_text_rejects_when_client_cannot_accept_playback(monkeypatch):
     asyncio.run(scenario())
 
 
+def test_handle_ws_reports_initialization_error_and_clears_active_client(monkeypatch):
+    FakeWebSocketResponse.created.clear()
+
+    class FakeTranscriber:
+        def transcribe(self, audio_bytes):
+            return type("Result", (), {"text": "", "duration_seconds": 0.0})()
+
+    class FakeSynthesizer:
+        async def synthesize(self, text, *, preset_name=None):
+            return b"audio"
+
+    monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
+    monkeypatch.setattr(runtime_module, "build_synthesizer", lambda tts, secrets: FakeSynthesizer())
+    monkeypatch.setattr(runtime_module.web, "WebSocketResponse", FakeWebSocketResponse)
+
+    def fail_build_agent(self, settings):
+        raise ValidationError("Hermes Agent was not found at /missing")
+
+    monkeypatch.setattr(VoiceRuntime, "_build_conversation_agent", fail_build_agent)
+
+    async def scenario():
+        runtime = VoiceRuntime(FakeStore())
+        ws = await runtime.handle_ws(object())
+        active_ws = await runtime._get_active_ws()
+        return ws, active_ws
+
+    ws, active_ws = asyncio.run(scenario())
+
+    assert active_ws is None
+    assert ws.json_messages == [
+        {"status": "idle", "error": "Hermes Agent was not found at /missing"}
+    ]
+    assert ws.close_payload == {
+        "code": 1011,
+        "message": b"Hermes Agent was not found at /missing",
+    }
+
+
 def test_speak_text_requires_active_voice_client(monkeypatch):
     class FakeSynthesizer:
         async def synthesize(self, text, *, preset_name=None):
@@ -1171,13 +1103,15 @@ def test_handle_ws_uses_hermes_agent_when_selected(monkeypatch):
             gateway_model=None,
             use_context_files=True,
             use_memory=True,
+            enabled_toolsets=None,
         ):
             assert project_root == "/tmp/hermes-agent"
-            assert gateway_url is None
-            assert gateway_token is None
-            assert gateway_model is None
+            assert gateway_url == "http://127.0.0.1:18789/v1/chat/completions"
+            assert gateway_token == "token"
+            assert gateway_model == "agentic-switchboard:test"
             assert use_context_files is True
             assert use_memory is True
+            assert enabled_toolsets is None
 
         async def stream_reply(self, text, abort_event):
             hermes_calls.append(text)
@@ -1447,7 +1381,7 @@ def test_handle_interrupt_probe_uses_configured_language(monkeypatch):
         return FakeTranscriber()
 
     monkeypatch.setattr(runtime_module, "build_transcriber", fake_build_transcriber)
-    monkeypatch.setattr("agent_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: True)
+    monkeypatch.setattr("agentic_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: True)
 
     async def scenario():
         runtime = VoiceRuntime(FakeStore())
@@ -1528,7 +1462,7 @@ def test_handle_interrupt_probe_returns_pause_action(monkeypatch):
             }
 
     monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
-    monkeypatch.setattr("agent_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: True)
+    monkeypatch.setattr("agentic_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: True)
 
     async def scenario():
         runtime = VoiceRuntime(FakeStore())
@@ -1563,7 +1497,7 @@ def test_handle_interrupt_probe_returns_send_action_for_language_specific_manual
             }
 
     monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
-    monkeypatch.setattr("agent_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: True)
+    monkeypatch.setattr("agentic_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: True)
 
     async def scenario():
         runtime = VoiceRuntime(FakeStore())
@@ -1596,7 +1530,7 @@ def test_handle_interrupt_probe_returns_hold_action_and_content(monkeypatch):
             }
 
     monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
-    monkeypatch.setattr("agent_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: True)
+    monkeypatch.setattr("agentic_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: True)
 
     async def scenario():
         runtime = VoiceRuntime(FakeStore())

@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .catalog import LEGACY_ENV_TO_CONFIG, SECRET_ENV_KEYS, default_config, normalize_agent_backend
+from .catalog import ENV_TO_CONFIG, SECRET_ENV_KEYS, default_config, normalize_agent_backend
 
 
 def _parse_scalar(value: str) -> Any:
@@ -89,14 +89,12 @@ class ConfigStore:
     def __init__(self, config_path: Path | None = None, env_path: Path | None = None):
         cwd = Path.cwd()
         self.config_path = Path(
-            os.environ.get("AGENT_SWITCHBOARD_CONFIG_FILE")
-            or os.environ.get("OPENCLAW_VOICE_CONFIG_FILE")
+            os.environ.get("AGENTIC_SWITCHBOARD_CONFIG_FILE")
             or config_path
             or cwd / "config.json"
         )
         self.env_path = Path(
-            os.environ.get("AGENT_SWITCHBOARD_ENV_FILE")
-            or os.environ.get("OPENCLAW_VOICE_ENV_FILE")
+            os.environ.get("AGENTIC_SWITCHBOARD_ENV_FILE")
             or env_path
             or cwd / ".env"
         )
@@ -110,7 +108,7 @@ class ConfigStore:
                     continue
                 key, value = parsed
                 values[key] = value
-        for key in SECRET_ENV_KEYS | set(LEGACY_ENV_TO_CONFIG):
+        for key in SECRET_ENV_KEYS | set(ENV_TO_CONFIG):
             env_value = os.environ.get(key)
             if env_value is not None:
                 values[key] = env_value
@@ -126,7 +124,7 @@ class ConfigStore:
                 _deep_merge(config, raw)
 
         env_values = self.load_env_values()
-        for env_key, path in LEGACY_ENV_TO_CONFIG.items():
+        for env_key, path in ENV_TO_CONFIG.items():
             env_value = env_values.get(env_key)
             if env_value is None:
                 continue
@@ -146,13 +144,11 @@ class ConfigStore:
         config["secrets"] = {
             "gateway_token": _first_env_value(
                 env_values,
-                "AGENT_SWITCHBOARD_GATEWAY_TOKEN",
-                "OPENCLAW_VOICE_GATEWAY_TOKEN",
+                "AGENTIC_SWITCHBOARD_GATEWAY_TOKEN",
             ),
             "elevenlabs_api_key": _first_env_value(
                 env_values,
-                "AGENT_SWITCHBOARD_ELEVENLABS_API_KEY",
-                "OPENCLAW_VOICE_ELEVENLABS_API_KEY",
+                "AGENTIC_SWITCHBOARD_ELEVENLABS_API_KEY",
             ),
         }
         return config

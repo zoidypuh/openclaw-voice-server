@@ -3,13 +3,13 @@ import asyncio
 import httpx
 import pytest
 
-from agent_switchboard.gateway import (
+from agentic_switchboard.gateway import (
     DirectGatewayClient,
     _friendly_connection_error,
     normalize_gateway_url,
     resolve_voice_session_key,
 )
-from agent_switchboard.errors import ValidationError
+from agentic_switchboard.errors import ValidationError
 
 
 def test_resolve_voice_session_key_keeps_configured_value():
@@ -71,23 +71,23 @@ def test_validate_gateway_connection_includes_session_key_header(monkeypatch):
             captured["json"] = json
             return FakeResponse()
 
-    monkeypatch.setattr("agent_switchboard.gateway.httpx.AsyncClient", lambda timeout: FakeClient())
+    monkeypatch.setattr("agentic_switchboard.gateway.httpx.AsyncClient", lambda timeout: FakeClient())
 
-    from agent_switchboard.gateway import validate_gateway_connection
+    from agentic_switchboard.gateway import validate_gateway_connection
 
     result = asyncio.run(
         validate_gateway_connection(
             url="http://127.0.0.1:18789",
             token="speaker-a",
-            model="openclaw:main",
+            model="agentic-switchboard:main",
             session_key="agent:main:voice-chat-main",
         )
     )
 
     assert result["reply_preview"] == "OK"
     assert captured["url"] == "http://127.0.0.1:18789/v1/chat/completions"
-    assert captured["headers"]["X-OpenClaw-Scopes"] == "operator.write"
-    assert captured["headers"]["X-OpenClaw-Session-Key"] == "agent:main:voice-chat-main"
+    assert captured["headers"]["X-Agentic-Switchboard-Scopes"] == "operator.write"
+    assert captured["headers"]["X-Agentic-Switchboard-Session-Key"] == "agent:main:voice-chat-main"
 
 
 def test_stream_reply_reads_stream_error_body_before_parsing(monkeypatch):
@@ -133,9 +133,9 @@ def test_stream_reply_reads_stream_error_body_before_parsing(monkeypatch):
         def stream(self, method, url, headers, json):
             return FakeStreamContext(FakeResponse())
 
-    monkeypatch.setattr("agent_switchboard.gateway.httpx.AsyncClient", lambda timeout: FakeClient())
+    monkeypatch.setattr("agentic_switchboard.gateway.httpx.AsyncClient", lambda timeout: FakeClient())
 
-    gateway = DirectGatewayClient(url="http://127.0.0.1:18789", token="speaker-a", model="openclaw:main")
+    gateway = DirectGatewayClient(url="http://127.0.0.1:18789", token="speaker-a", model="agentic-switchboard:main")
 
     async def run_stream():
         abort_event = asyncio.Event()

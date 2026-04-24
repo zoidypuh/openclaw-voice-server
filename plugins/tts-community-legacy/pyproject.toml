@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentic-switchboard-tts-community-legacy"
+version = "0.0.1"
+description = "Unmaintained legacy TTS providers for Agentic Switchboard."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "agentic-switchboard",
+  "aiohttp>=3.11.0",
+  "httpx>=0.28.0",
+  "numpy>=1.24.0",
+]
+
+[project.optional-dependencies]
+piper = [
+  "piper-tts>=1.4.1",
+  "pathvalidate>=3.2.0",
+]
+chatterbox = [
+  "chatterbox-tts>=0.1.7",
+  "torch==2.6.0; python_version < '3.14'",
+  "torchaudio==2.6.0; python_version < '3.14'",
+  "torch==2.11.0; python_version >= '3.14'",
+  "torchaudio==2.11.0; python_version >= '3.14'",
+]
+pockettts = [
+  "pocket-tts>=1.1.1",
+]
+neutts = [
+  "neutts",
+]
+all = [
+  "piper-tts>=1.4.1",
+  "pathvalidate>=3.2.0",
+  "chatterbox-tts>=0.1.7",
+  "torch==2.6.0; python_version < '3.14'",
+  "torchaudio==2.6.0; python_version < '3.14'",
+  "torch==2.11.0; python_version >= '3.14'",
+  "torchaudio==2.11.0; python_version >= '3.14'",
+  "pocket-tts>=1.1.1",
+  "neutts",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentic_switchboard_tts_community_legacy"]

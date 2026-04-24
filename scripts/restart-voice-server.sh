@@ -21,6 +21,19 @@ if [[ ! -x "$PYTHON_BIN" ]]; then
   exit 1
 fi
 
-pkill -f 'agent-switchboard|openclaw-voice-server|agent_switchboard\.app' || true
+stop_existing() {
+  local pattern="$1"
+  local pids
+  pids="$(pgrep -f "$pattern" | grep -v "^$$$" || true)"
+  if [[ -z "$pids" ]]; then
+    return
+  fi
+  xargs -r kill <<<"$pids"
+  sleep 0.5
+  xargs -r kill -KILL <<<"$pids" 2>/dev/null || true
+}
 
-exec "$PYTHON_BIN" -m agent_switchboard.app
+stop_existing 'python.*-m agentic_switchboard\.app'
+stop_existing 'python.*-m agent_switchboard\.app'
+
+exec "$PYTHON_BIN" -m agentic_switchboard.app

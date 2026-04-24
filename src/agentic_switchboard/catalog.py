@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 APP_VERSION_LABEL = "v0.04"
-DEFAULT_SAMPLE_TEXT = "Agent Switchboard setup validation."
+DEFAULT_SAMPLE_TEXT = "Agentic Switchboard setup validation."
 DEFAULT_VOICE_SESSION_KEY = "agent:main:voice-chat-main"
 DEFAULT_LOCAL_GATEWAY_URL = "http://127.0.0.1:18789"
 DEFAULT_HERMES_ROOT = str((Path.home() / ".hermes" / "hermes-agent").resolve())
@@ -13,15 +13,11 @@ DEFAULT_REMOTE_WHISPER_HOST_ALIAS = "remote-whisper"
 DEFAULT_REMOTE_WHISPER_PORT = 18000
 DEFAULT_REMOTE_WHISPER_ENDPOINT_PATH = "/v1/audio/transcriptions"
 DEFAULT_REMOTE_WHISPER_MODEL = ""
-DEFAULT_VIBEVOICE_BASE_URL = "http://127.0.0.1:3000"
 DEFAULT_WINDOWS_SHORTCUTS = {
     "toggle_window": "Ctrl+Shift+Space",
     "pause_resume": "Ctrl+Shift+P",
     "interrupt": "Ctrl+Alt+A",
 }
-CHATTERBOX_DEFAULT_MODEL = "multilingual"
-CHATTERBOX_DEFAULT_DEVICE = "auto"
-CHATTERBOX_DEFAULT_VOICE = "default"
 ELEVENLABS_DEFAULT_PRESET = "natural"
 ELEVENLABS_PRESETS = {
     "calm": {
@@ -113,24 +109,6 @@ SUPPORTED_TTS_PROVIDERS = {
         "package": "edge-tts>=6.1.0",
         "import_name": "edge_tts",
     },
-    "piper": {
-        "id": "piper",
-        "label": "Piper",
-        "package": "piper-tts>=1.4.1",
-        "import_name": "piper",
-    },
-    "chatterbox": {
-        "id": "chatterbox",
-        "label": "Chatterbox",
-        "package": "chatterbox-tts>=0.1.7",
-        "import_name": "chatterbox",
-    },
-    "pockettts": {
-        "id": "pockettts",
-        "label": "Pocket TTS",
-        "package": "pocket-tts>=1.1.1",
-        "import_name": "pocket_tts",
-    },
     "supertonic": {
         "id": "supertonic",
         "label": "Supertonic",
@@ -142,18 +120,6 @@ SUPPORTED_TTS_PROVIDERS = {
         "label": "ElevenLabs",
         "package": None,
         "import_name": None,
-    },
-    "vibevoice": {
-        "id": "vibevoice",
-        "label": "VibeVoice Realtime",
-        "package": None,
-        "import_name": None,
-    },
-    "neutts": {
-        "id": "neutts",
-        "label": "NeuTTS",
-        "package": "neutts",
-        "import_name": "neutts",
     },
 }
 
@@ -169,57 +135,31 @@ SUPPORTED_AGENT_BACKENDS = {
 }
 
 SECRET_ENV_KEYS = {
-    "AGENT_SWITCHBOARD_GATEWAY_TOKEN",
-    "AGENT_SWITCHBOARD_ELEVENLABS_API_KEY",
-    "OPENCLAW_VOICE_GATEWAY_TOKEN",
-    "OPENCLAW_VOICE_ELEVENLABS_API_KEY",
+    "AGENTIC_SWITCHBOARD_GATEWAY_TOKEN",
+    "AGENTIC_SWITCHBOARD_ELEVENLABS_API_KEY",
 }
 
-LEGACY_ENV_TO_CONFIG = {
-    "AGENT_SWITCHBOARD_GATEWAY_URL": ("gateway", "url"),
-    "AGENT_SWITCHBOARD_GATEWAY_MODEL": ("gateway", "model"),
-    "AGENT_SWITCHBOARD_GATEWAY_SESSION_KEY": ("gateway", "session_key"),
-    "AGENT_SWITCHBOARD_HERMES_ROOT": ("agent", "hermes_root"),
-    "AGENT_SWITCHBOARD_HTTP_HOST": ("server", "host"),
-    "AGENT_SWITCHBOARD_HTTP_PORT": ("server", "port"),
-    "AGENT_SWITCHBOARD_WHISPER_MODEL": ("stt", "backend_models", "faster-whisper"),
-    "AGENT_SWITCHBOARD_WHISPER_ENDPOINT_URL": ("stt", "whisper_endpoint_url"),
-    "AGENT_SWITCHBOARD_WHISPER_ENDPOINT_MODEL": ("stt", "whisper_endpoint_model"),
-    "AGENT_SWITCHBOARD_WHISPER_DEVICE": ("stt", "device"),
-    "AGENT_SWITCHBOARD_WHISPER_COMPUTE_TYPE": ("stt", "compute_type"),
-    "AGENT_SWITCHBOARD_WHISPER_LANG": ("stt", "language"),
-    "AGENT_SWITCHBOARD_ELEVENLABS_VOICE_ID": ("tts", "elevenlabs_voice_id"),
-    "AGENT_SWITCHBOARD_ELEVENLABS_MODEL": ("tts", "elevenlabs_model"),
-    "AGENT_SWITCHBOARD_PIPER_MODEL": ("tts", "piper_model_path"),
-    "AGENT_SWITCHBOARD_PIPER_CONFIG": ("tts", "piper_config_path"),
-    "AGENT_SWITCHBOARD_PIPER_SPEAKER": ("tts", "piper_speaker"),
-    "AGENT_SWITCHBOARD_VIBEVOICE_BASE_URL": ("tts", "vibevoice_base_url"),
-    "AGENT_SWITCHBOARD_VIBEVOICE_VOICE": ("tts", "vibevoice_voice"),
-    "OPENCLAW_VOICE_GATEWAY_URL": ("gateway", "url"),
-    "OPENCLAW_VOICE_GATEWAY_MODEL": ("gateway", "model"),
-    "OPENCLAW_VOICE_GATEWAY_SESSION_KEY": ("gateway", "session_key"),
-    "OPENCLAW_VOICE_HERMES_ROOT": ("agent", "hermes_root"),
-    "OPENCLAW_VOICE_HTTP_HOST": ("server", "host"),
-    "OPENCLAW_VOICE_HTTP_PORT": ("server", "port"),
-    "OPENCLAW_VOICE_WHISPER_MODEL": ("stt", "backend_models", "faster-whisper"),
-    "OPENCLAW_VOICE_WHISPER_ENDPOINT_URL": ("stt", "whisper_endpoint_url"),
-    "OPENCLAW_VOICE_WHISPER_ENDPOINT_MODEL": ("stt", "whisper_endpoint_model"),
-    "OPENCLAW_VOICE_WHISPER_DEVICE": ("stt", "device"),
-    "OPENCLAW_VOICE_WHISPER_COMPUTE_TYPE": ("stt", "compute_type"),
-    "OPENCLAW_VOICE_WHISPER_LANG": ("stt", "language"),
-    "OPENCLAW_VOICE_ELEVENLABS_VOICE_ID": ("tts", "elevenlabs_voice_id"),
-    "OPENCLAW_VOICE_ELEVENLABS_MODEL": ("tts", "elevenlabs_model"),
-    "OPENCLAW_VOICE_PIPER_MODEL": ("tts", "piper_model_path"),
-    "OPENCLAW_VOICE_PIPER_CONFIG": ("tts", "piper_config_path"),
-    "OPENCLAW_VOICE_PIPER_SPEAKER": ("tts", "piper_speaker"),
-    "OPENCLAW_VOICE_VIBEVOICE_BASE_URL": ("tts", "vibevoice_base_url"),
-    "OPENCLAW_VOICE_VIBEVOICE_VOICE": ("tts", "vibevoice_voice"),
+ENV_TO_CONFIG = {
+    "AGENTIC_SWITCHBOARD_GATEWAY_URL": ("gateway", "url"),
+    "AGENTIC_SWITCHBOARD_GATEWAY_MODEL": ("gateway", "model"),
+    "AGENTIC_SWITCHBOARD_GATEWAY_SESSION_KEY": ("gateway", "session_key"),
+    "AGENTIC_SWITCHBOARD_HERMES_ROOT": ("agent", "hermes_root"),
+    "AGENTIC_SWITCHBOARD_HTTP_HOST": ("server", "host"),
+    "AGENTIC_SWITCHBOARD_HTTP_PORT": ("server", "port"),
+    "AGENTIC_SWITCHBOARD_WHISPER_MODEL": ("stt", "backend_models", "faster-whisper"),
+    "AGENTIC_SWITCHBOARD_WHISPER_ENDPOINT_URL": ("stt", "whisper_endpoint_url"),
+    "AGENTIC_SWITCHBOARD_WHISPER_ENDPOINT_MODEL": ("stt", "whisper_endpoint_model"),
+    "AGENTIC_SWITCHBOARD_WHISPER_DEVICE": ("stt", "device"),
+    "AGENTIC_SWITCHBOARD_WHISPER_COMPUTE_TYPE": ("stt", "compute_type"),
+    "AGENTIC_SWITCHBOARD_WHISPER_LANG": ("stt", "language"),
+    "AGENTIC_SWITCHBOARD_ELEVENLABS_VOICE_ID": ("tts", "elevenlabs_voice_id"),
+    "AGENTIC_SWITCHBOARD_ELEVENLABS_MODEL": ("tts", "elevenlabs_model"),
 }
 
 
 def normalize_agent_backend(value: str | None) -> str:
     normalized = str(value or "").strip().lower()
-    if normalized in {"", "gateway", "openclaw"}:
+    if normalized in {"", "gateway"}:
         return "gateway"
     if normalized == "hermes":
         return "hermes"
@@ -233,7 +173,7 @@ DEFAULT_CONFIG = {
     },
     "gateway": {
         "url": DEFAULT_LOCAL_GATEWAY_URL,
-        "model": "openclaw:main",
+        "model": "agentic-switchboard:main",
         "session_key": DEFAULT_VOICE_SESSION_KEY,
     },
     "agent": {
@@ -265,15 +205,6 @@ DEFAULT_CONFIG = {
         "elevenlabs_voice_name": "",
         "elevenlabs_model": "eleven_flash_v2_5",
         "elevenlabs_preset": ELEVENLABS_DEFAULT_PRESET,
-        "piper_model_path": "",
-        "piper_config_path": "",
-        "piper_speaker": 0,
-        "chatterbox_model": CHATTERBOX_DEFAULT_MODEL,
-        "chatterbox_device": CHATTERBOX_DEFAULT_DEVICE,
-        "chatterbox_language": "de",
-        "chatterbox_voice": CHATTERBOX_DEFAULT_VOICE,
-        "pockettts_voice": "alba",
-        "pockettts_variant": "b6369a24",
         "supertonic_python_path": "",
         "supertonic_voice": "M4",
         "supertonic_language": "en",
@@ -282,12 +213,6 @@ DEFAULT_CONFIG = {
         "speaker_voice_ids": {},
         "speaker_overrides": {},
         "news_speakers": [],
-        "vibevoice_base_url": DEFAULT_VIBEVOICE_BASE_URL,
-        "vibevoice_voice": "",
-        "neutts_backbone": "neuphonic/neutts-nano-german",
-        "neutts_codec": "neuphonic/neucodec",
-        "neutts_device": "auto",
-        "neutts_voice": "",
     },
     "audio": {
         "silence_threshold": 0.015,
@@ -314,22 +239,7 @@ DEFAULT_CONFIG = {
             "config_hash": "",
             "api_key_fingerprint": "",
         },
-        "piper": {
-            "config_hash": "",
-        },
-        "chatterbox": {
-            "config_hash": "",
-        },
-        "pockettts": {
-            "config_hash": "",
-        },
         "supertonic": {
-            "config_hash": "",
-        },
-        "vibevoice": {
-            "config_hash": "",
-        },
-        "neutts": {
             "config_hash": "",
         },
         "gateway": {

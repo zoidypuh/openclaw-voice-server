@@ -342,6 +342,7 @@
     <button id="push-to-talk-btn" class="mini-btn" type="button">talk on</button>
     <button id="interrupt-btn" class="mini-btn" type="button">interrupt</button>
     <button id="mute-btn" class="mini-btn" type="button">mute</button>
+    <button id="play-reply-btn" class="mini-btn hidden" type="button">play reply</button>
     <button id="sliders-toggle" class="mini-btn active" type="button">threshold</button>
   </div>
   <div id="level-row">
@@ -387,6 +388,10 @@
 
 <script>
 function resolveAppBase() {
+  const path = window.location.pathname || '/';
+  if (path === '/voice' || path.startsWith('/voice/')) {
+    return new URL('/voice/', window.location.href);
+  }
   return new URL('/', window.location.href);
 }
 
@@ -468,10 +473,14 @@ let manualFinishProbePending = false;
 let manualFinishProbeCooldownUntil = 0;
 let runtimeStatePromise = null;
 let playbackUnlocked = false;
+let webAudioUnlocked = false;
 let pendingServerSpeakRequestId = '';
 let pendingAudioMimeType = 'audio/mpeg';
+let currentAudioSourceNode = null;
+let pendingManualPlaybackItem = null;
 let lastAudioProcessAt = 0;
 let audioRecoveryPromise = null;
+let audioStartupPromise = null;
 let captureWatchdogTimer = null;
 let audioRecoveryHooksBound = false;
 let pushToTalkActive = false;
@@ -491,11 +500,11 @@ let settings = {
   min_speech_ms: 500,
 };
 
-const TUNING_STORAGE_KEY = 'agent-switchboard.voice.tuning.v1';
-const TUNING_PANEL_STORAGE_KEY = 'agent-switchboard.voice.tuning-panel.v1';
-const INTERRUPT_MODE_STORAGE_KEY = 'agent-switchboard.voice.interrupt-mode.v1';
-const INTERRUPT_PANEL_STORAGE_KEY = 'agent-switchboard.voice.interrupt-panel.v1';
-const PUSH_TO_TALK_STORAGE_KEY = 'agent-switchboard.voice.push-to-talk.v1';
+const TUNING_STORAGE_KEY = 'agentic-switchboard.voice.tuning.v1';
+const TUNING_PANEL_STORAGE_KEY = 'agentic-switchboard.voice.tuning-panel.v1';
+const INTERRUPT_MODE_STORAGE_KEY = 'agentic-switchboard.voice.interrupt-mode.v1';
+const INTERRUPT_PANEL_STORAGE_KEY = 'agentic-switchboard.voice.interrupt-panel.v1';
+const PUSH_TO_TALK_STORAGE_KEY = 'agentic-switchboard.voice.push-to-talk.v1';
 const DEFAULT_TUNING = {
   inputThresholdDb: -41,
   waitAfterSpeakMs: 1700,
@@ -538,6 +547,8 @@ const MANUAL_FINISH_PROBE_MIN_SILENCE_MS = 260;
 const MANUAL_FINISH_PROBE_COOLDOWN_MS = 900;
 const AUDIO_CAPTURE_STALL_MS = 2600;
 const AUDIO_WATCHDOG_INTERVAL_MS = 1000;
+const APPLE_AUDIO_STARTUP_RETRY_DELAYS_MS = [150, 350, 700];
+const SILENT_UNLOCK_WAV_DATA_URL = 'data:audio/wav;base64,UklGRhQBAABXQVZFZm10IBAAAAABAAEAwF0AAIC7AAACABAAZGF0YfAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
 let tuning = { ...DEFAULT_TUNING };
 let tuningPanelVisible = true;
 let interruptPanelVisible = false;
@@ -788,6 +799,18 @@ function sendPlaybackRejection(requestId, error) {
     type: 'playback-rejected',
     request_id: requestId,
     error: String(error || 'The voice client could not accept playback.'),
+  }));
+}
+
+function sendClientReady() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  ws.send(JSON.stringify({
+    type: 'client-ready',
+    features: {
+      playback_accept: true,
+    },
   }));
 }
 
@@ -1338,6 +1361,10 @@ function audioContextConstructor() {
   return window.AudioContext || window.webkitAudioContext || null;
 }
 
+function microphoneRequiresSecureContext() {
+  return window.isSecureContext === false;
+}
+
 function isAppleVoiceClient() {
   const userAgent = navigator.userAgent || '';
   if (/iPhone|iPad|iPod/.test(userAgent)) {
@@ -1349,6 +1376,10 @@ function isAppleVoiceClient() {
   return userAgent.includes('Macintosh');
 }
 
+function isCriOSVoiceClient() {
+  return /CriOS/i.test(navigator.userAgent || '');
+}
+
 function allowsFreeformBargeIn() {
   return !usesKeywordInterruptOnly();
 }
@@ -1358,17 +1389,33 @@ function isAbortLikeError(error) {
   return text.includes('aborterror') || text.includes('operation was aborted') || text.includes('aborted');
 }
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function describeResumeError(error) {
   const text = String(error?.message || error || '').trim();
   if (!text) {
     return 'resume failed';
   }
   const lower = text.toLowerCase();
+  if (lower.includes('requires a secure browser context')) {
+    return 'microphone requires https on iphone';
+  }
   if (lower.includes('permission')) {
+    if (isCriOSVoiceClient()) {
+      return 'chrome needs mic access in ios settings';
+    }
     return 'microphone permission blocked';
   }
   if (lower.includes('notallowederror')) {
+    if (isCriOSVoiceClient()) {
+      return 'chrome needs mic access in ios settings';
+    }
     return 'microphone permission blocked';
+  }
+  if (lower.includes('notreadableerror')) {
+    return 'microphone is already in use';
   }
   if (lower.includes('notfounderror')) {
     return 'no microphone available';
@@ -1377,7 +1424,7 @@ function describeResumeError(error) {
     return 'microphone requires https';
   }
   if (isAbortLikeError(error)) {
-    return 'audio startup was interrupted, tap pause again';
+    return 'audio startup was interrupted, tap resume again';
   }
   return text;
 }
@@ -1394,6 +1441,16 @@ function isCaptureStreamHealthy() {
 }
 
 function clearPlaybackSource() {
+  if (currentAudioSourceNode) {
+    try {
+      currentAudioSourceNode.onended = null;
+      currentAudioSourceNode.stop();
+    } catch (_) {}
+    try {
+      currentAudioSourceNode.disconnect();
+    } catch (_) {}
+    currentAudioSourceNode = null;
+  }
   if (!playbackAudio) {
     return;
   }
@@ -1403,6 +1460,33 @@ function clearPlaybackSource() {
   playbackAudio.currentTime = 0;
   playbackAudio.removeAttribute('src');
   playbackAudio.load();
+}
+
+function describePlaybackError(error) {
+  const name = String(error?.name || '').trim();
+  const message = String(error?.message || error || '').trim();
+  return [name, message].filter(Boolean).join(': ') || 'playback failed';
+}
+
+function describeWebSocketClose(event) {
+  const code = Number(event?.code) || 0;
+  const reason = String(event?.reason || '').trim();
+  if (code === 1006) {
+    return 'reconnecting: websocket closed abnormally';
+  }
+  if (code) {
+    return reason ? `reconnecting: websocket closed ${code} (${reason})` : `reconnecting: websocket closed ${code}`;
+  }
+  return 'reconnecting';
+}
+
+function setManualPlaybackItem(item, reason) {
+  pendingManualPlaybackItem = item || null;
+  const playReplyBtn = document.getElementById('play-reply-btn');
+  playReplyBtn.classList.toggle('hidden', !pendingManualPlaybackItem);
+  if (pendingManualPlaybackItem) {
+    setStatusText(`tap play reply (${reason})`);
+  }
 }
 
 function resetPlaybackElement({ preserveUnlocked = false } = {}) {
@@ -1440,6 +1524,7 @@ function teardownAudioCapture() {
     audioCtx.onstatechange = null;
     audioCtx.close().catch(() => {});
     audioCtx = null;
+    webAudioUnlocked = false;
   }
   lastAudioProcessAt = 0;
 }
@@ -1448,6 +1533,7 @@ async function ensurePlaybackReady() {
   if (audioCtx && audioCtx.state === 'suspended') {
     await audioCtx.resume();
   }
+  await unlockWebAudioPlayback();
   await unlockPlaybackAudio();
 }
 
@@ -1562,17 +1648,171 @@ async function unlockPlaybackAudio() {
   if (playbackUnlocked) {
     return audio;
   }
-  audio.muted = true;
-  audio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+  audio.muted = false;
+  audio.defaultMuted = false;
+  audio.volume = 1;
+  audio.src = SILENT_UNLOCK_WAV_DATA_URL;
   audio.load();
   await audio.play();
+  await delay(80);
   audio.pause();
   audio.currentTime = 0;
   audio.removeAttribute('src');
   audio.load();
-  audio.muted = false;
   playbackUnlocked = true;
   return audio;
+}
+
+async function tryUnlockPlaybackAudio() {
+  try {
+    return await unlockPlaybackAudio();
+  } catch (error) {
+    console.warn('playback unlock failed; continuing with microphone capture', error);
+    return null;
+  }
+}
+
+async function unlockWebAudioPlayback() {
+  if (!audioCtx || webAudioUnlocked) {
+    return;
+  }
+  if (audioCtx.state === 'suspended') {
+    await audioCtx.resume();
+  }
+  const frameCount = Math.max(1, Math.round(audioCtx.sampleRate * 0.02));
+  const buffer = audioCtx.createBuffer(1, frameCount, audioCtx.sampleRate);
+  const source = audioCtx.createBufferSource();
+  source.buffer = buffer;
+  source.connect(audioCtx.destination);
+  await new Promise((resolve, reject) => {
+    source.onended = resolve;
+    try {
+      source.start();
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    setTimeout(resolve, 60);
+  });
+  webAudioUnlocked = true;
+}
+
+async function playAudioBufferWithWebAudio(arrayBuffer, { onStart = null } = {}) {
+  if (!audioCtx) {
+    throw new Error('Web Audio is not initialized.');
+  }
+  if (audioCtx.state === 'suspended') {
+    await audioCtx.resume();
+  }
+  const decoded = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
+  const source = audioCtx.createBufferSource();
+  source.buffer = decoded;
+  source.connect(audioCtx.destination);
+  currentAudioSourceNode = source;
+  return new Promise((resolve, reject) => {
+    source.onended = () => {
+      if (currentAudioSourceNode === source) {
+        currentAudioSourceNode = null;
+      }
+      resolve();
+    };
+    try {
+      source.start();
+      if (onStart) {
+        onStart();
+      }
+    } catch (error) {
+      if (currentAudioSourceNode === source) {
+        currentAudioSourceNode = null;
+      }
+      reject(error);
+    }
+  });
+}
+
+function finishPlaybackItem() {
+  clearPlaybackSource();
+  currentAudio = null;
+  setManualPlaybackItem(null, '');
+  updateControlStates();
+  playNextAudio();
+}
+
+function failPlaybackItem(item, error) {
+  console.error(error);
+  if (item?.requestId) {
+    sendPlaybackRejection(item.requestId, describePlaybackError(error));
+  }
+  clearPlaybackSource();
+  currentAudio = null;
+  if (currentAudioUrl) {
+    URL.revokeObjectURL(currentAudioUrl);
+    currentAudioUrl = null;
+  }
+  if (isAppleVoiceClient()) {
+    setManualPlaybackItem(item, describePlaybackError(error));
+    updateControlStates();
+    return;
+  }
+  resetPlaybackElement();
+  setStatusText('tap resume to enable audio');
+  updateControlStates();
+  playNextAudio();
+}
+
+function playQueuedAudioItem(item, { manual = false } = {}) {
+  const nextBuffer = item && typeof item === 'object' && 'buffer' in item ? item.buffer : item;
+  const mimeType = item && typeof item === 'object' && 'mimeType' in item ? item.mimeType : 'audio/mpeg';
+  const requestId = item && typeof item === 'object' && 'requestId' in item ? item.requestId : '';
+  if (isAppleVoiceClient()) {
+    currentAudio = ensurePlaybackAudioElement();
+    startPlaybackSession();
+    playAudioBufferWithWebAudio(nextBuffer.slice(0), {
+      onStart: () => sendPlaybackAcceptance(requestId),
+    }).then(finishPlaybackItem).catch((error) => {
+      failPlaybackItem(item, error);
+    });
+    if (manual) {
+      setStatusText('playing reply');
+    }
+    updateControlStates();
+    return;
+  }
+  const blob = new Blob([nextBuffer], { type: mimeType });
+  currentAudioUrl = URL.createObjectURL(blob);
+  const playbackUrl = currentAudioUrl;
+  currentAudio = ensurePlaybackAudioElement();
+  currentAudio.src = playbackUrl;
+  currentAudio.playsInline = true;
+  currentAudio.preload = 'auto';
+  currentAudio.onended = () => {
+    URL.revokeObjectURL(playbackUrl);
+    if (currentAudioUrl === playbackUrl) {
+      currentAudioUrl = null;
+    }
+    finishPlaybackItem();
+  };
+  currentAudio.onerror = () => {
+    URL.revokeObjectURL(playbackUrl);
+    if (currentAudioUrl === playbackUrl) {
+      currentAudioUrl = null;
+    }
+    failPlaybackItem(item, new Error('audio element error'));
+  };
+  startPlaybackSession();
+  currentAudio.play().then(() => {
+    sendPlaybackAcceptance(requestId);
+  }).catch((error) => {
+    URL.revokeObjectURL(playbackUrl);
+    if (currentAudioUrl === playbackUrl) {
+      currentAudioUrl = null;
+    }
+    failPlaybackItem(item, error);
+  });
+  if (manual) {
+    setStatusText('playing reply');
+  }
+  updateControlStates();
 }
 
 async function loadRuntimeState() {
@@ -2438,6 +2678,9 @@ async function setPausedState(nextPaused, { forceInterrupt = false } = {}) {
     return;
   }
   try {
+    if (!nextPaused && isCriOSVoiceClient() && stream && !isCaptureStreamHealthy()) {
+      teardownAudioCapture();
+    }
     if (!audioCtx || !ws || ws.readyState === WebSocket.CLOSING || ws.readyState === WebSocket.CLOSED) {
       await initWithRetry();
       return;
@@ -2474,52 +2717,7 @@ function playNextAudio() {
     return;
   }
   const nextItem = audioQueue.shift();
-  const nextBuffer = nextItem && typeof nextItem === 'object' && 'buffer' in nextItem
-    ? nextItem.buffer
-    : nextItem;
-  const mimeType = nextItem && typeof nextItem === 'object' && 'mimeType' in nextItem
-    ? nextItem.mimeType
-    : 'audio/mpeg';
-  const blob = new Blob([nextBuffer], { type: mimeType });
-  currentAudioUrl = URL.createObjectURL(blob);
-  const playbackUrl = currentAudioUrl;
-  currentAudio = ensurePlaybackAudioElement();
-  currentAudio.src = playbackUrl;
-  currentAudio.playsInline = true;
-  currentAudio.preload = 'auto';
-  currentAudio.onended = () => {
-    URL.revokeObjectURL(playbackUrl);
-    if (currentAudioUrl === playbackUrl) {
-      currentAudioUrl = null;
-    }
-    clearPlaybackSource();
-    currentAudio = null;
-    updateControlStates();
-    playNextAudio();
-  };
-  currentAudio.onerror = () => {
-    URL.revokeObjectURL(playbackUrl);
-    if (currentAudioUrl === playbackUrl) {
-      currentAudioUrl = null;
-    }
-    resetPlaybackElement();
-    setStatusText('audio playback failed');
-    updateControlStates();
-    playNextAudio();
-  };
-  startPlaybackSession();
-  currentAudio.play().catch((error) => {
-    console.error(error);
-    URL.revokeObjectURL(playbackUrl);
-    if (currentAudioUrl === playbackUrl) {
-      currentAudioUrl = null;
-    }
-    resetPlaybackElement();
-    setStatusText('tap resume to enable audio');
-    updateControlStates();
-    playNextAudio();
-  });
-  updateControlStates();
+  playQueuedAudioItem(nextItem);
 }
 
 async function connect() {
@@ -2531,6 +2729,7 @@ async function connect() {
   ws = new WebSocket(wsUrl);
   ws.binaryType = 'arraybuffer';
   ws.onopen = () => {
+    sendClientReady();
     setReplyActive(false);
     rearmVoiceInterrupt();
     setState(paused ? 'paused' : 'listening');
@@ -2538,17 +2737,21 @@ async function connect() {
     void ensurePlaybackReady().catch(() => {});
     syncShellState({ force: true });
   };
-  ws.onclose = () => {
+  ws.onerror = (event) => {
+    console.error('voice websocket error', event);
+  };
+  ws.onclose = (event) => {
     busy = false;
     pendingIdle = false;
-      interruptPending = false;
-      pendingBargeInAudio = null;
-      pendingBargeInPrefixText = '';
-      pendingBargeInCommitMeta = null;
-      clearHeldTurnState();
-      setReplyActive(false);
-      stopPlayback();
+    interruptPending = false;
+    pendingBargeInAudio = null;
+    pendingBargeInPrefixText = '';
+    pendingBargeInCommitMeta = null;
+    clearHeldTurnState();
+    setReplyActive(false);
+    stopPlayback();
     setState('reconnecting');
+    setStatusText(describeWebSocketClose(event));
     updateControlStates();
     syncShellState({ force: true });
     setTimeout(connect, 1500);
@@ -2575,10 +2778,8 @@ async function connect() {
       audioQueue.push({
         buffer: event.data,
         mimeType: pendingAudioMimeType || 'audio/mpeg',
+        requestId: serverSpeakRequestId,
       });
-      if (serverSpeakRequestId) {
-        sendPlaybackAcceptance(serverSpeakRequestId);
-      }
       if (!playbackSoftPaused) {
         setState('speaking');
       }
@@ -2694,6 +2895,12 @@ async function ensureAudio() {
     }
     return;
   }
+  if (audioCtx || processor || analyser || stream) {
+    teardownAudioCapture();
+  }
+  if (microphoneRequiresSecureContext()) {
+    throw new Error('Microphone requires a secure browser context. Use HTTPS for iPhone/iPad remote access.');
+  }
   const getUserMedia = navigator.mediaDevices?.getUserMedia?.bind(navigator.mediaDevices);
   if (!getUserMedia) {
     throw new Error('This browser does not support microphone capture.');
@@ -2702,14 +2909,21 @@ async function ensureAudio() {
   if (!AudioContextClass) {
     throw new Error('This browser does not support Web Audio.');
   }
-  stream = await getUserMedia({
-    audio: {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-      channelCount: 1,
-    },
-  });
+  const preferredAudioConstraints = {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+    channelCount: 1,
+  };
+  try {
+    stream = await getUserMedia({ audio: preferredAudioConstraints });
+  } catch (error) {
+    if (!isAppleVoiceClient()) {
+      throw error;
+    }
+    console.warn('preferred microphone constraints failed; retrying with basic audio constraints', error);
+    stream = await getUserMedia({ audio: true });
+  }
   try {
     audioCtx = new AudioContextClass({ sampleRate: TARGET_CAPTURE_SAMPLE_RATE });
   } catch (_) {
@@ -2718,6 +2932,7 @@ async function ensureAudio() {
   if (audioCtx.state === 'suspended') {
     await audioCtx.resume();
   }
+  await unlockWebAudioPlayback();
   const source = audioCtx.createMediaStreamSource(stream);
   applyMicMuteState();
   analyser = audioCtx.createAnalyser();
@@ -2901,8 +3116,9 @@ function onAudioProcess(event) {
 
 async function init() {
   if (isAppleVoiceClient()) {
-    await unlockPlaybackAudio();
+    const playbackReady = tryUnlockPlaybackAudio();
     await ensureAudio();
+    await playbackReady;
   } else {
     await ensureAudio();
     await unlockPlaybackAudio();
@@ -2913,17 +3129,32 @@ async function init() {
 }
 
 async function initWithRetry() {
-  try {
-    await init();
-  } catch (error) {
-    if (!isAppleVoiceClient() || !isAbortLikeError(error)) {
-      throw error;
+  if (audioStartupPromise) {
+    return audioStartupPromise;
+  }
+  audioStartupPromise = initWithRetryOnce().finally(() => {
+    audioStartupPromise = null;
+  });
+  return audioStartupPromise;
+}
+
+async function initWithRetryOnce() {
+  const retryDelays = isAppleVoiceClient() ? APPLE_AUDIO_STARTUP_RETRY_DELAYS_MS : [];
+  let attempt = 0;
+  while (true) {
+    try {
+      await init();
+      return;
+    } catch (error) {
+      if (!isAbortLikeError(error) || attempt >= retryDelays.length) {
+        throw error;
+      }
+      teardownAudioCapture();
+      // Keep the original user-activated media element alive for Safari retries.
+      resetPlaybackElement({ preserveUnlocked: playbackUnlocked });
+      await delay(retryDelays[attempt]);
+      attempt += 1;
     }
-    teardownAudioCapture();
-    // Keep the original user-activated media element alive for the Safari retry.
-    resetPlaybackElement({ preserveUnlocked: playbackUnlocked });
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    await init();
   }
 }
 
@@ -2957,6 +3188,15 @@ document.getElementById('mute-btn').addEventListener('click', () => {
   setMutedState(!muted);
 });
 
+document.getElementById('play-reply-btn').addEventListener('click', () => {
+  if (!pendingManualPlaybackItem) {
+    return;
+  }
+  const item = pendingManualPlaybackItem;
+  setManualPlaybackItem(null, '');
+  playQueuedAudioItem(item, { manual: true });
+});
+
 setState('paused');
 resizeStateVisual();
 configureSetupLink();
@@ -2967,10 +3207,10 @@ document.getElementById('push-to-talk-btn').addEventListener('click', () => {
   setPushToTalkEnabled(!pushToTalkEnabled);
 });
 
-window.__agentSwitchboardManualInterrupt = manualInterrupt;
-window.__agentSwitchboardPushToTalkStart = beginPushToTalk;
-window.__agentSwitchboardPushToTalkEnd = endPushToTalk;
-window.__agentSwitchboardToggleVoiceInterrupt = () => setInterruptMode(
+window.__agenticSwitchboardManualInterrupt = manualInterrupt;
+window.__agenticSwitchboardPushToTalkStart = beginPushToTalk;
+window.__agenticSwitchboardPushToTalkEnd = endPushToTalk;
+window.__agenticSwitchboardToggleVoiceInterrupt = () => setInterruptMode(
   interruptMode === 'off' ? 'barge-in' : (interruptMode === 'barge-in' ? 'keyword' : 'off')
 );
 startShellStatusHeartbeat();

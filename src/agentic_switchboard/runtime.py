@@ -211,29 +211,6 @@ class VoiceRuntime:
             rate = str(override.get("rate") or override.get("edge_rate") or "").strip()
             if rate:
                 base_tts_settings["edge_rate"] = rate
-        elif provider == "vibevoice":
-            voice = str(override.get("voice") or override.get("vibevoice_voice") or "").strip()
-            if voice:
-                base_tts_settings["vibevoice_voice"] = voice
-            base_url = str(override.get("base_url") or override.get("vibevoice_base_url") or "").strip()
-            if base_url:
-                base_tts_settings["vibevoice_base_url"] = base_url
-        elif provider == "piper":
-            model_path = str(override.get("model_path") or override.get("piper_model_path") or "").strip()
-            if model_path:
-                base_tts_settings["piper_model_path"] = model_path
-            config_path = str(override.get("config_path") or override.get("piper_config_path") or "").strip()
-            if config_path:
-                base_tts_settings["piper_config_path"] = config_path
-            if "speaker" in override or "piper_speaker" in override:
-                base_tts_settings["piper_speaker"] = override.get(
-                    "speaker",
-                    override.get("piper_speaker"),
-                )
-        elif provider == "pockettts":
-            voice = str(override.get("voice") or override.get("pockettts_voice") or "").strip()
-            if voice:
-                base_tts_settings["pockettts_voice"] = voice
         elif provider == "supertonic":
             python_path = str(
                 override.get("python_path") or override.get("supertonic_python_path") or ""
@@ -286,9 +263,7 @@ class VoiceRuntime:
         *,
         speaker_name: str | None = None,
     ) -> bool:
-        tts_settings = cls._tts_settings_for_speaker(settings, speaker_name)
-        provider = str(tts_settings.get("default_provider") or "").strip().lower()
-        return provider == "pockettts"
+        return False
 
     @staticmethod
     def _conversation_backend(settings: dict) -> str:
@@ -620,10 +595,19 @@ class VoiceRuntime:
         await ws.prepare(request)
         await self._set_active_ws(ws)
 
-        transcriber = build_transcriber(turn_stt_settings)
-        tts_disabled = self._tts_disabled(settings)
-        synthesizer = None if tts_disabled else build_synthesizer(settings["tts"], settings["secrets"])
-        conversation_agent = self._build_conversation_agent(settings)
+        try:
+            transcriber = build_transcriber(turn_stt_settings)
+            tts_disabled = self._tts_disabled(settings)
+            synthesizer = None if tts_disabled else build_synthesizer(settings["tts"], settings["secrets"])
+            conversation_agent = self._build_conversation_agent(settings)
+        except Exception as exc:
+            LOGGER.exception("Voice runtime initialization failed")
+            with contextlib.suppress(ConnectionResetError):
+                await ws.send_json({"status": "idle", "error": str(exc)})
+            with contextlib.suppress(ConnectionResetError):
+                await ws.close(code=1011, message=str(exc).encode("utf-8")[:120])
+            await self._clear_active_ws(ws)
+            return ws
         command_language = settings["stt"].get("language", "")
 
         active_task: asyncio.Task | None = None

@@ -3,10 +3,11 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from ..catalog import SUPPORTED_TTS_PROVIDERS
-from ..errors import ValidationError
-from ..installer import ensure_python_package
-from .base import BaseSynthesizer
+from agentic_switchboard.errors import ValidationError
+from agentic_switchboard.installer import ensure_python_package
+from agentic_switchboard.tts.base import BaseSynthesizer
+
+from .catalog import SUPPORTED_TTS_PROVIDERS
 from .vibevoice import _pcm16le_to_wav
 
 import numpy as np
@@ -200,7 +201,7 @@ async def validate_neutts_voice(
     device: str,
     voice: str | None = None,
 ) -> dict:
-    from ..catalog import DEFAULT_SAMPLE_TEXT
+    from .catalog import DEFAULT_SAMPLE_TEXT
 
     synthesizer = NeuTTSSynthesizer(
         backbone=backbone,

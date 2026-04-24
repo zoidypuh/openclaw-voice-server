@@ -1,6 +1,6 @@
 import json
 
-from agent_switchboard.config_store import ConfigStore
+from agentic_switchboard.config_store import ConfigStore
 
 
 def test_config_store_splits_config_and_secrets(tmp_path):
@@ -11,14 +11,14 @@ def test_config_store_splits_config_and_secrets(tmp_path):
     store = ConfigStore(config_path=config_path, env_path=env_path)
     store.update_config(
         {
-            "gateway": {"url": "http://example.test/v1/chat/completions", "model": "openclaw:test"},
+            "gateway": {"url": "http://example.test/v1/chat/completions", "model": "agentic-switchboard:test"},
             "tts": {"elevenlabs_voice_id": "voice-123", "elevenlabs_voice_name": "Test Voice"},
         }
     )
     store.update_secrets(
         {
-            "AGENT_SWITCHBOARD_GATEWAY_TOKEN": "gw-secret",
-            "AGENT_SWITCHBOARD_ELEVENLABS_API_KEY": "sk-secret",
+            "AGENTIC_SWITCHBOARD_GATEWAY_TOKEN": "gw-secret",
+            "AGENTIC_SWITCHBOARD_ELEVENLABS_API_KEY": "sk-secret",
         }
     )
 
@@ -30,14 +30,14 @@ def test_config_store_splits_config_and_secrets(tmp_path):
     assert "gw-secret" not in written_config
     assert "sk-secret" not in written_config
     assert "KEEP_ME=1" in written_env
-    assert "AGENT_SWITCHBOARD_GATEWAY_TOKEN=gw-secret" in written_env
-    assert "AGENT_SWITCHBOARD_ELEVENLABS_API_KEY=sk-secret" in written_env
+    assert "AGENTIC_SWITCHBOARD_GATEWAY_TOKEN=gw-secret" in written_env
+    assert "AGENTIC_SWITCHBOARD_ELEVENLABS_API_KEY=sk-secret" in written_env
 
 
 def test_config_store_reads_legacy_voice_id_from_env(tmp_path):
     config_path = tmp_path / "config.json"
     env_path = tmp_path / ".env"
-    env_path.write_text("AGENT_SWITCHBOARD_ELEVENLABS_VOICE_ID=voice-from-env\n", encoding="utf-8")
+    env_path.write_text("AGENTIC_SWITCHBOARD_ELEVENLABS_VOICE_ID=voice-from-env\n", encoding="utf-8")
 
     store = ConfigStore(config_path=config_path, env_path=env_path)
     settings = store.load_runtime_settings()
@@ -49,7 +49,7 @@ def test_config_store_reads_whisper_endpoint_from_env(tmp_path):
     config_path = tmp_path / "config.json"
     env_path = tmp_path / ".env"
     env_path.write_text(
-        "AGENT_SWITCHBOARD_WHISPER_ENDPOINT_URL=http://127.0.0.1:18000/v1/audio/transcriptions\n",
+        "AGENTIC_SWITCHBOARD_WHISPER_ENDPOINT_URL=http://127.0.0.1:18000/v1/audio/transcriptions\n",
         encoding="utf-8",
     )
 
@@ -62,7 +62,7 @@ def test_config_store_reads_whisper_endpoint_from_env(tmp_path):
 def test_config_store_reads_hermes_root_from_env(tmp_path):
     config_path = tmp_path / "config.json"
     env_path = tmp_path / ".env"
-    env_path.write_text("AGENT_SWITCHBOARD_HERMES_ROOT=/tmp/hermes-agent\n", encoding="utf-8")
+    env_path.write_text("AGENTIC_SWITCHBOARD_HERMES_ROOT=/tmp/hermes-agent\n", encoding="utf-8")
 
     store = ConfigStore(config_path=config_path, env_path=env_path)
     settings = store.load_runtime_settings()
@@ -77,7 +77,7 @@ def test_config_store_prefers_explicit_config_over_legacy_env(tmp_path):
         json.dumps({"agent": {"hermes_root": "/srv/hermes-agent"}}),
         encoding="utf-8",
     )
-    env_path.write_text("AGENT_SWITCHBOARD_HERMES_ROOT=/tmp/hermes-agent\n", encoding="utf-8")
+    env_path.write_text("AGENTIC_SWITCHBOARD_HERMES_ROOT=/tmp/hermes-agent\n", encoding="utf-8")
 
     store = ConfigStore(config_path=config_path, env_path=env_path)
     settings = store.load_runtime_settings()

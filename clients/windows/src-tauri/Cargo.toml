@@ -1,12 +1,12 @@
 [package]
-name = "agent-switchboard-windows-client"
+name = "agentic-switchboard-windows-client"
 version = "0.1.0"
-description = "Tauri Windows client for Agent Switchboard."
-authors = ["Agent Switchboard contributors"]
+description = "Tauri Windows client for Agentic Switchboard."
+authors = ["Agentic Switchboard contributors"]
 edition = "2021"
 
 [lib]
-name = "agent_switchboard_windows_client_lib"
+name = "agentic_switchboard_windows_client_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

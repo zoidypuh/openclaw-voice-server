@@ -1,8 +1,8 @@
-# Agent Switchboard
+# Agentic Switchboard
 
-![Agent Switchboard voice runtime screenshot](image.png)
+![Agentic Switchboard voice runtime screenshot](image.png)
 
-`agent-switchboard` is a local voice frontend for text agents. It gives you a browser setup page at `/setup`, a voice UI at `/voice`, local or remote Whisper-family STT, multiple TTS backends, and an optional Windows tray client.
+`agentic-switchboard` is a local voice frontend for text agents. It gives you a browser setup page at `/setup`, a voice UI at `/voice`, local or remote Whisper-family STT, multiple TTS backends, and an optional Windows tray client.
 
 This repo is still alpha. The main path works, but rough edges still exist.
 
@@ -40,8 +40,8 @@ If you want the shortest route to a first working run, do this.
 1. Clone the repo.
 
 ```bash
-git clone <repo-url> agent-switchboard
-cd agent-switchboard
+git clone <repo-url> agentic-switchboard
+cd agentic-switchboard
 ```
 
 2. Create and activate a virtual environment.
@@ -69,20 +69,20 @@ cp .env.example .env
 At minimum, if you use the gateway backend, set:
 
 ```dotenv
-AGENT_SWITCHBOARD_GATEWAY_TOKEN=replace-me
+AGENTIC_SWITCHBOARD_GATEWAY_TOKEN=replace-me
 ```
 
 If you use ElevenLabs, also set:
 
 ```dotenv
-AGENT_SWITCHBOARD_ELEVENLABS_API_KEY=replace-me
+AGENTIC_SWITCHBOARD_ELEVENLABS_API_KEY=replace-me
 ```
 
 6. Start the server from the repo root.
 
 ```bash
 source .venv/bin/activate
-agent-switchboard
+agentic-switchboard
 ```
 
 7. Open the setup page in a browser.
@@ -119,10 +119,10 @@ That removes TTS from the first-run debugging path.
 
 ## Important Runtime Rule
 
-Run `agent-switchboard` from the repo root unless you also set:
+Run `agentic-switchboard` from the repo root unless you also set:
 
-- `AGENT_SWITCHBOARD_CONFIG_FILE`
-- `AGENT_SWITCHBOARD_ENV_FILE`
+- `AGENTIC_SWITCHBOARD_CONFIG_FILE`
+- `AGENTIC_SWITCHBOARD_ENV_FILE`
 
 By default, the server reads:
 
@@ -144,48 +144,37 @@ pip install -e .[dev]
 Optional extras:
 
 ```bash
-pip install -e .[dev,stt-faster-whisper,stt-whisper,tts-edge,tts-piper,tts-chatterbox]
+pip install -e .[dev,stt-faster-whisper,stt-whisper,tts-edge]
 ```
 
 Notes:
 
 - the setup page can install some missing Python packages while validating providers
-- Pocket TTS is currently installed on demand during validation
-- NeuTTS is currently installed on demand during validation
-- VibeVoice runs in its own separate environment and server
+- legacy community TTS providers live under `plugins/tts-community-legacy` and are not maintained by core
+
+## STT Backends
+
+Currently supported:
+
+- Faster Whisper local STT, including CUDA when the local machine has a working NVIDIA/CUDA setup
+- OpenAI Whisper local STT when `openai-whisper` is installed and no endpoint URL is configured
+- OpenAI-compatible remote Whisper endpoint via `POST /v1/audio/transcriptions`
+
+The setup page has presets for the common STT paths:
+
+- `Local GPU Whisper` selects in-process `faster-whisper` on CUDA and does not use a remote endpoint.
+- `Remote Whisper` selects the Whisper-compatible HTTP transcription endpoint and sends recorded audio to that server.
+
+The OpenAI-compatible endpoint support is for STT only. Core TTS does not currently include a generic OpenAI-compatible TTS endpoint provider.
 
 ## TTS Backends
 
 Currently supported:
 
 - Edge TTS
-- Piper
-- Chatterbox
-- Pocket TTS
 - ElevenLabs
-- NeuTTS
-- VibeVoice Realtime
+- Supertonic
 - `Disabled (text only)`
-
-## NeuTTS Local Voices
-
-If you use NeuTTS voice cloning, keep local reference material in `neutts-voices/`.
-
-Example:
-
-```text
-neutts-voices/
-  mara/
-    reference.wav
-    reference.txt
-```
-
-Rules:
-
-- each voice gets its own subdirectory
-- each subdirectory needs one `.wav` and one `.txt`
-- the transcript should closely match the spoken audio
-- these files are local workspace data, not something to commit
 
 ## Remote Access
 
@@ -205,6 +194,7 @@ Important:
 
 - the browser URL and the conversation backend URL are not the same thing
 - use your local gateway URL inside setup, not the public browser URL
+- iPhone/iPad browsers will not show the microphone permission prompt for plain `http://<lan-ip>:8765`; use a trusted `https://` URL such as Tailscale HTTPS or another reverse proxy
 - remote browser reachability does not mean every browser engine will work correctly
 
 ## Windows Client
@@ -216,7 +206,7 @@ This repo does not ship a prebuilt Windows release or checked-in bundle artifact
 Development run on Windows:
 
 ```powershell
-cd C:\path\to\agent-switchboard\clients\windows
+cd C:\path\to\agentic-switchboard\clients\windows
 npm install
 npm run tauri:dev
 ```
@@ -224,7 +214,7 @@ npm run tauri:dev
 Build the Windows client:
 
 ```powershell
-cd C:\path\to\agent-switchboard\clients\windows
+cd C:\path\to\agentic-switchboard\clients\windows
 npm install
 npm run tauri:build
 ```
@@ -262,14 +252,14 @@ Example:
 
 ```bash
 source .venv/bin/activate
-agent-switchboard-calibrate samples/hey-go --expected-action send --send-phrase "hey go"
+agentic-switchboard-calibrate samples/hey-go --expected-action send --send-phrase "hey go"
 ```
 
 Help:
 
 ```bash
 source .venv/bin/activate
-agent-switchboard-calibrate --help
+agentic-switchboard-calibrate --help
 ```
 
 ## Speak Paragraphs via HTTP
@@ -294,25 +284,25 @@ If you want to feed a longer reply and send each paragraph separately, use the h
 
 ```bash
 source .venv/bin/activate
-printf 'First paragraph.\n\nSecond paragraph.\n' | agent-switchboard-speak
+printf 'First paragraph.\n\nSecond paragraph.\n' | agentic-switchboard-speak
 ```
 
 It also accepts inline text or a file:
 
 ```bash
 source .venv/bin/activate
-agent-switchboard-speak --preset-name expressive --speaker-name Speaker-B \
+agentic-switchboard-speak --preset-name expressive --speaker-name Speaker-B \
   "First paragraph."
 
 source .venv/bin/activate
-agent-switchboard-speak --file reply.txt
+agentic-switchboard-speak --file reply.txt
 ```
 
 Help:
 
 ```bash
 source .venv/bin/activate
-agent-switchboard-speak --help
+agentic-switchboard-speak --help
 ```
 
 ## Troubleshooting

@@ -195,7 +195,7 @@ class _HermesAgentSession:
         if not self.project_root.exists():
             raise ValidationError(
                 f"Hermes Agent was not found at {self.project_root}. "
-                "Set AGENT_SWITCHBOARD_HERMES_ROOT if it is installed elsewhere."
+                "Set AGENTIC_SWITCHBOARD_HERMES_ROOT if it is installed elsewhere."
             )
         self._agent = None
         self._subprocess_python = self._resolve_subprocess_python(self.project_root)
@@ -207,7 +207,7 @@ class _HermesAgentSession:
 
     @staticmethod
     def _resolve_project_root(configured_root: str | None = None) -> Path:
-        configured = str(configured_root or os.environ.get("AGENT_SWITCHBOARD_HERMES_ROOT") or "").strip()
+        configured = str(configured_root or os.environ.get("AGENTIC_SWITCHBOARD_HERMES_ROOT") or "").strip()
         if configured:
             return Path(configured).expanduser().resolve()
         return (Path.home() / ".hermes" / "hermes-agent").resolve()

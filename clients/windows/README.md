@@ -1,4 +1,4 @@
-# Agent Switchboard Windows Client
+# Agentic Switchboard Windows Client
 
 This is a Windows-oriented client wrapper for the existing Python voice server.
 
@@ -44,7 +44,7 @@ This is the supported path for running the voice server **directly on Windows** 
 ### Step 1 — Bootstrap
 
 ```powershell
-cd C:\path\to\agent-switchboard\clients\windows
+cd C:\path\to\agentic-switchboard\clients\windows
 py bootstrap-windows.py
 ```
 
@@ -68,12 +68,12 @@ Edit `config.json` in the repo root:
 }
 ```
 
-Or set `AGENT_SWITCHBOARD_WHISPER_DEVICE=cpu` in `.env`.
+Or set `AGENTIC_SWITCHBOARD_WHISPER_DEVICE=cpu` in `.env`.
 
 For a **remote Whisper endpoint** instead of local CPU, set:
 ```
-AGENT_SWITCHBOARD_WHISPER_ENDPOINT_URL=https://your-whisper-endpoint.com
-AGENT_SWITCHBOARD_WHISPER_ENDPOINT_MODEL=large-v3
+AGENTIC_SWITCHBOARD_WHISPER_ENDPOINT_URL=https://your-whisper-endpoint.com
+AGENTIC_SWITCHBOARD_WHISPER_ENDPOINT_MODEL=large-v3
 ```
 
 ### Step 3 — Start
@@ -106,15 +106,15 @@ wscript.exe .\start-windows-backend-hidden.vbs
 Start the Python backend first in Linux/macOS/WSL:
 
 ```bash
-cd /path/to/agent-switchboard
+cd /path/to/agentic-switchboard
 source .venv/bin/activate
-agent-switchboard
+agentic-switchboard
 ```
 
 Then from this folder on Windows:
 
 ```powershell
-cd C:\path\to\agent-switchboard\clients\windows
+cd C:\path\to\agentic-switchboard\clients\windows
 npm install
 npm run tauri:dev
 ```
@@ -134,13 +134,13 @@ The batch script:
 - starts the backend inside WSL from that repo
 - reuses the existing `.venv` if present
 - skips startup if something is already listening on `127.0.0.1:8765`
-- writes backend logs to `%LOCALAPPDATA%\AgentSwitchboard\logs\wsl-voice-server.log`
+- writes backend logs to `%LOCALAPPDATA%\AgenticSwitchboard\logs\wsl-voice-server.log`
 
 Optional environment variable:
 
-- `AGENT_SWITCHBOARD_WSL_DISTRO`
+- `AGENTIC_SWITCHBOARD_WSL_DISTRO`
   set this in Windows if you need a specific distro instead of the default WSL distro
-- `AGENT_SWITCHBOARD_WSL_REPO_PATH`
+- `AGENTIC_SWITCHBOARD_WSL_REPO_PATH`
   set this only if the repo is not next to this script or if you want to override the auto-detected WSL path
 
 Startup usage:
@@ -160,7 +160,7 @@ wscript.exe .\start-wsl-voice-server-hidden.vbs
 From this folder on Windows:
 
 ```powershell
-cd C:\path\to\agent-switchboard\clients\windows
+cd C:\path\to\agentic-switchboard\clients\windows
 npm install
 npm run tauri:build
 ```

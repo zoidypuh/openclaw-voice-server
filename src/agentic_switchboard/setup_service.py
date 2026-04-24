@@ -11,15 +11,12 @@ from typing import Any
 from .agents import validate_hermes_connection
 from .catalog import (
     APP_VERSION_LABEL,
-    CHATTERBOX_DEFAULT_DEVICE,
-    CHATTERBOX_DEFAULT_MODEL,
     DEFAULT_HERMES_ROOT,
     DEFAULT_LOCAL_GATEWAY_URL,
     DEFAULT_REMOTE_WHISPER_ENDPOINT_PATH,
     DEFAULT_REMOTE_WHISPER_HOST_ALIAS,
     DEFAULT_REMOTE_WHISPER_MODEL,
     DEFAULT_REMOTE_WHISPER_PORT,
-    DEFAULT_VIBEVOICE_BASE_URL,
     DEFAULT_VOICE_SESSION_KEY,
     DEFAULT_WINDOWS_SHORTCUTS,
     ELEVENLABS_PRESETS,
@@ -31,65 +28,34 @@ from .catalog import (
 from .config_store import ConfigStore
 from .errors import ValidationError
 from .gateway import normalize_gateway_url, validate_gateway_connection
-from .installer import ensure_python_package, module_available
+from .installer import module_available
 from .stt import normalize_stt_device, validate_stt_selection as validate_stt_selection_step
 from .tts import (
-    CHATTERBOX_SUPPORTED_DEVICES,
-    CHATTERBOX_SUPPORTED_MODELS,
-    NEUTTS_SUPPORTED_DEVICES,
-    POCKETTTS_DEFAULT_VOICE,
-    POCKETTTS_PRESET_VOICES,
     SUPERTONIC_DEFAULT_LANGUAGE,
     SUPERTONIC_DEFAULT_SPEED,
     SUPERTONIC_DEFAULT_TOTAL_STEPS,
     SUPERTONIC_DEFAULT_VOICE,
     SUPERTONIC_SUPPORTED_LANGUAGES,
     SUPERTONIC_SUPPORTED_VOICES,
-    default_piper_config_path,
     detect_supertonic_python_path,
-    list_local_chatterbox_voices,
-    list_local_neutts_voices,
     list_edge_voices,
     list_elevenlabs_voices,
-    list_vibevoice_voices,
-    normalize_chatterbox_language,
-    normalize_chatterbox_model,
     normalize_elevenlabs_preset,
-    normalize_neutts_device,
-    normalize_piper_model_path,
-    normalize_piper_speaker,
-    normalize_pockettts_voice,
     normalize_supertonic_language,
     normalize_supertonic_speed,
     normalize_supertonic_total_steps,
     normalize_supertonic_voice,
-    normalize_vibevoice_base_url,
-    resolve_chatterbox_voice,
-    resolve_neutts_voice,
     resolve_supertonic_python_path,
-    validate_chatterbox_voice as validate_chatterbox_voice_step,
     validate_edge_voice,
     validate_elevenlabs_api_key as validate_elevenlabs_api_key_step,
     validate_elevenlabs_voice as validate_elevenlabs_voice_step,
-    validate_neutts_voice as validate_neutts_voice_step,
-    validate_piper_voice as validate_piper_voice_step,
-    validate_pockettts_voice as validate_pockettts_voice_step,
     validate_supertonic_voice as validate_supertonic_voice_step,
-    validate_vibevoice_voice as validate_vibevoice_voice_step,
 )
 
 
 class SetupService:
     def __init__(self, store: ConfigStore):
         self.store = store
-
-    @staticmethod
-    def _pockettts_requires_english(settings: dict[str, Any]) -> None:
-        language = str(((settings.get("stt") or {}).get("language")) or "").strip().lower()
-        if language != "en":
-            raise ValidationError(
-                "Pocket TTS is English-only right now. Set the validated STT language to 'en' before using Pocket TTS."
-            )
 
     @staticmethod
     def _resolve_ssh_hostname(alias: str) -> str:
@@ -128,24 +94,18 @@ class SetupService:
 
     def _default_remote_whisper_hint(self, settings: dict[str, Any]) -> dict[str, str]:
         env_url = str(
-            os.environ.get("AGENT_SWITCHBOARD_REMOTE_WHISPER_ENDPOINT_URL")
-            or os.environ.get("OPENCLAW_VOICE_REMOTE_WHISPER_ENDPOINT_URL")
-            or os.environ.get("AGENT_SWITCHBOARD_MAC_WHISPER_ENDPOINT_URL")
-            or os.environ.get("OPENCLAW_VOICE_MAC_WHISPER_ENDPOINT_URL")
+            os.environ.get("AGENTIC_SWITCHBOARD_REMOTE_WHISPER_ENDPOINT_URL")
+            or os.environ.get("AGENTIC_SWITCHBOARD_MAC_WHISPER_ENDPOINT_URL")
             or ""
         ).strip()
         env_model = str(
-            os.environ.get("AGENT_SWITCHBOARD_REMOTE_WHISPER_ENDPOINT_MODEL")
-            or os.environ.get("OPENCLAW_VOICE_REMOTE_WHISPER_ENDPOINT_MODEL")
-            or os.environ.get("AGENT_SWITCHBOARD_MAC_WHISPER_ENDPOINT_MODEL")
-            or os.environ.get("OPENCLAW_VOICE_MAC_WHISPER_ENDPOINT_MODEL")
+            os.environ.get("AGENTIC_SWITCHBOARD_REMOTE_WHISPER_ENDPOINT_MODEL")
+            or os.environ.get("AGENTIC_SWITCHBOARD_MAC_WHISPER_ENDPOINT_MODEL")
             or ""
         ).strip()
         host_alias = str(
-            os.environ.get("AGENT_SWITCHBOARD_REMOTE_WHISPER_HOST_ALIAS")
-            or os.environ.get("OPENCLAW_VOICE_REMOTE_WHISPER_HOST_ALIAS")
-            or os.environ.get("AGENT_SWITCHBOARD_MAC_WHISPER_SSH_ALIAS")
-            or os.environ.get("OPENCLAW_VOICE_MAC_WHISPER_SSH_ALIAS")
+            os.environ.get("AGENTIC_SWITCHBOARD_REMOTE_WHISPER_HOST_ALIAS")
+            or os.environ.get("AGENTIC_SWITCHBOARD_MAC_WHISPER_SSH_ALIAS")
             or DEFAULT_REMOTE_WHISPER_HOST_ALIAS
         ).strip()
         resolved_host = self._resolve_ssh_hostname(host_alias) if host_alias else ""
@@ -163,50 +123,6 @@ class SetupService:
             "model": env_model or saved_model or DEFAULT_REMOTE_WHISPER_MODEL,
             "host_alias": host_alias,
         }
-
-    def _local_piper_voices(self, settings: dict[str, Any]) -> list[dict[str, str]]:
-        candidate_dirs = [
-            self.store.config_path.parent / "piper-voices",
-            Path.cwd() / "piper-voices",
-        ]
-        seen_dirs: set[str] = set()
-        voices: list[dict[str, str]] = []
-        seen_models: set[str] = set()
-        for directory in candidate_dirs:
-            resolved_dir = str(directory.resolve())
-            if resolved_dir in seen_dirs or not directory.is_dir():
-                continue
-            seen_dirs.add(resolved_dir)
-            for model_path in sorted(directory.glob("*.onnx")):
-                resolved_model_path = str(model_path.resolve())
-                if resolved_model_path in seen_models:
-                    continue
-                seen_models.add(resolved_model_path)
-                config_path = Path(default_piper_config_path(resolved_model_path))
-                voices.append(
-                    {
-                        "voice_name": model_path.name,
-                        "model_path": resolved_model_path,
-                        "config_path": str(config_path.resolve()) if config_path.is_file() else "",
-                        "source_dir": resolved_dir,
-                    }
-                )
-        return voices
-
-    @staticmethod
-    def _default_local_piper_voice(
-        settings: dict[str, Any],
-        voices: list[dict[str, str]],
-    ) -> dict[str, str] | None:
-        if not voices:
-            return None
-        language = str((settings.get("stt") or {}).get("language") or "").strip().lower()
-        if language and language != "auto":
-            prefix = f"{language}_"
-            for voice in voices:
-                if Path(voice["model_path"]).name.lower().startswith(prefix):
-                    return voice
-        return voices[0]
 
     @staticmethod
     def _fingerprint_secret(value: str) -> str:
@@ -390,38 +306,11 @@ class SetupService:
                 and str(tts.get("elevenlabs_voice_id") or "").strip()
                 and str(tts.get("elevenlabs_model") or "").strip()
             )
-        if provider_id == "piper":
-            return bool(
-                str(tts.get("piper_model_path") or "").strip()
-                and str(tts.get("piper_config_path") or "").strip()
-            )
-        if provider_id == "chatterbox":
-            return bool(
-                str(tts.get("chatterbox_model") or "").strip()
-                and str(tts.get("chatterbox_device") or "").strip()
-                and str(tts.get("chatterbox_language") or "").strip()
-                and str(tts.get("chatterbox_voice") or "").strip()
-            )
-        if provider_id == "pockettts":
-            if str((settings.get("stt") or {}).get("language") or "").strip().lower() != "en":
-                return False
-            return bool(str(tts.get("pockettts_voice") or "").strip())
         if provider_id == "supertonic":
             return bool(
                 str(tts.get("supertonic_python_path") or "").strip()
                 and str(tts.get("supertonic_voice") or "").strip()
                 and str(tts.get("supertonic_language") or "").strip()
-            )
-        if provider_id == "vibevoice":
-            return bool(
-                str(tts.get("vibevoice_base_url") or "").strip()
-                and str(tts.get("vibevoice_voice") or "").strip()
-            )
-        if provider_id == "neutts":
-            return bool(
-                str(tts.get("neutts_backbone") or "").strip()
-                and str(tts.get("neutts_codec") or "").strip()
-                and str(tts.get("neutts_device") or "").strip()
             )
         return False
 
@@ -525,36 +414,6 @@ class SetupService:
             and api_key_fingerprint == validation["eleven_voice"]["api_key_fingerprint"]
             and self._validated_config_matches(eleven_voice_snapshot, validation["eleven_voice"])
         )
-        piper_snapshot = {
-            "model_path": settings["tts"]["piper_model_path"],
-            "config_path": settings["tts"]["piper_config_path"],
-            "speaker": settings["tts"]["piper_speaker"],
-        }
-        piper_ready = "piper" not in settings["tts"]["enabled_providers"] or self._validated_config_matches(
-            piper_snapshot,
-            validation["piper"],
-        )
-        chatterbox_snapshot = {
-            "model": settings["tts"]["chatterbox_model"],
-            "device": settings["tts"]["chatterbox_device"],
-            "language": settings["tts"]["chatterbox_language"],
-            "voice": settings["tts"].get("chatterbox_voice") or "default",
-        }
-        chatterbox_ready = "chatterbox" not in settings["tts"]["enabled_providers"] or self._validated_config_matches(
-            chatterbox_snapshot,
-            validation["chatterbox"],
-        )
-        pockettts_snapshot = {
-            "voice": settings["tts"].get("pockettts_voice", ""),
-        }
-        pockettts_language_ok = str((settings.get("stt") or {}).get("language") or "").strip().lower() == "en"
-        pockettts_ready = "pockettts" not in settings["tts"]["enabled_providers"] or (
-            pockettts_language_ok
-            and self._validated_config_matches(
-                pockettts_snapshot,
-                validation.get("pockettts", {}),
-            )
-        )
         supertonic_snapshot = {
             "python_path": settings["tts"].get("supertonic_python_path", ""),
             "voice": settings["tts"].get("supertonic_voice", ""),
@@ -565,24 +424,6 @@ class SetupService:
         supertonic_ready = "supertonic" not in settings["tts"]["enabled_providers"] or self._validated_config_matches(
             supertonic_snapshot,
             validation.get("supertonic", {}),
-        )
-        vibevoice_snapshot = {
-            "base_url": settings["tts"]["vibevoice_base_url"],
-            "voice": settings["tts"]["vibevoice_voice"],
-        }
-        vibevoice_ready = "vibevoice" not in settings["tts"]["enabled_providers"] or self._validated_config_matches(
-            vibevoice_snapshot,
-            validation["vibevoice"],
-        )
-        neutts_snapshot = {
-            "backbone": settings["tts"].get("neutts_backbone", ""),
-            "codec": settings["tts"].get("neutts_codec", ""),
-            "device": settings["tts"].get("neutts_device", ""),
-            "voice": settings["tts"].get("neutts_voice", ""),
-        }
-        neutts_ready = "neutts" not in settings["tts"]["enabled_providers"] or self._validated_config_matches(
-            neutts_snapshot,
-            validation.get("neutts", {}),
         )
 
         gateway_token_fingerprint = self._fingerprint_secret(settings["secrets"]["gateway_token"])
@@ -620,25 +461,13 @@ class SetupService:
             "edge_ready": edge_ready,
             "eleven_key_ready": eleven_key_ready,
             "eleven_voice_ready": eleven_voice_ready,
-            "piper_ready": piper_ready,
-            "chatterbox_ready": chatterbox_ready,
-            "pockettts_ready": pockettts_ready,
             "supertonic_ready": supertonic_ready,
-            "vibevoice_ready": vibevoice_ready,
-            "neutts_ready": neutts_ready,
             "runtime_ready": runtime_ready,
         }
 
     def state(self) -> dict[str, Any]:
         settings = self.store.load_runtime_settings()
         remote_whisper_hint = self._default_remote_whisper_hint(settings)
-        local_piper_voices = self._local_piper_voices(settings)
-        local_chatterbox_voices = list_local_chatterbox_voices()
-        local_neutts_voices = list_local_neutts_voices()
-        default_local_piper_voice = self._default_local_piper_voice(settings, local_piper_voices)
-        default_local_piper_source_dir = (
-            default_local_piper_voice["source_dir"] if default_local_piper_voice else ""
-        )
         return {
             "version_label": APP_VERSION_LABEL,
             "message": (
@@ -652,20 +481,6 @@ class SetupService:
                 "agent_backends": list(SUPPORTED_AGENT_BACKENDS.values()),
                 "stt_backends": list(SUPPORTED_STT_BACKENDS.values()),
                 "tts_providers": list(SUPPORTED_TTS_PROVIDERS.values()),
-                "chatterbox_models": [
-                    {"id": model_id, "label": label}
-                    for model_id, label in CHATTERBOX_SUPPORTED_MODELS.items()
-                ],
-                "chatterbox_devices": [
-                    {"id": device_id, "label": device_id.upper() if device_id != "auto" else "Auto"}
-                    for device_id in sorted(CHATTERBOX_SUPPORTED_DEVICES, key=lambda item: ("auto" != item, item))
-                ],
-                "chatterbox_voices": [{"id": "default", "label": "Built-In Default"}]
-                + [{"id": item["id"], "label": item["label"]} for item in local_chatterbox_voices],
-                "pockettts_voices": [
-                    {"id": voice_id, "label": label}
-                    for voice_id, label in POCKETTTS_PRESET_VOICES.items()
-                ],
                 "supertonic_languages": [
                     {"id": language_id, "label": label}
                     for language_id, label in SUPERTONIC_SUPPORTED_LANGUAGES.items()
@@ -674,11 +489,6 @@ class SetupService:
                     {"id": voice_id, "label": label}
                     for voice_id, label in SUPERTONIC_SUPPORTED_VOICES.items()
                 ],
-                "neutts_devices": [
-                    {"id": device_id, "label": device_id.upper() if device_id != "auto" else "Auto"}
-                    for device_id in sorted(NEUTTS_SUPPORTED_DEVICES, key=lambda item: ("auto" != item, item))
-                ],
-                "neutts_voices": [{"id": item["id"], "label": item["label"]} for item in local_neutts_voices],
                 "elevenlabs_presets": [
                     {"id": preset_id, "label": preset["label"]}
                     for preset_id, preset in ELEVENLABS_PRESETS.items()
@@ -711,38 +521,6 @@ class SetupService:
                     "These shortcuts are used by the Windows tray client. "
                     "Changes take effect the next time the Windows client starts."
                 ),
-                "default_vibevoice_base_url": DEFAULT_VIBEVOICE_BASE_URL,
-                "vibevoice_note": (
-                    f"Run the VibeVoice demo server locally, usually at {DEFAULT_VIBEVOICE_BASE_URL}, "
-                    "then choose one of the preset voices it exposes through /config."
-                ),
-                "piper_repo_url": "https://github.com/OHF-Voice/piper1-gpl",
-                "piper_voices_url": "https://huggingface.co/rhasspy/piper-voices",
-                "default_piper_model_path": (
-                    default_local_piper_voice["model_path"] if default_local_piper_voice else ""
-                ),
-                "default_piper_config_path": (
-                    default_local_piper_voice["config_path"] if default_local_piper_voice else ""
-                ),
-                "chatterbox_note": (
-                    "Chatterbox runs fully local. "
-                    "Use the multilingual model for German and other non-English languages, or the original model for English-only output. "
-                    "When Language is left blank in the UI, the validated STT language is used and falls back to English if STT is set to auto. "
-                    + (
-                        f"Detected {len(local_chatterbox_voices)} local Chatterbox voice file(s) in the workspace."
-                        if local_chatterbox_voices
-                        else "No local Chatterbox voice files were detected yet."
-                    )
-                ),
-                "default_chatterbox_model": CHATTERBOX_DEFAULT_MODEL,
-                "default_chatterbox_device": CHATTERBOX_DEFAULT_DEVICE,
-                "default_chatterbox_voice": "default",
-                "default_pockettts_voice": POCKETTTS_DEFAULT_VOICE,
-                "pockettts_note": (
-                    "Pocket TTS runs locally and is currently English-only. "
-                    "Use it only when the validated STT language is English. "
-                    "Choose one of the built-in preset voices or enter a local audio/.safetensors path or an http(s)/hf:// voice reference."
-                ),
                 "default_supertonic_python_path": detect_supertonic_python_path(),
                 "default_supertonic_voice": SUPERTONIC_DEFAULT_VOICE,
                 "default_supertonic_language": SUPERTONIC_DEFAULT_LANGUAGE,
@@ -752,30 +530,6 @@ class SetupService:
                     "Supertonic is a very fast local TTS engine, but it currently works best from a dedicated Python 3.12/3.13 environment. "
                     "Point Python Executable at a venv that already has the supertonic package installed. "
                     "Lower Total Steps reduces latency further; 3 is the current realtime default here."
-                ),
-                "default_neutts_backbone": "neuphonic/neutts-nano-german",
-                "default_neutts_codec": "neuphonic/neucodec",
-                "default_neutts_device": "auto",
-                "local_neutts_voices": local_neutts_voices,
-                "neutts_note": (
-                    "NeuTTS runs fully local with voice cloning. "
-                    "Place a subdirectory in neutts-voices/ with a .wav (3-15s) and .txt (transcript) file. "
-                    + (
-                        f"Detected {len(local_neutts_voices)} local NeuTTS voice(s)."
-                        if local_neutts_voices
-                        else "No local NeuTTS voice files were detected yet."
-                    )
-                ),
-                "local_piper_voices": local_piper_voices,
-                "piper_note": (
-                    "Model Path must point to a Piper voice .onnx file, not the Piper install directory. "
-                    + (
-                        f"Detected local Piper voices in {default_local_piper_source_dir}. "
-                        "Choose one below or paste another .onnx path manually. "
-                        if default_local_piper_source_dir
-                        else "No local Piper voices were auto-detected next to the current config. "
-                    )
-                    + "Leave Config Path blank only when the matching <model>.onnx.json file sits next to the model file."
                 ),
             },
         }
@@ -839,7 +593,7 @@ class SetupService:
                 },
             }
         )
-        self.store.update_secrets({"AGENT_SWITCHBOARD_GATEWAY_TOKEN": token})
+        self.store.update_secrets({"AGENTIC_SWITCHBOARD_GATEWAY_TOKEN": token})
         return {"ok": True, "backend": "gateway", **summary}
 
     async def validate_gateway(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -888,22 +642,15 @@ class SetupService:
         default_provider = str(payload.get("default_provider") or "").strip()
         if not enabled:
             raise ValidationError("Select at least one TTS provider.")
+        unsupported = [provider for provider in enabled if provider not in SUPPORTED_TTS_PROVIDERS]
+        if unsupported:
+            raise ValidationError(f"Unsupported TTS provider: {unsupported[0]}")
         if default_provider not in enabled:
             raise ValidationError("Default TTS provider must be one of the selected providers.")
         if "disabled" in enabled and enabled != ["disabled"]:
             raise ValidationError("Disabled TTS must be selected on its own.")
         if "edge" in enabled:
             await list_edge_voices()
-        if "piper" in enabled:
-            normalize_piper_speaker(self.store.load_config()["tts"].get("piper_speaker", 0))
-        if "chatterbox" in enabled:
-            normalize_chatterbox_model(self.store.load_config()["tts"].get("chatterbox_model", CHATTERBOX_DEFAULT_MODEL))
-            resolve_chatterbox_voice(self.store.load_config()["tts"].get("chatterbox_voice", "default"))
-        if "pockettts" in enabled:
-            self._pockettts_requires_english(self.store.load_runtime_settings())
-            descriptor = SUPPORTED_TTS_PROVIDERS["pockettts"]
-            ensure_python_package(descriptor["package"], descriptor["import_name"])
-            normalize_pockettts_voice(self.store.load_config()["tts"].get("pockettts_voice", POCKETTTS_DEFAULT_VOICE))
         self.store.update_config(
             {
                 "tts": {"enabled_providers": enabled, "default_provider": default_provider},
@@ -955,79 +702,13 @@ class SetupService:
                 }
             }
         )
-        self.store.update_secrets({"AGENT_SWITCHBOARD_ELEVENLABS_API_KEY": api_key})
+        self.store.update_secrets({"AGENTIC_SWITCHBOARD_ELEVENLABS_API_KEY": api_key})
         return {**result, "voices": voices}
 
     async def elevenlabs_voices(self) -> dict[str, Any]:
         settings = self.store.load_runtime_settings()
         voices = await list_elevenlabs_voices(settings["secrets"]["elevenlabs_api_key"])
         return {"ok": True, "voices": voices}
-
-    async def validate_piper(self, payload: dict[str, Any]) -> dict[str, Any]:
-        settings = self.store.load_runtime_settings()
-        current_tts = settings["tts"]
-        model_path = normalize_piper_model_path(
-            str(payload.get("model_path") or current_tts.get("piper_model_path") or "").strip()
-        )
-        config_path = str(
-            payload.get("config_path")
-            if "config_path" in payload
-            else current_tts.get("piper_config_path", "")
-        ).strip()
-        speaker = normalize_piper_speaker(
-            payload.get("speaker")
-            if "speaker" in payload
-            else current_tts.get("piper_speaker", 0)
-        )
-        result = await validate_piper_voice_step(
-            model_path=model_path,
-            config_path=config_path,
-            speaker=speaker,
-        )
-        saved_tts = {
-            "piper_model_path": result["model_path"],
-            "piper_config_path": result["config_path"] or default_piper_config_path(result["model_path"]),
-            "piper_speaker": result["speaker"],
-        }
-        self.store.update_config(
-            {
-                "tts": saved_tts,
-                "validation": {
-                    "piper": {
-                        "config_hash": self._config_hash(
-                            {
-                                "model_path": saved_tts["piper_model_path"],
-                                "config_path": saved_tts["piper_config_path"],
-                                "speaker": saved_tts["piper_speaker"],
-                            }
-                        ),
-                    }
-                },
-            }
-        )
-        return result
-
-    async def validate_pockettts(self, payload: dict[str, Any]) -> dict[str, Any]:
-        settings = self.store.load_runtime_settings()
-        self._pockettts_requires_english(settings)
-        current_tts = settings["tts"]
-        voice = normalize_pockettts_voice(
-            str(payload.get("voice") or current_tts.get("pockettts_voice") or POCKETTTS_DEFAULT_VOICE).strip()
-        )
-        result = await validate_pockettts_voice_step(voice=voice)
-        self.store.update_config(
-            {
-                "tts": {
-                    "pockettts_voice": result["voice"],
-                },
-                "validation": {
-                    "pockettts": {
-                        "config_hash": self._config_hash({"voice": result["voice"]}),
-                    }
-                },
-            }
-        )
-        return result
 
     async def validate_supertonic(self, payload: dict[str, Any]) -> dict[str, Any]:
         settings = self.store.load_runtime_settings()
@@ -1097,65 +778,6 @@ class SetupService:
         )
         return result
 
-    async def validate_chatterbox(self, payload: dict[str, Any]) -> dict[str, Any]:
-        settings = self.store.load_runtime_settings()
-        current_tts = settings["tts"]
-        stt_language = str((settings.get("stt") or {}).get("language") or "").strip().lower()
-        model = normalize_chatterbox_model(
-            str(payload.get("model") or current_tts.get("chatterbox_model") or CHATTERBOX_DEFAULT_MODEL).strip()
-        )
-        requested_language = str(
-            payload.get("language")
-            if "language" in payload
-            else current_tts.get("chatterbox_language", "")
-        ).strip()
-        if not requested_language and model == "multilingual":
-            requested_language = stt_language if stt_language and stt_language != "auto" else "en"
-        device = str(payload.get("device") or current_tts.get("chatterbox_device") or CHATTERBOX_DEFAULT_DEVICE).strip()
-        voice = resolve_chatterbox_voice(
-            str(payload.get("voice") if "voice" in payload else current_tts.get("chatterbox_voice", "default")).strip()
-        )
-        resolved_language = normalize_chatterbox_language(requested_language, model=model)
-        result = await validate_chatterbox_voice_step(
-            model=model,
-            device=device,
-            language=resolved_language,
-            voice=voice,
-        )
-        saved_tts = {
-            "chatterbox_model": result["model"],
-            "chatterbox_device": result["device"],
-            "chatterbox_language": result["language"],
-            "chatterbox_voice": result["voice"],
-        }
-        self.store.update_config(
-            {
-                "tts": saved_tts,
-                "validation": {
-                    "chatterbox": {
-                        "config_hash": self._config_hash(
-                            {
-                                "model": saved_tts["chatterbox_model"],
-                                "device": saved_tts["chatterbox_device"],
-                                "language": saved_tts["chatterbox_language"],
-                                "voice": saved_tts["chatterbox_voice"],
-                            }
-                        ),
-                    }
-                },
-            }
-        )
-        return result
-
-    async def vibevoice_voices(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
-        settings = self.store.load_runtime_settings()
-        submitted = payload or {}
-        base_url = normalize_vibevoice_base_url(
-            str(submitted.get("base_url") or settings["tts"]["vibevoice_base_url"]).strip()
-        )
-        voices = await list_vibevoice_voices(base_url)
-        return {"ok": True, "base_url": base_url, "voices": voices}
-
     async def validate_elevenlabs_voice(self, payload: dict[str, Any]) -> dict[str, Any]:
         settings = self.store.load_runtime_settings()
         api_key = settings["secrets"]["elevenlabs_api_key"]
@@ -1184,69 +806,6 @@ class SetupService:
                             {"voice_id": voice_id, "model_id": model_id, "preset": preset_name}
                         ),
                         "api_key_fingerprint": self._fingerprint_secret(api_key),
-                    }
-                },
-            }
-        )
-        return result
-
-    async def validate_vibevoice(self, payload: dict[str, Any]) -> dict[str, Any]:
-        settings = self.store.load_runtime_settings()
-        base_url = normalize_vibevoice_base_url(
-            str(payload.get("base_url") or settings["tts"]["vibevoice_base_url"]).strip()
-        )
-        voice = str(payload.get("voice") or settings["tts"]["vibevoice_voice"]).strip()
-        result = await validate_vibevoice_voice_step(base_url=base_url, voice=voice)
-        self.store.update_config(
-            {
-                "tts": {
-                    "vibevoice_base_url": base_url,
-                    "vibevoice_voice": result["voice_id"],
-                },
-                "validation": {
-                    "vibevoice": {
-                        "config_hash": self._config_hash(
-                            {"base_url": base_url, "voice": result["voice_id"]}
-                        ),
-                    }
-                },
-            }
-        )
-        return result
-
-    async def validate_neutts(self, payload: dict[str, Any]) -> dict[str, Any]:
-        settings = self.store.load_runtime_settings()
-        current_tts = settings["tts"]
-        backbone = str(payload.get("backbone") or current_tts.get("neutts_backbone") or "neuphonic/neutts-nano-german").strip()
-        codec = str(payload.get("codec") or current_tts.get("neutts_codec") or "neuphonic/neucodec").strip()
-        device = normalize_neutts_device(
-            str(payload.get("device") or current_tts.get("neutts_device") or "auto").strip()
-        )
-        voice = str(payload.get("voice") or current_tts.get("neutts_voice") or "").strip()
-        result = await validate_neutts_voice_step(
-            backbone=backbone,
-            codec=codec,
-            device=device,
-            voice=voice or None,
-        )
-        self.store.update_config(
-            {
-                "tts": {
-                    "neutts_backbone": result["backbone"],
-                    "neutts_codec": result["codec"],
-                    "neutts_device": result["device"],
-                    "neutts_voice": result["voice"] if result["voice"] != "(default)" else "",
-                },
-                "validation": {
-                    "neutts": {
-                        "config_hash": self._config_hash(
-                            {
-                                "backbone": result["backbone"],
-                                "codec": result["codec"],
-                                "device": result["device"],
-                                "voice": result["voice"] if result["voice"] != "(default)" else "",
-                            }
-                        ),
                     }
                 },
             }

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Agent Switchboard Setup</title>
+<title>Agentic Switchboard Setup</title>
 <style>
   :root {
     color-scheme: dark;
@@ -180,7 +180,7 @@
 <body>
 <main>
   <header>
-    <h1>Agent Switchboard Setup</h1>
+    <h1>Agentic Switchboard Setup</h1>
     <div class="intro" id="intro"></div>
     <div class="paths" id="paths"></div>
   </header>
@@ -287,47 +287,10 @@
     <div class="result" id="edge-result"></div>
   </section>
 
-  <section class="section hidden" id="piper-section">
-    <div class="section-header">
-      <div class="section-title">
-        <h2>4. Piper</h2>
-        <p>Point Piper at a local voice `.onnx` model file, not the Piper install directory, then run one local synthesis test before saving.</p>
-      </div>
-      <div class="badge" id="piper-badge">Not checked</div>
-    </div>
-    <div class="grid">
-      <label>Detected Local Voice
-        <select id="piper-local-voice">
-          <option value="">No local Piper voices detected</option>
-        </select>
-      </label>
-      <label>Model Path
-        <input id="piper-model-path" type="text" placeholder="/path/to/voice.onnx or piper-voices/en_US-amy-medium.onnx">
-      </label>
-      <label>Config Path
-        <input id="piper-config-path" type="text" placeholder="Leave blank to use /path/to/voice.onnx.json">
-      </label>
-      <label>Speaker
-        <input id="piper-speaker" type="number" min="0" step="1" value="0">
-      </label>
-    </div>
-    <div class="note" id="piper-note"></div>
-    <div class="note">
-      <a id="piper-github-link" href="https://github.com/OHF-Voice/piper1-gpl" target="_blank" rel="noopener noreferrer">Piper GitHub</a>
-      ·
-      <a id="piper-voices-link" href="https://huggingface.co/rhasspy/piper-voices" target="_blank" rel="noopener noreferrer">Piper voices</a>
-    </div>
-    <div class="actions">
-      <button class="primary" id="validate-piper">Validate Piper Voice And Save</button>
-      <button id="continue-piper">Continue With Validated Piper</button>
-    </div>
-    <div class="result" id="piper-result"></div>
-  </section>
-
   <section class="section hidden" id="eleven-section">
     <div class="section-header">
       <div class="section-title">
-        <h2>5. ElevenLabs</h2>
+        <h2>4. ElevenLabs</h2>
         <p>Validate the API key first, then choose one of your saved account voices here or paste a voice ID manually before saving.</p>
       </div>
       <div class="badge" id="eleven-badge">Not checked</div>
@@ -364,66 +327,10 @@
     <div class="result" id="eleven-result"></div>
   </section>
 
-  <section class="section hidden" id="chatterbox-section">
-    <div class="section-header">
-      <div class="section-title">
-        <h2>6. Chatterbox</h2>
-        <p>Run Chatterbox locally with its built-in voice conditionals, then validate one synthesis pass before saving.</p>
-      </div>
-      <div class="badge" id="chatterbox-badge">Not checked</div>
-    </div>
-    <div class="grid">
-      <label>Model
-        <select id="chatterbox-model"></select>
-      </label>
-      <label>Device
-        <select id="chatterbox-device"></select>
-      </label>
-      <label>Voice
-        <select id="chatterbox-voice"></select>
-      </label>
-      <label>Language
-        <input id="chatterbox-language" type="text" placeholder="Leave blank to use the validated STT language">
-      </label>
-    </div>
-    <div class="note" id="chatterbox-note"></div>
-    <div class="actions">
-      <button class="primary" id="validate-chatterbox">Validate Chatterbox And Save</button>
-      <button id="continue-chatterbox">Continue With Validated Chatterbox</button>
-    </div>
-    <div class="result" id="chatterbox-result"></div>
-  </section>
-
-  <section class="section hidden" id="pockettts-section">
-    <div class="section-header">
-      <div class="section-title">
-        <h2>7. Pocket TTS</h2>
-        <p>Run Kyutai Pocket TTS locally, choose one built-in preset voice or a custom voice reference, and validate one synthesis pass before saving.</p>
-      </div>
-      <div class="badge" id="pockettts-badge">Not checked</div>
-    </div>
-    <div class="grid">
-      <label>Preset voices
-        <select id="pockettts-voice-select">
-          <option value="">Choose one preset voice</option>
-        </select>
-      </label>
-      <label>Voice reference
-        <input id="pockettts-voice" type="text" placeholder="alba or /path/to/voice.wav or https://... or hf://...">
-      </label>
-    </div>
-    <div class="note" id="pockettts-note"></div>
-    <div class="actions">
-      <button class="primary" id="validate-pockettts">Validate Pocket TTS Voice And Save</button>
-      <button id="continue-pockettts">Continue With Validated Pocket TTS</button>
-    </div>
-    <div class="result" id="pockettts-result"></div>
-  </section>
-
   <section class="section hidden" id="supertonic-section">
     <div class="section-header">
       <div class="section-title">
-        <h2>8. Supertonic</h2>
+        <h2>5. Supertonic</h2>
         <p>Run Supertonic through a dedicated Python environment, then validate one fast local synthesis pass before saving.</p>
       </div>
       <div class="badge" id="supertonic-badge">Not checked</div>
@@ -453,75 +360,10 @@
     <div class="result" id="supertonic-result"></div>
   </section>
 
-  <section class="section hidden" id="vibevoice-section">
-    <div class="section-header">
-      <div class="section-title">
-        <h2>9. VibeVoice Realtime</h2>
-        <p>Connect to a local VibeVoice demo server, load its preset voices, and validate one preset before saving.</p>
-      </div>
-      <div class="badge" id="vibevoice-badge">Not checked</div>
-    </div>
-    <div class="grid">
-      <label>Server URL
-        <input id="vibevoice-base-url" type="text" placeholder="http://127.0.0.1:3000">
-      </label>
-      <label>Available preset voices
-        <select id="vibevoice-voice-select">
-          <option value="">Load voices from the server first</option>
-        </select>
-      </label>
-      <label>Voice preset
-        <input id="vibevoice-voice" type="text" placeholder="en-Carter_man">
-      </label>
-    </div>
-    <div class="note" id="vibevoice-note"></div>
-    <div class="actions">
-      <button class="primary" id="load-vibevoice-voices">Load VibeVoice Voices</button>
-      <button class="primary" id="validate-vibevoice">Validate VibeVoice Voice And Save</button>
-      <button id="continue-vibevoice">Continue With Validated VibeVoice</button>
-    </div>
-    <div class="result" id="vibevoice-result"></div>
-  </section>
-
-  <section class="section hidden" id="neutts-section">
-    <div class="section-header">
-      <div class="section-title">
-        <h2>10. NeuTTS Voice</h2>
-        <p>Configure the NeuTTS backbone model, codec, device, and voice clone reference.</p>
-      </div>
-      <div class="badge" id="neutts-badge">Not checked</div>
-    </div>
-    <div class="grid">
-      <label>Backbone model
-        <input id="neutts-backbone" type="text" placeholder="neuphonic/neutts-nano-german">
-      </label>
-      <label>Codec model
-        <input id="neutts-codec" type="text" placeholder="neuphonic/neucodec">
-      </label>
-      <label>Device
-        <select id="neutts-device"></select>
-      </label>
-      <label>Local voices
-        <select id="neutts-voice-select">
-          <option value="">No local NeuTTS voices detected</option>
-        </select>
-      </label>
-      <label>Voice
-        <input id="neutts-voice" type="text" placeholder="mara">
-      </label>
-    </div>
-    <div class="note" id="neutts-note"></div>
-    <div class="actions">
-      <button class="primary" id="validate-neutts">Validate NeuTTS Voice And Save</button>
-      <button id="continue-neutts">Continue With Validated NeuTTS</button>
-    </div>
-    <div class="result" id="neutts-result"></div>
-  </section>
-
   <section class="section hidden" id="gateway-section">
     <div class="section-header">
       <div class="section-title">
-        <h2>11. Conversation Backend</h2>
+        <h2>6. Conversation Backend</h2>
         <p>Select the chat agent and validate its backend before launch.</p>
       </div>
       <div class="badge" id="gateway-badge">Not checked</div>
@@ -561,7 +403,7 @@
   <section class="section hidden" id="windows-client-section">
     <div class="section-header">
       <div class="section-title">
-        <h2>8. Windows Client</h2>
+        <h2>7. Windows Client</h2>
         <p>Configure the global keyboard shortcuts used by the Windows tray client.</p>
       </div>
       <div class="badge" id="windows-client-badge">Not saved</div>
@@ -603,14 +445,11 @@
 let setupState = null;
 let edgeVoices = [];
 let elevenVoices = [];
-let localPiperVoices = [];
-let pocketTtsVoices = [];
-let vibevoiceVoices = [];
 let rememberedRemoteStt = {
   url: '',
   model: '',
 };
-const REMOTE_STT_MEMORY_KEY = 'agent-switchboard.voice.remote-stt.v1';
+const REMOTE_STT_MEMORY_KEY = 'agentic-switchboard.voice.remote-stt.v1';
 const STT_LANGUAGES = [
   ["auto", "Auto Detect"],
   ["de", "German"],
@@ -645,26 +484,11 @@ function ttsProviderSectionId(provider) {
   if (provider === 'edge') {
     return 'edge-section';
   }
-  if (provider === 'piper') {
-    return 'piper-section';
-  }
   if (provider === 'elevenlabs') {
     return 'eleven-section';
   }
-  if (provider === 'chatterbox') {
-    return 'chatterbox-section';
-  }
-  if (provider === 'pockettts') {
-    return 'pockettts-section';
-  }
   if (provider === 'supertonic') {
     return 'supertonic-section';
-  }
-  if (provider === 'vibevoice') {
-    return 'vibevoice-section';
-  }
-  if (provider === 'neutts') {
-    return 'neutts-section';
   }
   return 'tts-section';
 }
@@ -917,129 +741,6 @@ function syncElevenVoiceSelectionFromId() {
   }
 }
 
-function renderPiperVoiceOptions(voices) {
-  localPiperVoices = voices;
-  const select = document.getElementById('piper-local-voice');
-  const currentModelPath = document.getElementById('piper-model-path').value.trim();
-  select.innerHTML = '';
-
-  const placeholder = document.createElement('option');
-  placeholder.value = '';
-  placeholder.textContent = voices.length ? 'Choose one detected local voice' : 'No local Piper voices detected';
-  select.appendChild(placeholder);
-
-  for (const voice of voices) {
-    const option = document.createElement('option');
-    option.value = voice.model_path;
-    option.textContent = voice.voice_name || voice.model_path;
-    select.appendChild(option);
-  }
-
-  select.disabled = voices.length === 0;
-  if (currentModelPath && voices.some((voice) => voice.model_path === currentModelPath)) {
-    select.value = currentModelPath;
-  } else {
-    select.value = '';
-  }
-}
-
-function renderNeuTTSVoiceOptions(voices) {
-  const select = document.getElementById('neutts-voice-select');
-  const currentVoice = document.getElementById('neutts-voice').value.trim();
-  select.innerHTML = '';
-
-  const placeholder = document.createElement('option');
-  placeholder.value = '';
-  placeholder.textContent = voices.length ? 'Choose a local NeuTTS voice' : 'No local NeuTTS voices detected';
-  select.appendChild(placeholder);
-
-  for (const voice of voices) {
-    const option = document.createElement('option');
-    option.value = voice.id;
-    option.textContent = voice.label;
-    select.appendChild(option);
-  }
-
-  select.disabled = voices.length === 0;
-  if (currentVoice && voices.some((v) => v.id === currentVoice)) {
-    select.value = currentVoice;
-  } else {
-    select.value = '';
-  }
-}
-
-function renderPocketTtsVoiceOptions(voices) {
-  pocketTtsVoices = voices;
-  const select = document.getElementById('pockettts-voice-select');
-  const currentVoice = document.getElementById('pockettts-voice').value.trim();
-  select.innerHTML = '';
-
-  const placeholder = document.createElement('option');
-  placeholder.value = '';
-  placeholder.textContent = voices.length ? 'Choose one preset voice' : 'No Pocket TTS preset voices available';
-  select.appendChild(placeholder);
-
-  for (const voice of voices) {
-    const option = document.createElement('option');
-    option.value = voice.id;
-    option.textContent = voice.label;
-    select.appendChild(option);
-  }
-
-  select.disabled = voices.length === 0;
-  if (currentVoice && voices.some((voice) => voice.id === currentVoice)) {
-    select.value = currentVoice;
-  } else {
-    select.value = '';
-  }
-}
-
-function syncPocketTtsSelectionFromInput() {
-  const voice = document.getElementById('pockettts-voice').value.trim().toLowerCase();
-  const select = document.getElementById('pockettts-voice-select');
-  const match = pocketTtsVoices.find((item) => item.id === voice);
-  select.value = match ? match.id : '';
-}
-
-function syncPiperSelectionFromInput() {
-  const modelPath = document.getElementById('piper-model-path').value.trim();
-  const select = document.getElementById('piper-local-voice');
-  const match = localPiperVoices.find((voice) => voice.model_path === modelPath);
-  select.value = match ? modelPath : '';
-}
-
-function renderVibeVoiceOptions(voices) {
-  vibevoiceVoices = voices;
-  const select = document.getElementById('vibevoice-voice-select');
-  const currentVoice = document.getElementById('vibevoice-voice').value.trim();
-  select.innerHTML = '';
-
-  const placeholder = document.createElement('option');
-  placeholder.value = '';
-  placeholder.textContent = voices.length ? 'Choose one preset voice' : 'No preset voices loaded';
-  select.appendChild(placeholder);
-
-  for (const voice of voices) {
-    const option = document.createElement('option');
-    option.value = voice.voice_id;
-    option.textContent = voice.name;
-    select.appendChild(option);
-  }
-
-  if (currentVoice && voices.some((voice) => voice.voice_id === currentVoice)) {
-    select.value = currentVoice;
-  } else {
-    select.value = '';
-  }
-}
-
-function syncVibeVoiceSelectionFromInput() {
-  const voice = document.getElementById('vibevoice-voice').value.trim();
-  const select = document.getElementById('vibevoice-voice-select');
-  const match = vibevoiceVoices.find((item) => item.voice_id === voice);
-  select.value = match ? voice : '';
-}
-
 function getEffectiveStatus() {
   const status = setupState?.status || {};
   const saved = setupState?.saved;
@@ -1048,13 +749,8 @@ function getEffectiveStatus() {
       stt_ready: false,
       tts_ready: false,
       edge_ready: false,
-      piper_ready: false,
       eleven_ready: false,
-      chatterbox_ready: false,
-      pockettts_ready: false,
       supertonic_ready: false,
-      vibevoice_ready: false,
-      neutts_ready: false,
       gateway_ready: false,
       hermes_ready: false,
       conversation_ready: false,
@@ -1099,15 +795,6 @@ function getEffectiveStatus() {
     && document.getElementById('edge-rate').value.trim() === ttsSaved.edge_rate
   );
 
-  const piperReady = Boolean(
-    ttsReady
-    && currentProvider === 'piper'
-    && status.piper_ready
-    && document.getElementById('piper-model-path').value.trim() === (ttsSaved.piper_model_path || '')
-    && document.getElementById('piper-config-path').value.trim() === (ttsSaved.piper_config_path || '')
-    && Number(document.getElementById('piper-speaker').value || 0) === Number(ttsSaved.piper_speaker || 0)
-  );
-
   const elevenReady = Boolean(
     ttsReady
     && currentProvider === 'elevenlabs'
@@ -1119,28 +806,6 @@ function getEffectiveStatus() {
     && document.getElementById('eleven-preset').value === (ttsSaved.elevenlabs_preset || 'natural')
   );
 
-  const vibevoiceReady = Boolean(
-    ttsReady
-    && currentProvider === 'vibevoice'
-    && status.vibevoice_ready
-    && document.getElementById('vibevoice-base-url').value.trim() === (ttsSaved.vibevoice_base_url || '')
-    && document.getElementById('vibevoice-voice').value.trim() === (ttsSaved.vibevoice_voice || '')
-  );
-  const chatterboxReady = Boolean(
-    ttsReady
-    && currentProvider === 'chatterbox'
-    && status.chatterbox_ready
-    && document.getElementById('chatterbox-model').value === (ttsSaved.chatterbox_model || 'multilingual')
-    && document.getElementById('chatterbox-device').value === (ttsSaved.chatterbox_device || 'auto')
-    && document.getElementById('chatterbox-voice').value === (ttsSaved.chatterbox_voice || 'default')
-    && document.getElementById('chatterbox-language').value.trim() === (ttsSaved.chatterbox_language || '')
-  );
-  const pocketttsReady = Boolean(
-    ttsReady
-    && currentProvider === 'pockettts'
-    && status.pockettts_ready
-    && document.getElementById('pockettts-voice').value.trim() === (ttsSaved.pockettts_voice || '')
-  );
   const supertonicReady = Boolean(
     ttsReady
     && currentProvider === 'supertonic'
@@ -1152,22 +817,12 @@ function getEffectiveStatus() {
     && Number(document.getElementById('supertonic-speed').value || 1.05) === Number(ttsSaved.supertonic_speed || 1.05)
   );
 
-  const neuttsReady = Boolean(
-    ttsReady
-    && currentProvider === 'neutts'
-    && status.neutts_ready
-    && document.getElementById('neutts-backbone').value.trim() === (ttsSaved.neutts_backbone || 'neuphonic/neutts-nano-german')
-    && document.getElementById('neutts-codec').value.trim() === (ttsSaved.neutts_codec || 'neuphonic/neucodec')
-    && document.getElementById('neutts-device').value === (ttsSaved.neutts_device || 'auto')
-    && document.getElementById('neutts-voice').value.trim() === (ttsSaved.neutts_voice || '')
-  );
-
   const gatewaySaved = saved.gateway || {};
   const agentSaved = saved.agent || {};
   const currentAgentBackendVal = currentAgentBackend();
   const savedSessionKey = gatewaySaved.session_key || (setupState?.hints?.default_voice_session_key || '');
   const gatewayReady = Boolean(
-    (ttsDisabled || edgeReady || piperReady || elevenReady || chatterboxReady || pocketttsReady || supertonicReady || vibevoiceReady || neuttsReady)
+    (ttsDisabled || edgeReady || elevenReady || supertonicReady)
     && currentAgentBackendVal === 'gateway'
     && (agentSaved.backend || 'gateway') === 'gateway'
     && status.gateway_ready
@@ -1178,7 +833,7 @@ function getEffectiveStatus() {
   );
   const savedHermesRoot = (agentSaved.hermes_root || (setupState?.hints?.default_hermes_root || '')).trim();
   const hermesReady = Boolean(
-    (ttsDisabled || edgeReady || piperReady || elevenReady || chatterboxReady || pocketttsReady || supertonicReady || vibevoiceReady || neuttsReady)
+    (ttsDisabled || edgeReady || elevenReady || supertonicReady)
     && currentAgentBackendVal === 'hermes'
     && (agentSaved.backend || 'gateway') === 'hermes'
     && status.hermes_ready
@@ -1198,13 +853,8 @@ function getEffectiveStatus() {
     stt_ready: sttReady,
     tts_ready: ttsReady,
     edge_ready: edgeReady,
-    piper_ready: piperReady,
     eleven_ready: elevenReady,
-    chatterbox_ready: chatterboxReady,
-    pockettts_ready: pocketttsReady,
     supertonic_ready: supertonicReady,
-    vibevoice_ready: vibevoiceReady,
-    neutts_ready: neuttsReady,
     gateway_ready: gatewayReady,
     hermes_ready: hermesReady,
     conversation_ready: conversationReady,
@@ -1218,30 +868,15 @@ function updateFlowVisibility() {
   const currentProvider = currentTtsProvider();
   const showTts = effective.stt_ready;
   const showEdge = showTts && effective.tts_ready && currentProvider === 'edge';
-  const showPiper = showTts && effective.tts_ready && currentProvider === 'piper';
   const showEleven = showTts && effective.tts_ready && currentProvider === 'elevenlabs';
-  const showChatterbox = showTts && effective.tts_ready && currentProvider === 'chatterbox';
-  const showPocketTts = showTts && effective.tts_ready && currentProvider === 'pockettts';
   const showSupertonic = showTts && effective.tts_ready && currentProvider === 'supertonic';
-  const showVibeVoice = showTts && effective.tts_ready && currentProvider === 'vibevoice';
-  const showNeuTTS = showTts && effective.tts_ready && currentProvider === 'neutts';
   const showDisabled = showTts && effective.tts_ready && currentProvider === 'disabled';
   const providerReady = showEdge
     ? effective.edge_ready
-    : showPiper
-      ? effective.piper_ready
-      : showEleven
+    : showEleven
       ? effective.eleven_ready
-      : showChatterbox
-        ? effective.chatterbox_ready
-      : showPocketTts
-        ? effective.pockettts_ready
       : showSupertonic
         ? effective.supertonic_ready
-      : showVibeVoice
-        ? effective.vibevoice_ready
-      : showNeuTTS
-        ? effective.neutts_ready
         : showDisabled
           ? true
         : false;
@@ -1251,13 +886,8 @@ function updateFlowVisibility() {
 
   document.getElementById('tts-section').classList.toggle('hidden', !showTts);
   document.getElementById('edge-section').classList.toggle('hidden', !showEdge);
-  document.getElementById('piper-section').classList.toggle('hidden', !showPiper);
   document.getElementById('eleven-section').classList.toggle('hidden', !showEleven);
-  document.getElementById('chatterbox-section').classList.toggle('hidden', !showChatterbox);
-  document.getElementById('pockettts-section').classList.toggle('hidden', !showPocketTts);
   document.getElementById('supertonic-section').classList.toggle('hidden', !showSupertonic);
-  document.getElementById('vibevoice-section').classList.toggle('hidden', !showVibeVoice);
-  document.getElementById('neutts-section').classList.toggle('hidden', !showNeuTTS);
   document.getElementById('gateway-section').classList.toggle('hidden', !showGateway);
   document.getElementById('windows-client-section').classList.toggle('hidden', !showWindowsClient);
   document.getElementById('launch-section').classList.toggle('hidden', !showLaunch);
@@ -1265,13 +895,8 @@ function updateFlowVisibility() {
   setBadge('stt-badge', effective.stt_ready ? 'Validated' : 'Needs validation', effective.stt_ready);
   setBadge('tts-badge', effective.tts_ready ? 'Validated' : 'Needs validation', effective.tts_ready);
   setBadge('edge-badge', effective.edge_ready ? 'Validated' : 'Needs validation', effective.edge_ready);
-  setBadge('piper-badge', effective.piper_ready ? 'Validated' : 'Needs validation', effective.piper_ready);
   setBadge('eleven-badge', effective.eleven_ready ? 'Validated' : 'Needs validation', effective.eleven_ready);
-  setBadge('chatterbox-badge', effective.chatterbox_ready ? 'Validated' : 'Needs validation', effective.chatterbox_ready);
-  setBadge('pockettts-badge', effective.pockettts_ready ? 'Validated' : 'Needs validation', effective.pockettts_ready);
   setBadge('supertonic-badge', effective.supertonic_ready ? 'Validated' : 'Needs validation', effective.supertonic_ready);
-  setBadge('vibevoice-badge', effective.vibevoice_ready ? 'Validated' : 'Needs validation', effective.vibevoice_ready);
-  setBadge('neutts-badge', effective.neutts_ready ? 'Validated' : 'Needs validation', effective.neutts_ready);
   setBadge(
     'gateway-badge',
     effective.conversation_ready ? 'Validated' : 'Needs validation',
@@ -1286,13 +911,8 @@ function updateFlowVisibility() {
   document.getElementById('continue-stt').disabled = !effective.stt_ready;
   document.getElementById('continue-tts').disabled = !effective.tts_ready;
   document.getElementById('continue-edge').disabled = !effective.edge_ready;
-  document.getElementById('continue-piper').disabled = !effective.piper_ready;
   document.getElementById('continue-eleven').disabled = !effective.eleven_ready;
-  document.getElementById('continue-chatterbox').disabled = !effective.chatterbox_ready;
-  document.getElementById('continue-pockettts').disabled = !effective.pockettts_ready;
   document.getElementById('continue-supertonic').disabled = !effective.supertonic_ready;
-  document.getElementById('continue-vibevoice').disabled = !effective.vibevoice_ready;
-  document.getElementById('continue-neutts').disabled = !effective.neutts_ready;
   document.getElementById('continue-gateway').disabled = !effective.conversation_ready;
   document.getElementById('launch-link').style.pointerEvents = effective.runtime_ready ? 'auto' : 'none';
   document.getElementById('launch-link').style.opacity = effective.runtime_ready ? '1' : '0.45';
@@ -1377,10 +997,6 @@ function populateFromState(state) {
 
   const tts = state.saved.tts;
   const ttsLabels = Object.fromEntries(state.catalog.tts_providers.map((item) => [item.id, item.label]));
-  const chatterboxModelLabels = Object.fromEntries((state.catalog.chatterbox_models || []).map((item) => [item.id, item.label]));
-  const chatterboxDeviceLabels = Object.fromEntries((state.catalog.chatterbox_devices || []).map((item) => [item.id, item.label]));
-  const chatterboxVoiceLabels = Object.fromEntries((state.catalog.chatterbox_voices || []).map((item) => [item.id, item.label]));
-  const pocketTtsVoiceLabels = Object.fromEntries((state.catalog.pockettts_voices || []).map((item) => [item.id, item.label]));
   const supertonicVoiceLabels = Object.fromEntries((state.catalog.supertonic_voices || []).map((item) => [item.id, item.label]));
   const supertonicLanguageLabels = Object.fromEntries((state.catalog.supertonic_languages || []).map((item) => [item.id, item.label]));
   const presetLabels = Object.fromEntries((state.catalog.elevenlabs_presets || []).map((item) => [item.id, item.label]));
@@ -1388,26 +1004,6 @@ function populateFromState(state) {
     document.getElementById('tts-default'),
     state.catalog.tts_providers.map((item) => item.id),
     ttsLabels,
-  );
-  updateSelectOptions(
-    document.getElementById('chatterbox-model'),
-    (state.catalog.chatterbox_models || []).map((item) => item.id),
-    chatterboxModelLabels,
-  );
-  updateSelectOptions(
-    document.getElementById('chatterbox-device'),
-    (state.catalog.chatterbox_devices || []).map((item) => item.id),
-    chatterboxDeviceLabels,
-  );
-  updateSelectOptions(
-    document.getElementById('chatterbox-voice'),
-    (state.catalog.chatterbox_voices || []).map((item) => item.id),
-    chatterboxVoiceLabels,
-  );
-  updateSelectOptions(
-    document.getElementById('pockettts-voice-select'),
-    [''].concat((state.catalog.pockettts_voices || []).map((item) => item.id)),
-    Object.assign({'': 'Choose one preset voice'}, pocketTtsVoiceLabels),
   );
   updateSelectOptions(
     document.getElementById('supertonic-voice'),
@@ -1430,45 +1026,13 @@ function populateFromState(state) {
   document.getElementById('eleven-voice-id').value = tts.elevenlabs_voice_id;
   document.getElementById('eleven-voice-name').value = tts.elevenlabs_voice_name;
   document.getElementById('eleven-preset').value = tts.elevenlabs_preset || 'natural';
-  document.getElementById('piper-model-path').value = tts.piper_model_path || state.hints.default_piper_model_path || '';
-  document.getElementById('piper-config-path').value = tts.piper_config_path || state.hints.default_piper_config_path || '';
-  document.getElementById('piper-speaker').value = String(tts.piper_speaker ?? 0);
-  document.getElementById('piper-note').textContent = state.hints.piper_note || '';
-  document.getElementById('chatterbox-model').value = tts.chatterbox_model || state.hints.default_chatterbox_model || 'multilingual';
-  document.getElementById('chatterbox-device').value = tts.chatterbox_device || state.hints.default_chatterbox_device || 'auto';
-  document.getElementById('chatterbox-voice').value = tts.chatterbox_voice || state.hints.default_chatterbox_voice || 'default';
-  document.getElementById('chatterbox-language').value = tts.chatterbox_language || '';
-  document.getElementById('chatterbox-note').textContent = state.hints.chatterbox_note || '';
-  document.getElementById('pockettts-voice').value = tts.pockettts_voice || state.hints.default_pockettts_voice || 'alba';
-  document.getElementById('pockettts-note').textContent = state.hints.pockettts_note || '';
   document.getElementById('supertonic-python-path').value = tts.supertonic_python_path || state.hints.default_supertonic_python_path || '';
   document.getElementById('supertonic-voice').value = tts.supertonic_voice || state.hints.default_supertonic_voice || 'M4';
   document.getElementById('supertonic-language').value = tts.supertonic_language || state.hints.default_supertonic_language || 'en';
   document.getElementById('supertonic-total-steps').value = String(tts.supertonic_total_steps ?? state.hints.default_supertonic_total_steps ?? 3);
   document.getElementById('supertonic-speed').value = String(tts.supertonic_speed ?? state.hints.default_supertonic_speed ?? 1.05);
   document.getElementById('supertonic-note').textContent = state.hints.supertonic_note || '';
-  document.getElementById('piper-github-link').href = state.hints.piper_repo_url || 'https://github.com/OHF-Voice/piper1-gpl';
-  document.getElementById('piper-voices-link').href = state.hints.piper_voices_url || 'https://huggingface.co/rhasspy/piper-voices';
-  renderPiperVoiceOptions(state.hints.local_piper_voices || []);
-  renderPocketTtsVoiceOptions(state.catalog.pockettts_voices || []);
-  document.getElementById('vibevoice-base-url').value = tts.vibevoice_base_url || state.hints.default_vibevoice_base_url || '';
-  document.getElementById('vibevoice-voice').value = tts.vibevoice_voice || '';
-  document.getElementById('vibevoice-note').textContent = state.hints.vibevoice_note || '';
-  document.getElementById('neutts-backbone').value = tts.neutts_backbone || state.hints.default_neutts_backbone || 'neuphonic/neutts-nano-german';
-  document.getElementById('neutts-codec').value = tts.neutts_codec || state.hints.default_neutts_codec || 'neuphonic/neucodec';
-  document.getElementById('neutts-voice').value = tts.neutts_voice || '';
-  document.getElementById('neutts-note').textContent = state.hints.neutts_note || '';
-  updateSelectOptions(
-    document.getElementById('neutts-device'),
-    (state.catalog.neutts_devices || []).map((item) => item.id),
-    Object.fromEntries((state.catalog.neutts_devices || []).map((item) => [item.id, item.label])),
-  );
-  document.getElementById('neutts-device').value = tts.neutts_device || state.hints.default_neutts_device || 'auto';
-  renderNeuTTSVoiceOptions(state.catalog.neutts_voices || []);
   syncElevenVoiceSelectionFromId();
-  syncPiperSelectionFromInput();
-  syncPocketTtsSelectionFromInput();
-  syncVibeVoiceSelectionFromInput();
 
   const agent = state.saved.agent || {};
   const agentLabels = Object.fromEntries((state.catalog.agent_backends || []).map((item) => [item.id, item.label]));
@@ -1528,21 +1092,6 @@ async function loadElevenVoices() {
   return payload;
 }
 
-async function loadVibeVoiceVoices() {
-  setResult('vibevoice-result', 'Loading VibeVoice preset voices...');
-  const payload = await fetchJson(appUrl('api/setup/vibevoice-voices'), {
-    method: 'POST',
-    body: JSON.stringify({
-      base_url: document.getElementById('vibevoice-base-url').value,
-    }),
-  });
-  document.getElementById('vibevoice-base-url').value = payload.base_url || document.getElementById('vibevoice-base-url').value;
-  renderVibeVoiceOptions(payload.voices || []);
-  syncVibeVoiceSelectionFromInput();
-  setResult('vibevoice-result', `Loaded ${payload.voices.length} VibeVoice voices.`, true);
-  updateFlowVisibility();
-  return payload;
-}
 document.getElementById('stt-default').addEventListener('change', () => {
   updateBackendSpecificFields();
   updateFlowVisibility();
@@ -1582,66 +1131,22 @@ document.getElementById('stt-target-local-gpu').addEventListener('click', () => 
 document.getElementById('tts-default').addEventListener('change', updateFlowVisibility);
 document.getElementById('edge-voice').addEventListener('change', updateFlowVisibility);
 document.getElementById('edge-rate').addEventListener('input', updateFlowVisibility);
-document.getElementById('piper-local-voice').addEventListener('change', () => {
-  const selected = localPiperVoices.find((voice) => voice.model_path === document.getElementById('piper-local-voice').value);
-  if (selected) {
-    document.getElementById('piper-model-path').value = selected.model_path;
-    document.getElementById('piper-config-path').value = selected.config_path || '';
-  }
-  updateFlowVisibility();
-});
-document.getElementById('piper-model-path').addEventListener('input', () => {
-  syncPiperSelectionFromInput();
-  updateFlowVisibility();
-});
-document.getElementById('piper-config-path').addEventListener('input', () => {
-  syncPiperSelectionFromInput();
-  updateFlowVisibility();
-});
-document.getElementById('piper-speaker').addEventListener('input', updateFlowVisibility);
-document.getElementById('chatterbox-model').addEventListener('change', updateFlowVisibility);
-document.getElementById('chatterbox-device').addEventListener('change', updateFlowVisibility);
-document.getElementById('chatterbox-voice').addEventListener('change', updateFlowVisibility);
-document.getElementById('chatterbox-language').addEventListener('input', updateFlowVisibility);
-document.getElementById('pockettts-voice-select').addEventListener('change', () => {
-  const selected = pocketTtsVoices.find((voice) => voice.id === document.getElementById('pockettts-voice-select').value);
-  document.getElementById('pockettts-voice').value = selected ? selected.id : '';
-  updateFlowVisibility();
-});
-document.getElementById('pockettts-voice').addEventListener('input', () => {
-  syncPocketTtsSelectionFromInput();
-  updateFlowVisibility();
-});
 document.getElementById('supertonic-python-path').addEventListener('input', updateFlowVisibility);
 document.getElementById('supertonic-voice').addEventListener('change', updateFlowVisibility);
 document.getElementById('supertonic-language').addEventListener('change', updateFlowVisibility);
 document.getElementById('supertonic-total-steps').addEventListener('input', updateFlowVisibility);
 document.getElementById('supertonic-speed').addEventListener('input', updateFlowVisibility);
-document.getElementById('neutts-backbone').addEventListener('input', updateFlowVisibility);
-document.getElementById('neutts-codec').addEventListener('input', updateFlowVisibility);
-document.getElementById('neutts-device').addEventListener('change', updateFlowVisibility);
-document.getElementById('neutts-voice').addEventListener('input', updateFlowVisibility);
 document.getElementById('eleven-api-key').addEventListener('input', updateFlowVisibility);
 document.getElementById('eleven-model').addEventListener('input', updateFlowVisibility);
 document.getElementById('eleven-preset').addEventListener('change', updateFlowVisibility);
-document.getElementById('vibevoice-base-url').addEventListener('input', updateFlowVisibility);
 document.getElementById('eleven-voice-select').addEventListener('change', () => {
   const selected = elevenVoices.find((voice) => voice.voice_id === document.getElementById('eleven-voice-select').value);
   document.getElementById('eleven-voice-id').value = selected ? selected.voice_id : '';
   document.getElementById('eleven-voice-name').value = selected ? selected.name : '';
   updateFlowVisibility();
 });
-document.getElementById('vibevoice-voice-select').addEventListener('change', () => {
-  const selected = vibevoiceVoices.find((voice) => voice.voice_id === document.getElementById('vibevoice-voice-select').value);
-  document.getElementById('vibevoice-voice').value = selected ? selected.voice_id : '';
-  updateFlowVisibility();
-});
 document.getElementById('eleven-voice-id').addEventListener('input', () => {
   syncElevenVoiceSelectionFromId();
-  updateFlowVisibility();
-});
-document.getElementById('vibevoice-voice').addEventListener('input', () => {
-  syncVibeVoiceSelectionFromInput();
   updateFlowVisibility();
 });
 document.getElementById('agent-backend').addEventListener('change', () => {
@@ -1726,71 +1231,6 @@ document.getElementById('validate-edge').addEventListener('click', async () => {
   }
 });
 
-document.getElementById('validate-piper').addEventListener('click', async () => {
-  try {
-    setResult('piper-result', 'Testing Piper voice...');
-    const payload = await fetchJson(appUrl('api/setup/validate-piper'), {
-      method: 'POST',
-      body: JSON.stringify({
-        model_path: document.getElementById('piper-model-path').value,
-        config_path: document.getElementById('piper-config-path').value,
-        speaker: document.getElementById('piper-speaker').value,
-      }),
-    });
-    document.getElementById('piper-model-path').value = payload.model_path;
-    document.getElementById('piper-config-path').value = payload.config_path;
-    document.getElementById('piper-speaker').value = String(payload.speaker ?? 0);
-    setResult('piper-result', `Validated Piper voice: ${payload.voice_name}.`, true);
-    await refreshState();
-    scrollToSection('gateway-section');
-  } catch (error) {
-    setResult('piper-result', error.message, false);
-  }
-});
-
-document.getElementById('validate-chatterbox').addEventListener('click', async () => {
-  try {
-    setResult('chatterbox-result', 'Testing Chatterbox...');
-    const payload = await fetchJson(appUrl('api/setup/validate-chatterbox'), {
-      method: 'POST',
-      body: JSON.stringify({
-        model: document.getElementById('chatterbox-model').value,
-        device: document.getElementById('chatterbox-device').value,
-        voice: document.getElementById('chatterbox-voice').value,
-        language: document.getElementById('chatterbox-language').value,
-      }),
-    });
-    document.getElementById('chatterbox-model').value = payload.model;
-    document.getElementById('chatterbox-device').value = payload.device;
-    document.getElementById('chatterbox-voice').value = payload.voice;
-    document.getElementById('chatterbox-language').value = payload.language;
-    setResult('chatterbox-result', `Validated ${payload.voice_name} on ${payload.device}.`, true);
-    await refreshState();
-    scrollToSection('gateway-section');
-  } catch (error) {
-    setResult('chatterbox-result', error.message, false);
-  }
-});
-
-document.getElementById('validate-pockettts').addEventListener('click', async () => {
-  try {
-    setResult('pockettts-result', 'Testing Pocket TTS voice (first run may download model files)...');
-    const payload = await fetchJson(appUrl('api/setup/validate-pockettts'), {
-      method: 'POST',
-      body: JSON.stringify({
-        voice: document.getElementById('pockettts-voice').value,
-      }),
-    });
-    document.getElementById('pockettts-voice').value = payload.voice;
-    syncPocketTtsSelectionFromInput();
-    setResult('pockettts-result', `Validated Pocket TTS voice: ${payload.voice_name}.`, true);
-    await refreshState();
-    scrollToSection('gateway-section');
-  } catch (error) {
-    setResult('pockettts-result', error.message, false);
-  }
-});
-
 document.getElementById('validate-supertonic').addEventListener('click', async () => {
   try {
     setResult('supertonic-result', 'Testing Supertonic (first run may warm a dedicated Python worker)...');
@@ -1866,31 +1306,6 @@ document.getElementById('validate-eleven-voice').addEventListener('click', async
   }
 });
 
-document.getElementById('load-vibevoice-voices').addEventListener('click', () => {
-  loadVibeVoiceVoices().catch((error) => setResult('vibevoice-result', error.message, false));
-});
-
-document.getElementById('validate-vibevoice').addEventListener('click', async () => {
-  try {
-    setResult('vibevoice-result', 'Validating VibeVoice preset voice...');
-    const payload = await fetchJson(appUrl('api/setup/validate-vibevoice'), {
-      method: 'POST',
-      body: JSON.stringify({
-        base_url: document.getElementById('vibevoice-base-url').value,
-        voice: document.getElementById('vibevoice-voice').value,
-      }),
-    });
-    document.getElementById('vibevoice-base-url').value = payload.base_url;
-    document.getElementById('vibevoice-voice').value = payload.voice_id;
-    syncVibeVoiceSelectionFromInput();
-    setResult('vibevoice-result', `Validated VibeVoice voice: ${payload.voice_name}.`, true);
-    await refreshState();
-    scrollToSection('gateway-section');
-  } catch (error) {
-    setResult('vibevoice-result', error.message, false);
-  }
-});
-
 document.getElementById('validate-gateway').addEventListener('click', async () => {
   const backend = currentAgentBackend();
   try {
@@ -1948,41 +1363,8 @@ document.getElementById('continue-tts').addEventListener('click', () => {
   scrollToSection(ttsProviderSectionId(currentTtsProvider()));
 });
 document.getElementById('continue-edge').addEventListener('click', () => scrollToSection('gateway-section'));
-document.getElementById('continue-piper').addEventListener('click', () => scrollToSection('gateway-section'));
 document.getElementById('continue-eleven').addEventListener('click', () => scrollToSection('gateway-section'));
-document.getElementById('continue-chatterbox').addEventListener('click', () => scrollToSection('gateway-section'));
-document.getElementById('continue-pockettts').addEventListener('click', () => scrollToSection('gateway-section'));
 document.getElementById('continue-supertonic').addEventListener('click', () => scrollToSection('gateway-section'));
-document.getElementById('continue-vibevoice').addEventListener('click', () => scrollToSection('gateway-section'));
-
-document.getElementById('validate-neutts').addEventListener('click', async () => {
-  try {
-    setResult('neutts-result', 'Validating NeuTTS voice (this may take a moment on first run)...');
-    const payload = await fetchJson(appUrl('api/setup/validate-neutts'), {
-      method: 'POST',
-      body: JSON.stringify({
-        backbone: document.getElementById('neutts-backbone').value,
-        codec: document.getElementById('neutts-codec').value,
-        device: document.getElementById('neutts-device').value,
-        voice: document.getElementById('neutts-voice').value,
-      }),
-    });
-    setResult('neutts-result', `Validated NeuTTS: backbone=${payload.backbone}, device=${payload.device}, voice=${payload.voice}.`, true);
-    await refreshState();
-    scrollToSection('gateway-section');
-  } catch (error) {
-    setResult('neutts-result', error.message, false);
-  }
-});
-
-document.getElementById('neutts-voice-select').addEventListener('change', (e) => {
-  if (e.target.value) {
-    document.getElementById('neutts-voice').value = e.target.value;
-  }
-  updateFlowVisibility();
-});
-
-document.getElementById('continue-neutts').addEventListener('click', () => scrollToSection('gateway-section'));
 document.getElementById('continue-gateway').addEventListener('click', () => scrollToSection('launch-summary'));
 
 refreshState()
@@ -1992,9 +1374,6 @@ refreshState()
     }
     if (!elevenVoices.length && setupState.saved.tts.elevenlabs_api_key_present && setupState.saved.tts.default_provider === 'elevenlabs' && !document.getElementById('eleven-section').classList.contains('hidden')) {
       loadElevenVoices().catch(() => {});
-    }
-    if (!vibevoiceVoices.length && setupState.saved.tts.default_provider === 'vibevoice' && !document.getElementById('vibevoice-section').classList.contains('hidden')) {
-      loadVibeVoiceVoices().catch(() => {});
     }
   })
   .catch((error) => {

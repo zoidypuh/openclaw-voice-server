@@ -54,7 +54,7 @@ def _default_avatar_preset(saved: dict[str, object]) -> str:
         return "girl"
 
     model = str((gateway or {}).get("model") or "").strip().lower() if isinstance(gateway, dict) else ""
-    if any(token in model for token in ("openclaw", "claw", "lobster")):
+    if any(token in model for token in ("agentic-switchboard", "agentic", "switchboard", "lobster")):
         return "lobster"
     if any(token in model for token in ("hermes", "mara", "claude", "sonnet", "gpt")):
         return "girl"
@@ -206,21 +206,6 @@ def create_app() -> web.Application:
         result = await setup_service.validate_elevenlabs_key(payload)
         return web.json_response(result)
 
-    async def validate_piper(request: web.Request) -> web.Response:
-        payload = await parse_json(request)
-        result = await setup_service.validate_piper(payload)
-        return web.json_response(result)
-
-    async def validate_chatterbox(request: web.Request) -> web.Response:
-        payload = await parse_json(request)
-        result = await setup_service.validate_chatterbox(payload)
-        return web.json_response(result)
-
-    async def validate_pockettts(request: web.Request) -> web.Response:
-        payload = await parse_json(request)
-        result = await setup_service.validate_pockettts(payload)
-        return web.json_response(result)
-
     async def validate_supertonic(request: web.Request) -> web.Response:
         payload = await parse_json(request)
         result = await setup_service.validate_supertonic(payload)
@@ -233,21 +218,6 @@ def create_app() -> web.Application:
     async def validate_eleven_voice(request: web.Request) -> web.Response:
         payload = await parse_json(request)
         result = await setup_service.validate_elevenlabs_voice(payload)
-        return web.json_response(result)
-
-    async def vibevoice_voices(request: web.Request) -> web.Response:
-        payload = await parse_json(request)
-        result = await setup_service.vibevoice_voices(payload)
-        return web.json_response(result)
-
-    async def validate_vibevoice(request: web.Request) -> web.Response:
-        payload = await parse_json(request)
-        result = await setup_service.validate_vibevoice(payload)
-        return web.json_response(result)
-
-    async def validate_neutts(request: web.Request) -> web.Response:
-        payload = await parse_json(request)
-        result = await setup_service.validate_neutts(payload)
         return web.json_response(result)
 
     @web.middleware
@@ -280,16 +250,9 @@ def create_app() -> web.Application:
     add_route("GET", "/api/setup/edge-voices", edge_voices)
     add_route("POST", "/api/setup/validate-edge", validate_edge)
     add_route("POST", "/api/setup/validate-eleven-key", validate_eleven_key)
-    add_route("POST", "/api/setup/validate-piper", validate_piper)
-    add_route("POST", "/api/setup/validate-chatterbox", validate_chatterbox)
-    add_route("POST", "/api/setup/validate-pockettts", validate_pockettts)
     add_route("POST", "/api/setup/validate-supertonic", validate_supertonic)
     add_route("GET", "/api/setup/eleven-voices", eleven_voices)
     add_route("POST", "/api/setup/validate-eleven-voice", validate_eleven_voice)
-    add_route("GET", "/api/setup/vibevoice-voices", vibevoice_voices)
-    add_route("POST", "/api/setup/vibevoice-voices", vibevoice_voices)
-    add_route("POST", "/api/setup/validate-vibevoice", validate_vibevoice)
-    add_route("POST", "/api/setup/validate-neutts", validate_neutts)
     add_route("GET", "/ws/voice", runtime.handle_ws)
     app.router.add_static("/static", static_dir)
     app.router.add_static("/media", media_dir)

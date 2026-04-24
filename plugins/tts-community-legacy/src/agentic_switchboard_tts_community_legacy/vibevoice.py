@@ -9,10 +9,11 @@ import wave
 import aiohttp
 import httpx
 
-from ..catalog import DEFAULT_SAMPLE_TEXT
-from ..errors import ValidationError
-from .base import BaseSynthesizer
-from .elevenlabs import _http_error_message
+from agentic_switchboard.errors import ValidationError
+from agentic_switchboard.tts.base import BaseSynthesizer
+from agentic_switchboard.tts.elevenlabs import _http_error_message
+
+from .catalog import DEFAULT_SAMPLE_TEXT
 
 
 VIBEVOICE_SAMPLE_RATE = 24_000

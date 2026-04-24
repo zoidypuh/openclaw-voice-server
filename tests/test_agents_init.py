@@ -1,4 +1,4 @@
-from agent_switchboard.agents import build_conversation_agent
+from agentic_switchboard.agents import build_conversation_agent
 
 
 def test_build_conversation_agent_passes_gateway_settings_to_hermes_backend():

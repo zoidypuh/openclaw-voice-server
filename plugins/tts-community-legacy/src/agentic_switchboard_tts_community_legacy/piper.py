@@ -9,10 +9,11 @@ import subprocess
 import sys
 import tempfile
 
-from ..catalog import DEFAULT_SAMPLE_TEXT, SUPPORTED_TTS_PROVIDERS
-from ..errors import ValidationError
-from ..installer import ensure_python_package
-from .base import BaseSynthesizer
+from agentic_switchboard.errors import ValidationError
+from agentic_switchboard.installer import ensure_python_package
+from agentic_switchboard.tts.base import BaseSynthesizer
+
+from .catalog import DEFAULT_SAMPLE_TEXT, SUPPORTED_TTS_PROVIDERS
 
 
 def _ensure_piper_runtime() -> None:

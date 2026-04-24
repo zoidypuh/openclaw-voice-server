@@ -1,6 +1,6 @@
 # Project Instructions
 
-This `AGENTS.md` applies only to `/home/gismar/coding/openclaw-voice-server`.
+This `AGENTS.md` applies only to `/home/gismar/coding/agentic-switchboard`.
 
 ## Mara Ping Rule
 
@@ -25,9 +25,9 @@ This is an agent instruction / notification rule, not a Hermes UI config entry.
 
 ## Voice / TTS Runtime Speak Rule
 
-When a task is about voice playback, TTS, spoken replies, or making the local OpenClaw voice client speak, do not grep around the repo first.
+When a task is about voice playback, TTS, spoken replies, or making the local Agentic Switchboard voice client speak, do not grep around the repo first.
 
-Use the OpenClaw voice server runtime speak endpoint directly:
+Use the Agentic Switchboard runtime speak endpoint directly:
 
 - endpoint: `POST http://127.0.0.1:8765/api/runtime/speak`
 - required JSON field: `text`
@@ -46,7 +46,7 @@ curl -sS http://127.0.0.1:8765/api/runtime/speak \
 
 Notes:
 - The `/voice` client must already be connected or the request will fail with no active voice client.
-- Prefer this endpoint over generic TTS tools when Gis means the local OpenClaw voice server.
+- Prefer this endpoint over generic TTS tools when Gis means the local Agentic Switchboard.
 
 ## Direct Commands Rule
 
