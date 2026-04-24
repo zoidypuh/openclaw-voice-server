@@ -1,6 +1,6 @@
 # Mara's Switchboard
 
-![Mara's Switchboard voice runtime screenshot](image.png)
+![Mara's Switchboard voice runtime screenshot](readme-voice-ui.png)
 
 `maras-switchboard` is a local voice frontend for text agents. It gives you a browser setup page at `/setup`, a voice UI at `/voice`, local or remote Whisper-family STT, multiple TTS backends, and an optional Windows tray client.
 
