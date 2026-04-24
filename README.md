@@ -133,6 +133,7 @@ That removes TTS from the first-run debugging path.
 ## Voice UI Notes
 
 - Browser and Windows client windows use the title `agentic switchboard`.
+- The voice UI starts with a shaded ASCII `Switchboard` title.
 - The talk on/off button is currently hidden; normal mic capture stays controlled by the top-row `paused` / `listening` button and mute.
 - Keyboard shortcut reminders are not shown in the voice UI.
 - The `interrupt` button toggles between inactive and `barge in`. There is no separate interrupt mode panel.

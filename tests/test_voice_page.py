@@ -68,6 +68,10 @@ def test_voice_html_has_mute_button_and_mic_gate():
     voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
 
     assert "<title>agentic switchboard</title>" in voice_html
+    assert '<pre id="ascii-title" aria-label="Switchboard">' in voice_html
+    assert "background-clip: text;" in voice_html
+    assert "filter: drop-shadow(0 8px 14px rgba(0,0,0,0.72));" in voice_html
+    assert "|____/ \\_/\\_/ |_|\\__\\___|_| |_|_.__/ \\___/ \\__,_|_|  \\__,_|</pre>" in voice_html
     assert '<a id="setup-link" href="./setup">setup</a>' in voice_html
     assert '<div id="version">v0.1 <span class="alpha">ALPHA</span></div>' in voice_html
     assert '<button id="push-to-talk-btn" class="mini-btn hidden" type="button">talk on</button>' in voice_html
