@@ -71,8 +71,10 @@ def test_voice_html_has_mute_button_and_mic_gate():
     assert '<div id="ascii-title" aria-label="Mara\'s Switchboard">' in voice_html
     assert 'class="ascii-title-line ascii-title-mara"' in voice_html
     assert 'class="ascii-title-line ascii-title-switchboard"' in voice_html
-    assert "background-clip: text;" in voice_html
     assert "filter: drop-shadow(0 8px 14px rgba(0,0,0,0.72));" in voice_html
+    assert "color: rgba(255, 152, 54, 0.66);" in voice_html
+    assert "color: rgba(122, 216, 255, 0.58);" in voice_html
+    assert "background-clip: text;" not in voice_html
     assert "|_|  |_|\\__,_|_|  \\__,_| |___/</pre>" in voice_html
     assert " ___|_      _(_) |_ ___| |__ | |__   ___   __ _ _ __ __| |" in voice_html
     assert "|____/ \\_/\\_/ |_|\\__\\___|_| |_|_.__/ \\___/ \\__,_|_|  \\__,_|</pre>" in voice_html
