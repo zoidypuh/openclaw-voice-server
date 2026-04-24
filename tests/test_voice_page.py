@@ -252,11 +252,11 @@ def test_voice_html_uses_db_threshold_and_wait_after_speak_slider():
 
     assert 'id="top-bar"' in voice_html
     assert '<button id="pause-btn" class="control-btn" type="button">paused</button>' in voice_html
+    assert '<div id="status-hint" class="hidden"></div>' in voice_html
     assert '<div id="status">listening</div>' not in voice_html
     assert '#status {' not in voice_html
     assert '#setup-link {' in voice_html
     assert '#pause-btn {' in voice_html
-    assert 'id="status-hint"' in voice_html
     assert 'id="level-row"' in voice_html
     assert 'id="level-value"' in voice_html
     assert 'id="interrupt-panel"' not in voice_html
@@ -285,17 +285,18 @@ def test_voice_html_uses_db_threshold_and_wait_after_speak_slider():
     assert "function setLevelDb(levelDb, { updatePeak = true } = {}) {" in voice_html
     assert "function sendBufferedTurn(audioBuffer, { prefixText = '', commitMeta = null } = {}) {" in voice_html
     assert "function armHeldTurn(prefixText) {" in voice_html
-    assert "function applyRuntimeShortcuts(windowsClientSettings) {" in voice_html
-    assert "function updateStatusHint() {" in voice_html
-    assert "talk Ctrl+Shift+S" in voice_html
-    assert "const text = !paused && currentState === 'listening' ? formatShortcutHint() : '';" in voice_html
+    assert "function clearStatusHint() {" in voice_html
+    assert "function applyRuntimeShortcuts" not in voice_html
+    assert "function formatShortcutHint" not in voice_html
+    assert "talk Ctrl+Shift+S" not in voice_html
+    assert "push-to-talk live" not in voice_html
+    assert "windowsClientShortcuts" not in voice_html
     assert "pauseBtn.textContent = paused ? 'paused' : 'listening';" in voice_html
     assert "pauseBtn.classList.toggle('active', !paused);" in voice_html
-    assert "push-to-talk live · release to send" in voice_html
     assert "talk off" in voice_html
     assert "if (pushToTalkEnabled && !pushToTalkActive) {" in voice_html
     assert "function renderInterruptControls() {" in voice_html
-    assert "applyRuntimeShortcuts(runtimeState.windows_client);" in voice_html
+    assert "applyRuntimeShortcuts(runtimeState.windows_client);" not in voice_html
     assert "interruptBtn.textContent = interruptMode === 'barge-in' ? 'barge in' : 'interrupt';" in voice_html
     assert "interruptBtn.classList.toggle('active', interruptMode === 'barge-in');" in voice_html
     assert "setInterruptMode(interruptMode === 'barge-in' ? 'off' : 'barge-in');" in voice_html

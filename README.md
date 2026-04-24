@@ -134,7 +134,7 @@ That removes TTS from the first-run debugging path.
 
 - Browser and Windows client windows use the title `agentic switchboard`.
 - The talk on/off button is currently hidden; normal mic capture stays controlled by the top-row `paused` / `listening` button and mute.
-- Keyboard shortcut hints live in the top row next to the `paused` / `listening` button while the mic is active.
+- Keyboard shortcut reminders are not shown in the voice UI.
 - The `interrupt` button toggles between inactive and `barge in`. There is no separate interrupt mode panel.
 - The `mute` button keeps the same label and uses its active state to show whether mute is enabled.
 - The sliders button opens the two live tuning controls: voice threshold and wait-after-speak.

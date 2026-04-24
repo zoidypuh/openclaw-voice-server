@@ -323,7 +323,7 @@
 <main>
   <div id="top-bar">
     <button id="pause-btn" class="control-btn" type="button">paused</button>
-    <div id="status-hint"></div>
+    <div id="status-hint" class="hidden"></div>
   </div>
   <div id="utility-bar">
     <button id="push-to-talk-btn" class="mini-btn hidden" type="button">talk on</button>
@@ -469,10 +469,6 @@ let captureWatchdogTimer = null;
 let audioRecoveryHooksBound = false;
 let pushToTalkActive = false;
 let pushToTalkEnabled = true;
-let windowsClientShortcuts = {
-  pause_resume: '',
-  interrupt: '',
-};
 let heardTranscriptText = '';
 let spokenReplyText = '';
 let transcriptLogEntries = [];
@@ -662,7 +658,7 @@ function setLevelDb(levelDb, { updatePeak = true } = {}) {
 function setStatusText(text) {
   const normalized = String(text || '').trim();
   if (!normalized || normalized === 'listening' || normalized === 'paused') {
-    updateStatusHint();
+    clearStatusHint();
     return;
   }
   const hint = document.getElementById('status-hint');
@@ -984,37 +980,10 @@ function savePushToTalkEnabled() {
   } catch (_) {}
 }
 
-function applyRuntimeShortcuts(windowsClientSettings) {
-  const shortcuts = windowsClientSettings?.shortcuts || {};
-  windowsClientShortcuts = {
-    pause_resume: String(shortcuts.pause_resume || ''),
-    interrupt: String(shortcuts.interrupt || ''),
-  };
-  updateStatusHint();
-}
-
-function formatShortcutHint() {
-  if (pushToTalkActive) {
-    return 'push-to-talk live · release to send';
-  }
-  const parts = ['talk Ctrl+Shift+S'];
-  if (!pushToTalkEnabled) {
-    parts[0] = 'talk off';
-  }
-  if (windowsClientShortcuts.pause_resume) {
-    parts.push(`pause ${windowsClientShortcuts.pause_resume}`);
-  }
-  if (windowsClientShortcuts.interrupt) {
-    parts.push(`interrupt ${windowsClientShortcuts.interrupt}`);
-  }
-  return parts.join(' · ');
-}
-
-function updateStatusHint() {
+function clearStatusHint() {
   const hint = document.getElementById('status-hint');
-  const text = !paused && currentState === 'listening' ? formatShortcutHint() : '';
-  hint.textContent = text;
-  hint.classList.toggle('hidden', !text);
+  hint.textContent = '';
+  hint.classList.add('hidden');
 }
 
 function combineTranscriptPrefix(prefixText, suffixText) {
@@ -1191,7 +1160,6 @@ function updateControlStates() {
   muteBtn.textContent = 'mute';
   muteBtn.classList.toggle('active', muted);
   renderInterruptControls();
-  updateStatusHint();
 }
 
 function applyMicMuteState() {
@@ -1773,7 +1741,6 @@ async function loadRuntimeState() {
     })
     .then((runtimeState) => {
       applyRuntimeAudioSettings(runtimeState.audio);
-      applyRuntimeShortcuts(runtimeState.windows_client);
       return runtimeState;
     })
     .catch((error) => {
@@ -2218,7 +2185,6 @@ function setState(state) {
   currentState = state;
   document.body.dataset.state = state;
   setStatusText(state);
-  updateStatusHint();
   if (state === 'thinking') {
     if (thinkingStartedAt === null) {
       thinkingStartedAt = performance.now();
