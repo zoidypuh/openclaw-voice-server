@@ -87,6 +87,11 @@ def test_voice_html_has_mute_button_and_mic_gate():
     assert "const INTERRUPT_MODE_STORAGE_KEY = 'maras-switchboard.voice.interrupt-mode.v1';" in voice_html
     assert "function voiceInterruptDisabled() {" in voice_html
     assert "function setInterruptMode(nextMode) {" in voice_html
+    assert "function pauseButtonLabel() {" in voice_html
+    assert "if (state === 'thinking') {" in voice_html
+    assert "return 'thinking';" in voice_html
+    assert "if (state === 'speaking') {" in voice_html
+    assert "return 'speaking';" in voice_html
     assert "function commitBufferedTurnNow() {" in voice_html
     assert "async function beginHoldToTalk() {" in voice_html
     assert "function endHoldToTalk() {" in voice_html
@@ -294,7 +299,7 @@ def test_voice_html_uses_db_threshold_and_wait_after_speak_slider():
     assert "function applyRuntimeShortcuts" not in voice_html
     assert "function formatShortcutHint" not in voice_html
     assert "windowsClientShortcuts" not in voice_html
-    assert "pauseBtn.textContent = paused ? 'paused' : 'listening';" in voice_html
+    assert "pauseBtn.textContent = pauseButtonLabel();" in voice_html
     assert "pauseBtn.classList.toggle('active', !paused);" in voice_html
     assert "pushToTalk" not in voice_html
     assert "function renderInterruptControls() {" in voice_html

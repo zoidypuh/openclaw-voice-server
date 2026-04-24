@@ -1006,6 +1006,20 @@ function clearStatusHint() {
   hint.classList.add('hidden');
 }
 
+function pauseButtonLabel() {
+  if (paused) {
+    return 'paused';
+  }
+  const state = visualStateFor(currentState);
+  if (state === 'thinking') {
+    return 'thinking';
+  }
+  if (state === 'speaking') {
+    return 'speaking';
+  }
+  return 'listening';
+}
+
 function isHoldToTalkActive() {
   return holdToTalkActive;
 }
@@ -1134,7 +1148,7 @@ function scheduleListeningStatusRestore() {
 function updateControlStates() {
   const pauseBtn = document.getElementById('pause-btn');
   const muteBtn = document.getElementById('mute-btn');
-  pauseBtn.textContent = paused ? 'paused' : 'listening';
+  pauseBtn.textContent = pauseButtonLabel();
   pauseBtn.classList.toggle('active', !paused);
   muteBtn.textContent = 'mute';
   muteBtn.classList.toggle('active', muted);
