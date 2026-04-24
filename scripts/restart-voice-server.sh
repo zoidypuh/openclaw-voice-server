@@ -35,5 +35,7 @@ stop_existing() {
 
 stop_existing 'python.*-m maras_switchboard\.app'
 stop_existing 'python.*-m agent_switchboard\.app'
+stop_existing "$REPO_ROOT/.venv/bin/maras-switchboard"
+stop_existing "$REPO_ROOT/src/maras_switchboard/tts/supertonic_worker.py"
 
 exec "$PYTHON_BIN" -m maras_switchboard.app
