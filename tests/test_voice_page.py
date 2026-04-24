@@ -37,9 +37,7 @@ def test_voice_html_uses_echo_controls_and_apple_specific_barge_in_guard():
     assert "function isAppleVoiceClient()" in voice_html
     assert "function isCriOSVoiceClient()" in voice_html
     assert "chrome needs mic access in ios settings" in voice_html
-    assert "const INTERRUPT_PROBE_MIN_SPEECH_MS = 220;" in voice_html
     assert "const INTERRUPT_COOLDOWN_MS = 300;" in voice_html
-    assert "const PAUSED_COMMAND_MIN_SPEECH_MS = 220;" in voice_html
     assert "const APPLE_BARGE_IN_MIN_SPEECH_MS = 220;" in voice_html
     assert "const BARGE_IN_ARM_CONFIDENCE = 0.32;" in voice_html
     assert "const BARGE_IN_READY_CONFIDENCE = 0.78;" in voice_html
@@ -52,12 +50,9 @@ def test_voice_html_uses_echo_controls_and_apple_specific_barge_in_guard():
     assert "if (!bargeInConfidenceQualified && totalMs >= allowedBargeInMaxMs) {" in voice_html
     assert "bargeInConfidenceQualified\n    && bargeInSpeechMs >= requiredBargeInSpeechMs" in voice_html
     assert "if (allowFreeformBargeIn) {\n      pausePlaybackForBargeIn();\n    }" in voice_html
-    assert "if (result.action === 'hold' && !paused) {" in voice_html
-    assert "armHeldTurn(result.content);" in voice_html
-    assert "pendingBargeInPrefixText" in voice_html
-    assert "if (data.action === 'hold' && !paused) {" in voice_html
-    assert "armHeldTurn(String(data.content || data.heard || ''));" in voice_html
-    assert "if (allowFreeformBargeIn && (result.action === 'send' || result.usableSpeech)) {" in voice_html
+    assert "function probeUsableSpeech(audioBuffer) {" in voice_html
+    assert "api/runtime/speech-probe" in voice_html
+    assert "if (result.usableSpeech) {" in voice_html
     assert "echoCancellation: true," in voice_html
     assert "noiseSuppression: true," in voice_html
     assert "autoGainControl: true," in voice_html
@@ -84,30 +79,26 @@ def test_voice_html_has_mute_button_and_mic_gate():
     assert "|____/ \\_/\\_/ |_|\\__\\___|_| |_|_.__/ \\___/ \\__,_|_|  \\__,_|</pre>" in voice_html
     assert '<a id="setup-link" href="./setup">setup</a>' in voice_html
     assert '<div id="version">v0.1 <span class="alpha">ALPHA</span></div>' in voice_html
-    assert '<button id="push-to-talk-btn" class="mini-btn hidden" type="button">talk on</button>' in voice_html
+    assert '<div id="shortcut-command">ctrl+alt+shift+a hold to talk</div>' in voice_html
     assert '<button id="interrupt-btn" class="mini-btn" type="button">interrupt</button>' in voice_html
     assert '<button id="mute-btn" class="mini-btn" type="button">mute</button>' in voice_html
-    assert "let muted = false;" in voice_html
+    assert "let muted = true;" in voice_html
     assert "let interruptMode = 'off';" in voice_html
     assert "const INTERRUPT_MODE_STORAGE_KEY = 'maras-switchboard.voice.interrupt-mode.v1';" in voice_html
-    assert "const PUSH_TO_TALK_STORAGE_KEY = 'maras-switchboard.voice.push-to-talk.v1';" in voice_html
     assert "function voiceInterruptDisabled() {" in voice_html
     assert "function setInterruptMode(nextMode) {" in voice_html
     assert "function commitBufferedTurnNow() {" in voice_html
-    assert "function loadPushToTalkEnabled() {" in voice_html
-    assert "function setPushToTalkEnabled(nextEnabled) {" in voice_html
-    assert "async function beginPushToTalk() {" in voice_html
-    assert "function endPushToTalk() {" in voice_html
-    assert "function setMutedState(nextMuted) {" in voice_html
-    assert "if (!commitBufferedTurnNow()) {" in voice_html
+    assert "async function beginHoldToTalk() {" in voice_html
+    assert "function endHoldToTalk() {" in voice_html
+    assert "function setMutedState(nextMuted, { commitOnMute = true } = {}) {" in voice_html
+    assert "if (!muted || !commitOnMute || !commitBufferedTurnNow()) {" in voice_html
     assert "track.enabled = !muted;" in voice_html
     assert "if (muted) {" in voice_html
-    assert "document.getElementById('push-to-talk-btn').addEventListener('click', () => {" in voice_html
     assert "document.getElementById('interrupt-btn').addEventListener('click', () => {" in voice_html
     assert "document.getElementById('mute-btn').addEventListener('click', () => {" in voice_html
     assert "muteBtn.textContent = 'mute';" in voice_html
-    assert "window.__marasSwitchboardPushToTalkStart = beginPushToTalk;" in voice_html
-    assert "window.__marasSwitchboardPushToTalkEnd = endPushToTalk;" in voice_html
+    assert "window.__marasSwitchboardHoldToTalkStart = beginHoldToTalk;" in voice_html
+    assert "window.__marasSwitchboardHoldToTalkEnd = endHoldToTalk;" in voice_html
 
 
 def test_voice_html_uses_root_app_base_so_trailing_slash_urls_do_not_404():
@@ -297,18 +288,15 @@ def test_voice_html_uses_db_threshold_and_wait_after_speak_slider():
     assert "function formatDb(levelDb) {" in voice_html
     assert "function formatWaitAfterSpeak(ms) {" in voice_html
     assert "function setLevelDb(levelDb, { updatePeak = true } = {}) {" in voice_html
-    assert "function sendBufferedTurn(audioBuffer, { prefixText = '', commitMeta = null } = {}) {" in voice_html
-    assert "function armHeldTurn(prefixText) {" in voice_html
+    assert "function sendBufferedTurn(audioBuffer, { commitMeta = null } = {}) {" in voice_html
+    assert "function isHoldToTalkActive() {" in voice_html
     assert "function clearStatusHint() {" in voice_html
     assert "function applyRuntimeShortcuts" not in voice_html
     assert "function formatShortcutHint" not in voice_html
-    assert "talk Ctrl+Shift+S" not in voice_html
-    assert "push-to-talk live" not in voice_html
     assert "windowsClientShortcuts" not in voice_html
     assert "pauseBtn.textContent = paused ? 'paused' : 'listening';" in voice_html
     assert "pauseBtn.classList.toggle('active', !paused);" in voice_html
-    assert "talk off" in voice_html
-    assert "if (pushToTalkEnabled && !pushToTalkActive) {" in voice_html
+    assert "pushToTalk" not in voice_html
     assert "function renderInterruptControls() {" in voice_html
     assert "applyRuntimeShortcuts(runtimeState.windows_client);" not in voice_html
     assert "interruptBtn.textContent = interruptMode === 'barge-in' ? 'barge in' : 'interrupt';" in voice_html
@@ -318,7 +306,7 @@ def test_voice_html_uses_db_threshold_and_wait_after_speak_slider():
     assert "&& !voiceInterruptDisabled()" in voice_html
     assert "tuning.inputThresholdDb" in voice_html
     assert "tuning.waitAfterSpeakMs" in voice_html
-    assert "const manualFinishEnabled = false;" in voice_html
+    assert "manualFinish" not in voice_html
     assert "type: 'turn-commit'" in voice_html
     assert "const turnThresholdDb = tuning.inputThresholdDb;" in voice_html
     assert "const turnAboveThreshold = baseLevel > turnThresholdDb;" in voice_html

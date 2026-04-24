@@ -18,8 +18,8 @@ from .catalog import (
     DEFAULT_REMOTE_WHISPER_MODEL,
     DEFAULT_REMOTE_WHISPER_PORT,
     DEFAULT_VOICE_SESSION_KEY,
-    DEFAULT_WINDOWS_SHORTCUTS,
     ELEVENLABS_PRESETS,
+    HOLD_TO_TALK_SHORTCUT_LABEL,
     SUPPORTED_AGENT_BACKENDS,
     SUPPORTED_STT_BACKENDS,
     SUPPORTED_TTS_PROVIDERS,
@@ -167,128 +167,18 @@ class SetupService:
             return self._snapshot_matches(current, legacy_snapshot)
         return False
 
-    @staticmethod
-    def _normalize_shortcut(value: str) -> str:
-        text = str(value or "").strip()
-        if not text:
-            raise ValidationError("Shortcut values cannot be empty.")
-
-        modifier_aliases = {
-            "ctrl": "Ctrl",
-            "control": "Ctrl",
-            "alt": "Alt",
-            "option": "Alt",
-            "shift": "Shift",
-            "cmd": "Super",
-            "command": "Super",
-            "meta": "Super",
-            "super": "Super",
-            "win": "Super",
-            "windows": "Super",
-        }
-        key_aliases = {
-            "space": "Space",
-            "enter": "Enter",
-            "return": "Enter",
-            "tab": "Tab",
-            "esc": "Escape",
-            "escape": "Escape",
-            "backspace": "Backspace",
-            "delete": "Delete",
-            "del": "Delete",
-            "insert": "Insert",
-            "ins": "Insert",
-            "home": "Home",
-            "end": "End",
-            "pageup": "PageUp",
-            "pgup": "PageUp",
-            "pagedown": "PageDown",
-            "pgdown": "PageDown",
-            "up": "ArrowUp",
-            "arrowup": "ArrowUp",
-            "down": "ArrowDown",
-            "arrowdown": "ArrowDown",
-            "left": "ArrowLeft",
-            "arrowleft": "ArrowLeft",
-            "right": "ArrowRight",
-            "arrowright": "ArrowRight",
-        }
-        tokens = [part.strip() for part in text.split("+")]
-        if not tokens or any(not token for token in tokens):
-            raise ValidationError(
-                "Shortcut values must look like Ctrl+Shift+Space or Ctrl+Alt+A."
-            )
-
-        modifiers: set[str] = set()
-        key: str | None = None
-        for index, token in enumerate(tokens):
-            compact = token.replace(" ", "").replace("_", "").replace("-", "")
-            lowered = compact.lower()
-            if lowered in modifier_aliases:
-                if key is not None or index == len(tokens) - 1:
-                    raise ValidationError("Shortcut modifiers must come before the final key.")
-                modifiers.add(modifier_aliases[lowered])
-                continue
-
-            if index != len(tokens) - 1:
-                raise ValidationError("Shortcut values must end with exactly one key.")
-            if lowered.startswith("key") and len(compact) == 4 and compact[3].isalpha():
-                key = compact[3].upper()
-            elif lowered.startswith("digit") and len(compact) == 6 and compact[5].isdigit():
-                key = compact[5]
-            elif len(compact) == 1 and compact.isalpha():
-                key = compact.upper()
-            elif len(compact) == 1 and compact.isdigit():
-                key = compact
-            elif lowered in key_aliases:
-                key = key_aliases[lowered]
-            elif lowered.startswith("f") and compact[1:].isdigit() and 1 <= int(compact[1:]) <= 24:
-                key = f"F{int(compact[1:])}"
-            else:
-                raise ValidationError(
-                    f"Unsupported shortcut key '{token}'. Use keys like A, P, Space, Enter, ArrowUp, or F5."
-                )
-
-        if not modifiers:
-            raise ValidationError("Shortcut values must include at least one modifier key.")
-        if key is None:
-            raise ValidationError("Shortcut values must end with a key.")
-
-        ordered_modifiers = [
-            modifier for modifier in ("Ctrl", "Alt", "Shift", "Super") if modifier in modifiers
-        ]
-        return "+".join([*ordered_modifiers, key])
-
     def validate_windows_client(self, payload: dict[str, Any]) -> dict[str, Any]:
-        current = self.store.load_config()["windows_client"]
-        current_shortcuts = dict(current.get("shortcuts") or {})
-        shortcuts = {
-            "toggle_window": self._normalize_shortcut(
-                str(payload.get("toggle_window") or current_shortcuts.get("toggle_window") or "")
-            ),
-            "pause_resume": self._normalize_shortcut(
-                str(payload.get("pause_resume") or current_shortcuts.get("pause_resume") or "")
-            ),
-            "interrupt": self._normalize_shortcut(
-                str(payload.get("interrupt") or current_shortcuts.get("interrupt") or "")
-            ),
-        }
-        if len(set(shortcuts.values())) != len(shortcuts):
-            raise ValidationError("Windows client shortcuts must be unique.")
-
         self.store.update_config(
             {
-                "windows_client": {
-                    "shortcuts": shortcuts,
-                },
+                "windows_client": {},
                 "validation": {
                     "windows_client": {
-                        "config_hash": self._config_hash(shortcuts),
+                        "config_hash": self._config_hash({}),
                     }
                 },
             }
         )
-        return {"ok": True, "shortcuts": shortcuts}
+        return {"ok": True}
 
     def _stt_runtime_ready(self, settings: dict[str, Any]) -> bool:
         stt = settings["stt"]
@@ -514,7 +404,7 @@ class SetupService:
             },
             "hints": {
                 "default_voice_session_key": DEFAULT_VOICE_SESSION_KEY,
-                "default_windows_shortcuts": DEFAULT_WINDOWS_SHORTCUTS,
+                "hold_to_talk_shortcut": HOLD_TO_TALK_SHORTCUT_LABEL,
                 "default_hermes_root": DEFAULT_HERMES_ROOT,
                 "gpu_note": (
                     "GPU mode currently targets NVIDIA CUDA. "
@@ -535,10 +425,7 @@ class SetupService:
                     "Point this field at the Hermes checkout root that contains run_agent.py. "
                     "The runtime can use either a repo-local venv or ~/.hermes/venv."
                 ),
-                "windows_shortcuts_note": (
-                    "These shortcuts are used by the Windows tray client. "
-                    "Changes take effect the next time the Windows client starts."
-                ),
+                "windows_client_note": f"The Windows tray client uses one fixed hold-to-talk shortcut: {HOLD_TO_TALK_SHORTCUT_LABEL}.",
                 "default_supertonic_python_path": detect_supertonic_python_path(),
                 "default_supertonic_voice": SUPERTONIC_DEFAULT_VOICE,
                 "default_supertonic_language": SUPERTONIC_DEFAULT_LANGUAGE,

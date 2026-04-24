@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from copy import deepcopy
 from pathlib import Path
+from copy import deepcopy
 
 
 APP_VERSION_LABEL = "v0.1"
@@ -13,11 +13,7 @@ DEFAULT_REMOTE_WHISPER_HOST_ALIAS = "remote-whisper"
 DEFAULT_REMOTE_WHISPER_PORT = 18000
 DEFAULT_REMOTE_WHISPER_ENDPOINT_PATH = "/v1/audio/transcriptions"
 DEFAULT_REMOTE_WHISPER_MODEL = ""
-DEFAULT_WINDOWS_SHORTCUTS = {
-    "toggle_window": "Ctrl+Shift+Space",
-    "pause_resume": "Ctrl+Shift+P",
-    "interrupt": "Ctrl+Alt+A",
-}
+HOLD_TO_TALK_SHORTCUT_LABEL = "Ctrl+Alt+Shift+A"
 ELEVENLABS_DEFAULT_PRESET = "natural"
 ELEVENLABS_PRESETS = {
     "calm": {
@@ -234,9 +230,7 @@ DEFAULT_CONFIG = {
         "silence_ms": 2000,
         "min_speech_ms": 500,
     },
-    "windows_client": {
-        "shortcuts": deepcopy(DEFAULT_WINDOWS_SHORTCUTS),
-    },
+    "windows_client": {},
     "validation": {
         "stt": {
             "config_hash": "",

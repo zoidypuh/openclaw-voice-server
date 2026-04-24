@@ -20,13 +20,8 @@ from .errors import ValidationError
 from .stt import build_transcriber
 from .tts import build_synthesizer, normalize_elevenlabs_preset
 from .text import (
-    command_send_phrases,
-    detect_voice_control_command,
     extract_speech_directives,
-    has_probable_voice_transcript,
-    remaining_voice_text_after_command,
     should_drop_voice_transcript,
-    split_send_phrase,
     strip_markdown,
 )
 
@@ -81,9 +76,6 @@ class VoiceTurnMetrics:
 class VoiceRuntime:
     def __init__(self, store: ConfigStore):
         self.store = store
-        self._interrupt_transcriber = None
-        self._interrupt_transcriber_key: tuple | None = None
-        self._interrupt_transcriber_lock = asyncio.Lock()
         self._active_ws: web.WebSocketResponse | None = None
         self._active_ws_lock = asyncio.Lock()
         self._active_ws_supports_playback_accept = False
@@ -92,36 +84,17 @@ class VoiceRuntime:
         self._pending_playback_accepts_lock = asyncio.Lock()
 
     @staticmethod
-    def _interrupt_transcriber_config_key(stt_settings: dict) -> tuple:
-        return (
-            stt_settings.get("default_backend"),
-            stt_settings.get("language"),
-            stt_settings.get("device"),
-            stt_settings.get("compute_type"),
-            stt_settings.get("whisper_endpoint_url"),
-            stt_settings.get("whisper_endpoint_model"),
-            tuple(sorted((stt_settings.get("backend_models") or {}).items())),
-        )
-
-    @staticmethod
     def _disable_faster_whisper_vad(stt_settings: dict) -> dict:
         settings = dict(stt_settings)
         if settings.get("default_backend") == "faster-whisper":
             # This app already segments turns on the client. Letting
             # faster-whisper run its own VAD on top of that tends to trim live
-            # turns too aggressively, especially short commands and speech with
-            # pauses.
+            # turns too aggressively, especially speech with pauses.
             settings["vad_filter"] = False
-            # The fast Silero pre-check is great for interrupt probes, but on
-            # full live turns it can produce false negatives and skip Whisper
-            # entirely, which shows up as "speech input detected ... but STT
-            # returned no transcript" in the logs.
+            # The fast Silero pre-check is useful for short probes, but on full
+            # live turns it can produce false negatives and skip Whisper entirely.
             settings["speech_precheck"] = False
         return settings
-
-    @staticmethod
-    def _interrupt_stt_settings(stt_settings: dict) -> dict:
-        return VoiceRuntime._disable_faster_whisper_vad(stt_settings)
 
     @staticmethod
     def _turn_stt_settings(stt_settings: dict) -> dict:
@@ -277,80 +250,23 @@ class VoiceRuntime:
             direct_agent_cls=DirectGatewayClient,
         )
 
-    async def _get_interrupt_transcriber(self):
-        settings = self._interrupt_stt_settings(self.store.load_runtime_settings()["stt"])
-        config_key = self._interrupt_transcriber_config_key(settings)
-        async with self._interrupt_transcriber_lock:
-            if self._interrupt_transcriber is None or self._interrupt_transcriber_key != config_key:
-                self._interrupt_transcriber = build_transcriber(settings)
-                self._interrupt_transcriber_key = config_key
-            return self._interrupt_transcriber
-
-    async def handle_interrupt_probe(self, request: web.Request) -> web.Response:
+    async def handle_speech_probe(self, request: web.Request) -> web.Response:
         payload = await request.json() if request.can_read_body else {}
         audio_b64 = str(payload.get("audio_b64") or "").strip()
-        allow_send_phrase = bool(payload.get("allow_send_phrase"))
         if not audio_b64:
-            raise ValidationError("Missing interrupt probe audio.")
+            raise ValidationError("Missing speech probe audio.")
         try:
             audio_bytes = base64.b64decode(audio_b64, validate=True)
         except (ValueError, binascii.Error) as exc:
-            raise ValidationError("Interrupt probe audio was invalid.") from exc
+            raise ValidationError("Speech probe audio was invalid.") from exc
         if len(audio_bytes) < 1600:
-            return web.json_response({"ok": True, "matched": False, "heard": ""})
+            return web.json_response({"ok": True, "usable_speech": False})
 
-        # Fast Silero VAD pre-check: skip full Whisper if no speech detected.
         from .stt.silero_vad import audio_contains_speech
 
         loop = asyncio.get_running_loop()
-        has_speech = await loop.run_in_executor(
-            None, audio_contains_speech, audio_bytes,
-        )
-        if not has_speech:
-            return web.json_response(
-                {"ok": True, "matched": False, "action": "", "heard": "", "content": "", "usable_speech": False}
-            )
-
-        # Fast VAD-only mode for barge-in: if VAD says speech, that's enough
-        # to interrupt — no need for full Whisper transcription.  The captured
-        # audio becomes the prefix of the next turn anyway.
-        vad_only = bool(payload.get("vad_only"))
-        if vad_only:
-            return web.json_response(
-                {"ok": True, "matched": False, "action": "", "heard": "", "content": "", "usable_speech": True}
-            )
-
-        transcriber = await self._get_interrupt_transcriber()
-        command_language = self.store.load_runtime_settings()["stt"].get("language", "")
-        loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, transcriber.transcribe, audio_bytes)
-        text = result.text.strip()
-        duration = float(getattr(result, "duration_seconds", 0.0) or 0.0)
-        action = detect_voice_control_command(text, language=command_language)
-        content = text
-        if not action and allow_send_phrase:
-            for phrase in command_send_phrases(command_language):
-                _, matched_send_phrase = split_send_phrase(text, phrase)
-                if matched_send_phrase:
-                    action = "send"
-                    break
-        if action in {"interrupt", "pause", "hold"}:
-            content = remaining_voice_text_after_command(
-                text,
-                action,
-                language=command_language,
-            )
-        usable_speech = bool(action) or has_probable_voice_transcript(text, duration, min_duration=0.2)
-        return web.json_response(
-            {
-                "ok": True,
-                "matched": action == "interrupt",
-                "action": action or "",
-                "heard": text,
-                "content": content,
-                "usable_speech": usable_speech,
-            }
-        )
+        usable_speech = await loop.run_in_executor(None, audio_contains_speech, audio_bytes)
+        return web.json_response({"ok": True, "usable_speech": bool(usable_speech)})
 
     async def _set_active_ws(self, ws: web.WebSocketResponse | None) -> None:
         async with self._active_ws_lock:
@@ -608,23 +524,16 @@ class VoiceRuntime:
                 await ws.close(code=1011, message=str(exc).encode("utf-8")[:120])
             await self._clear_active_ws(ws)
             return ws
-        command_language = settings["stt"].get("language", "")
-
         active_task: asyncio.Task | None = None
         abort_event = asyncio.Event()
-        manual_finish_enabled = True
-        manual_finish_phrases = command_send_phrases(command_language)
-        pending_transcript_prefix = ""
         pending_turn_commit_meta: dict[str, object] | None = None
 
         async def process_audio(
             audio_bytes: bytes,
             task_abort_event: asyncio.Event,
             *,
-            transcript_prefix: str = "",
             turn_commit_meta: dict[str, object] | None = None,
         ) -> None:
-            nonlocal manual_finish_enabled, manual_finish_phrases
             loop = asyncio.get_running_loop()
             turn = VoiceTurnMetrics()
             if turn_commit_meta:
@@ -655,48 +564,9 @@ class VoiceRuntime:
                 )
                 await ws.send_json({"status": "idle"})
                 return
-            if manual_finish_enabled:
-                for send_phrase in manual_finish_phrases:
-                    next_text, matched_send_phrase = split_send_phrase(text, send_phrase)
-                    if not matched_send_phrase:
-                        continue
-                    text = next_text.strip()
-                    if not text:
-                        LOGGER.info(
-                            "[%s] speech input detected (%s) but only the send phrase remained after cleanup",
-                            turn.turn_id,
-                            _format_elapsed(duration),
-                        )
-                        await ws.send_json({"status": "idle"})
-                        return
-                    break
-            prefix = str(transcript_prefix or "").strip()
-            if prefix:
-                text = f"{prefix} {text}".strip()
-            action = detect_voice_control_command(text, language=command_language)
-            if action:
-                command_content = text
-                if action == "hold":
-                    command_content = remaining_voice_text_after_command(
-                        text,
-                        action,
-                        language=command_language,
-                    )
-                LOGGER.info(
-                    "[%s] voice command detected (%s): %s",
-                    turn.turn_id,
-                    action,
-                    _summarize_text(command_content or text),
-                )
-                payload = {"type": "voice-command", "action": action, "heard": text}
-                if action == "hold":
-                    payload["content"] = command_content
-                await ws.send_json(payload)
-                await ws.send_json({"status": "idle"})
-                return
             audio_settings = settings.get("audio", {})
             min_duration = max(float(audio_settings.get("min_speech_ms", 500) or 500) / 1000.0, 0.0)
-            if should_drop_voice_transcript(text, duration, min_duration=min_duration, command_language=command_language):
+            if should_drop_voice_transcript(text, duration, min_duration=min_duration):
                 LOGGER.debug(
                     "[dim]dropped: %s (%s)[/dim]",
                     _summarize_text(text),
@@ -887,7 +757,6 @@ class VoiceRuntime:
             audio_bytes: bytes,
             task_abort_event: asyncio.Event,
             *,
-            transcript_prefix: str = "",
             turn_commit_meta: dict[str, object] | None = None,
         ) -> None:
             nonlocal active_task
@@ -896,7 +765,6 @@ class VoiceRuntime:
                     await process_audio(
                         audio_bytes,
                         task_abort_event,
-                        transcript_prefix=transcript_prefix,
                         turn_commit_meta=turn_commit_meta,
                     )
                 except ValidationError as exc:
@@ -936,9 +804,6 @@ class VoiceRuntime:
                         )
                     elif msg_type == "interrupt":
                         await cancel_active_task(send_idle=True)
-                        pending_transcript_prefix = ""
-                    elif msg_type == "set-transcript-prefix":
-                        pending_transcript_prefix = str(payload.get("prefix_text") or "").strip()
                     elif msg_type == "turn-commit":
                         pending_turn_commit_meta = {
                             "reason": str(payload.get("reason") or "").strip(),
@@ -948,9 +813,6 @@ class VoiceRuntime:
                             "level_db": payload.get("level_db"),
                             "wait_after_speak_ms": int(payload.get("wait_after_speak_ms") or 0),
                         }
-                    elif msg_type == "set-capture-mode":
-                        manual_finish_enabled = bool(payload.get("manual_finish"))
-                        manual_finish_phrases = command_send_phrases(command_language)
                     continue
                 if message.type != WSMsgType.BINARY:
                     continue
@@ -959,15 +821,12 @@ class VoiceRuntime:
                 if len(message.data) < 1600:
                     continue
                 abort_event = asyncio.Event()
-                transcript_prefix = pending_transcript_prefix
                 turn_commit_meta = pending_turn_commit_meta
-                pending_transcript_prefix = ""
                 pending_turn_commit_meta = None
                 active_task = asyncio.create_task(
                     run_audio_task(
                         message.data,
                         abort_event,
-                        transcript_prefix=transcript_prefix,
                         turn_commit_meta=turn_commit_meta,
                     )
                 )

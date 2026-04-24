@@ -569,43 +569,16 @@ def test_runtime_ready_accepts_hermes_live_config(tmp_path, monkeypatch):
     assert state["status"]["runtime_ready"] is True
 
 
-def test_validate_windows_client_normalizes_and_persists_shortcuts(tmp_path):
+def test_validate_windows_client_persists_fixed_client_state(tmp_path):
     store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
     service = SetupService(store)
 
-    result = service.validate_windows_client(
-        {
-            "toggle_window": "control + shift + space",
-            "pause_resume": "ctrl + shift + keyp",
-            "interrupt": "alt + ctrl + a",
-        }
-    )
+    result = service.validate_windows_client({})
     saved = store.load_config()
 
-    assert result == {
-        "ok": True,
-        "shortcuts": {
-            "toggle_window": "Ctrl+Shift+Space",
-            "pause_resume": "Ctrl+Shift+P",
-            "interrupt": "Ctrl+Alt+A",
-        },
-    }
-    assert saved["windows_client"]["shortcuts"] == result["shortcuts"]
+    assert result == {"ok": True}
+    assert saved["windows_client"] == {}
     assert saved["validation"]["windows_client"]["config_hash"]
-
-
-def test_validate_windows_client_rejects_duplicate_shortcuts(tmp_path):
-    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
-    service = SetupService(store)
-
-    with pytest.raises(ValidationError, match="Windows client shortcuts must be unique."):
-        service.validate_windows_client(
-            {
-                "toggle_window": "Ctrl+Shift+Space",
-                "pause_resume": "Ctrl+Shift+Space",
-                "interrupt": "Ctrl+Alt+A",
-            }
-        )
 
 
 def test_validate_tts_selection_rejects_disabled_with_other_provider(tmp_path):

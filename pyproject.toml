@@ -31,7 +31,6 @@ tts-edge = [
 
 [project.scripts]
 maras-switchboard = "maras_switchboard.app:main"
-maras-switchboard-calibrate = "maras_switchboard.calibrate_commands:main"
 maras-switchboard-speak = "maras_switchboard.speak_paragraphs:main"
 
 [tool.hatch.build.targets.wheel]

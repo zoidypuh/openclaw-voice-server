@@ -134,8 +134,9 @@ That removes TTS from the first-run debugging path.
 
 - Browser and Windows client windows use the title `Mara's Switchboard`.
 - The voice UI starts with a shaded ASCII `Mara's` over `Switchboard` title.
-- The talk on/off button is currently hidden; normal mic capture stays controlled by the top-row `paused` / `listening` button and mute.
-- Keyboard shortcut reminders are not shown in the voice UI.
+- The voice UI starts muted. Click `mute` to unmute for normal freehand conversation; click it again to mute.
+- The only global keyboard shortcut is `Ctrl+Alt+Shift+A`: hold it to record, release it to send the captured speech, then the client returns to mute.
+- The shortcut is shown above the ASCII title in small text.
 - The `interrupt` button toggles between inactive and `barge in`. There is no separate interrupt mode panel.
 - The `mute` button keeps the same label and uses its active state to show whether mute is enabled.
 - The sliders button opens the two live tuning controls: voice threshold and wait-after-speak.
@@ -302,24 +303,6 @@ If you just want to verify a file or feature while editing, run a smaller slice,
 ```bash
 source .venv/bin/activate
 PYTHONPATH=src python3 -m pytest tests/test_runtime.py
-```
-
-## Command Calibration
-
-There is also a calibration helper for spoken control phrases.
-
-Example:
-
-```bash
-source .venv/bin/activate
-maras-switchboard-calibrate samples/hey-go --expected-action send --send-phrase "hey go"
-```
-
-Help:
-
-```bash
-source .venv/bin/activate
-maras-switchboard-calibrate --help
 ```
 
 ## Speak Paragraphs via HTTP

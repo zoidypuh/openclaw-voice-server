@@ -81,6 +81,13 @@
       drop-shadow(0 2px 2px rgba(0,0,0,0.72))
       drop-shadow(0 0 16px rgba(16,80,112,0.22));
   }
+  #shortcut-command {
+    color: rgba(188, 203, 214, 0.62);
+    font-family: "IBM Plex Mono", "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: lowercase;
+  }
   .ascii-title-line {
     margin: 0;
     font-family: "IBM Plex Mono", "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
@@ -369,6 +376,7 @@
 <a id="setup-link" href="./setup">setup</a>
 <div id="version">v0.1 <span class="alpha">ALPHA</span></div>
 <main>
+  <div id="shortcut-command">ctrl+alt+shift+a hold to talk</div>
   <div id="ascii-title" aria-label="Mara's Switchboard">
     <pre class="ascii-title-line ascii-title-mara"> __  __                 _
 |  \/  | __ _ _ __ __ _( )___
@@ -385,7 +393,6 @@
     <div id="status-hint" class="hidden"></div>
   </div>
   <div id="utility-bar">
-    <button id="push-to-talk-btn" class="mini-btn hidden" type="button">talk on</button>
     <button id="interrupt-btn" class="mini-btn" type="button">interrupt</button>
     <button id="mute-btn" class="mini-btn" type="button">mute</button>
     <button id="play-reply-btn" class="mini-btn hidden" type="button">play reply</button>
@@ -473,7 +480,7 @@ let hasSpeech = false;
 let busy = false;
 let pendingIdle = false;
 let paused = true;
-let muted = false;
+let muted = true;
 let interruptPending = false;
 let currentState = 'paused';
 let replyActive = false;
@@ -493,10 +500,7 @@ let shellStatusTimer = null;
 let lastPublishedShellState = '';
 let interruptCooldownUntil = 0;
 let speechGateHoldUntil = 0;
-let interruptProbeChunks = [];
-let interruptProbeSpeechMs = 0;
-let interruptProbeSilenceMs = 0;
-let interruptProbePending = false;
+let speechProbePending = false;
 let bargeInChunks = [];
 let bargeInSpeechMs = 0;
 let bargeInSilenceMs = 0;
@@ -508,12 +512,8 @@ let playbackSoftPaused = false;
 let playbackSessionStarted = false;
 let bargeInGraceUntil = 0;
 let pendingBargeInAudio = null;
-let pendingBargeInPrefixText = '';
 let pendingBargeInCommitMeta = null;
-let holdContinuationActive = false;
-let heldTurnPrefixText = '';
-let manualFinishProbePending = false;
-let manualFinishProbeCooldownUntil = 0;
+let holdToTalkActive = false;
 let runtimeStatePromise = null;
 let playbackUnlocked = false;
 let webAudioUnlocked = false;
@@ -526,8 +526,6 @@ let audioRecoveryPromise = null;
 let audioStartupPromise = null;
 let captureWatchdogTimer = null;
 let audioRecoveryHooksBound = false;
-let pushToTalkActive = false;
-let pushToTalkEnabled = true;
 let heardTranscriptText = '';
 let spokenReplyText = '';
 let transcriptLogEntries = [];
@@ -542,7 +540,6 @@ let settings = {
 const TUNING_STORAGE_KEY = 'maras-switchboard.voice.tuning.v1';
 const TUNING_PANEL_STORAGE_KEY = 'maras-switchboard.voice.tuning-panel.v1';
 const INTERRUPT_MODE_STORAGE_KEY = 'maras-switchboard.voice.interrupt-mode.v1';
-const PUSH_TO_TALK_STORAGE_KEY = 'maras-switchboard.voice.push-to-talk.v1';
 const DEFAULT_TUNING = {
   inputThresholdDb: -41,
   waitAfterSpeakMs: 1700,
@@ -564,12 +561,7 @@ const INTERRUPT_ZCR_MIN = 0.003;
 const INTERRUPT_ZCR_MAX = 0.34;
 const INTERRUPT_CREST_MAX = 14.0;
 const SPEECH_GATE_HOLD_MS = 220;
-const INTERRUPT_PROBE_MIN_SPEECH_MS = 220;
-const INTERRUPT_PROBE_SILENCE_MS = 220;
-const INTERRUPT_PROBE_MAX_MS = 1200;
 const INTERRUPT_COOLDOWN_MS = 300;
-const PAUSED_COMMAND_MIN_SPEECH_MS = 220;
-const PAUSED_COMMAND_MAX_MS = 1200;
 const PLAYBACK_NO_BARGE_IN_MS = 800;
 const BARGE_IN_MIN_SPEECH_MS = 450;
 const BARGE_IN_SILENCE_MS = 220;
@@ -581,8 +573,6 @@ const APPLE_PLAYBACK_NO_BARGE_IN_MS = 1800;
 const APPLE_BARGE_IN_MIN_SPEECH_MS = 220;
 const APPLE_BARGE_IN_SILENCE_MS = 220;
 const APPLE_BARGE_IN_MAX_MS = 1200;
-const MANUAL_FINISH_PROBE_MIN_SILENCE_MS = 260;
-const MANUAL_FINISH_PROBE_COOLDOWN_MS = 900;
 const AUDIO_CAPTURE_STALL_MS = 2600;
 const AUDIO_WATCHDOG_INTERVAL_MS = 1000;
 const APPLE_AUDIO_STARTUP_RETRY_DELAYS_MS = [150, 350, 700];
@@ -593,7 +583,6 @@ let tuningStorageState = {
   inputThresholdDb: false,
   waitAfterSpeakMs: false,
 };
-const manualFinishEnabled = false;
 let interruptMode = 'off';
 
 function amplitudeToDb(amplitude) {
@@ -858,13 +847,6 @@ function sendClientReady() {
   }));
 }
 
-function sendTranscriptPrefix(prefixText) {
-  if (!prefixText || !ws || ws.readyState !== WebSocket.OPEN) {
-    return;
-  }
-  ws.send(JSON.stringify({ type: 'set-transcript-prefix', prefix_text: prefixText }));
-}
-
 function sendTurnCommitMeta(meta) {
   if (!meta || !ws || ws.readyState !== WebSocket.OPEN) {
     return;
@@ -1018,80 +1000,26 @@ function voiceInterruptDisabled() {
   return interruptMode === 'off';
 }
 
-function normalizeTranscriptPrefix(text) {
-  return String(text || '').trim().replace(/\s+/g, ' ');
-}
-
-function loadPushToTalkEnabled() {
-  try {
-    const raw = localStorage.getItem(PUSH_TO_TALK_STORAGE_KEY);
-    if (raw === 'off') {
-      pushToTalkEnabled = false;
-      return;
-    }
-  } catch (_) {}
-  pushToTalkEnabled = true;
-}
-
-function savePushToTalkEnabled() {
-  try {
-    localStorage.setItem(PUSH_TO_TALK_STORAGE_KEY, pushToTalkEnabled ? 'on' : 'off');
-  } catch (_) {}
-}
-
 function clearStatusHint() {
   const hint = document.getElementById('status-hint');
   hint.textContent = '';
   hint.classList.add('hidden');
 }
 
-function combineTranscriptPrefix(prefixText, suffixText) {
-  const prefix = normalizeTranscriptPrefix(prefixText);
-  const suffix = normalizeTranscriptPrefix(suffixText);
-  if (!prefix) {
-    return suffix;
-  }
-  if (!suffix) {
-    return prefix;
-  }
-  return `${prefix} ${suffix}`;
+function isHoldToTalkActive() {
+  return holdToTalkActive;
 }
 
-function clearHeldTurnState() {
-  holdContinuationActive = false;
-  heldTurnPrefixText = '';
-}
-
-function armHeldTurn(prefixText) {
-  holdContinuationActive = true;
-  heldTurnPrefixText = combineTranscriptPrefix(heldTurnPrefixText, prefixText);
-  pendingIdle = false;
-  resetCaptureBuffer();
-  resetInterruptSpeechDetection();
-  resetInterruptProbeCapture();
-  resetBargeInCapture();
-  if (!paused && !interruptPending) {
-    setState('listening');
-  }
-}
-
-function isHeldTurnActive() {
-  return holdContinuationActive;
-}
-
-function queuePendingTurn(audioBuffer, { prefixText = '', commitMeta = null } = {}) {
+function queuePendingTurn(audioBuffer, { commitMeta = null } = {}) {
   pendingBargeInAudio = audioBuffer;
-  pendingBargeInPrefixText = normalizeTranscriptPrefix(prefixText);
   pendingBargeInCommitMeta = commitMeta;
-  clearHeldTurnState();
   requestInterrupt({ keepPaused: false, preservePendingInput: true });
 }
 
-function sendBufferedTurn(audioBuffer, { prefixText = '', commitMeta = null } = {}) {
+function sendBufferedTurn(audioBuffer, { commitMeta = null } = {}) {
   if (!audioBuffer || !ws || ws.readyState !== WebSocket.OPEN) {
     return false;
   }
-  const normalizedPrefix = normalizeTranscriptPrefix(prefixText);
   if (
     interruptPending
     || busy
@@ -1100,18 +1028,14 @@ function sendBufferedTurn(audioBuffer, { prefixText = '', commitMeta = null } = 
     || audioQueue.length > 0
     || currentState === 'speaking'
   ) {
-    queuePendingTurn(audioBuffer, { prefixText: normalizedPrefix, commitMeta });
+    queuePendingTurn(audioBuffer, { commitMeta });
     return true;
-  }
-  if (normalizedPrefix) {
-    sendTranscriptPrefix(normalizedPrefix);
   }
   sendTurnCommitMeta(commitMeta);
   busy = true;
   pendingIdle = false;
   setState('thinking');
   ws.send(audioBuffer);
-  clearHeldTurnState();
   return true;
 }
 
@@ -1180,7 +1104,6 @@ function configureTuningControls() {
       DEFAULT_TUNING.inputThresholdDb,
     );
     resetInterruptSpeechDetection();
-    resetInterruptProbeCapture();
     renderTuningControls();
     saveTuning();
   });
@@ -1209,11 +1132,8 @@ function scheduleListeningStatusRestore() {
 }
 
 function updateControlStates() {
-  const pushToTalkBtn = document.getElementById('push-to-talk-btn');
   const pauseBtn = document.getElementById('pause-btn');
   const muteBtn = document.getElementById('mute-btn');
-  pushToTalkBtn.textContent = pushToTalkEnabled ? 'talk on' : 'talk off';
-  pushToTalkBtn.classList.toggle('active', pushToTalkEnabled);
   pauseBtn.textContent = paused ? 'paused' : 'listening';
   pauseBtn.classList.toggle('active', !paused);
   muteBtn.textContent = 'mute';
@@ -1236,25 +1156,24 @@ function commitBufferedTurnNow() {
     || audioChunks.length === 0
     || !ws
     || ws.readyState !== WebSocket.OPEN
-    || (busy && !isHeldTurnActive())
+    || (busy && !isHoldToTalkActive())
     || paused
-    || (!isHeldTurnActive() && (currentAudio || audioQueue.length > 0 || currentState === 'speaking'))
+    || (!isHoldToTalkActive() && (currentAudio || audioQueue.length > 0 || currentState === 'speaking'))
   ) {
     return false;
   }
-  sendBufferedTurn(flattenAudio(audioChunks), { prefixText: heldTurnPrefixText });
+  sendBufferedTurn(flattenAudio(audioChunks));
   resetCaptureBuffer();
   return true;
 }
 
-function setMutedState(nextMuted) {
+function setMutedState(nextMuted, { commitOnMute = true } = {}) {
   muted = Boolean(nextMuted);
   applyMicMuteState();
-  if (!commitBufferedTurnNow()) {
+  if (!muted || !commitOnMute || !commitBufferedTurnNow()) {
     resetCaptureBuffer();
   }
   resetInterruptSpeechDetection();
-  resetInterruptProbeCapture();
   resetBargeInCapture();
   setLevelDb(LEVEL_DB_FLOOR);
   updateControlStates();
@@ -1267,7 +1186,6 @@ function setInterruptMode(nextMode) {
     resumePlaybackAfterBargeIn();
   }
   resetInterruptSpeechDetection();
-  resetInterruptProbeCapture();
   if (!playbackSoftPaused) {
     resetBargeInCapture();
   }
@@ -2275,7 +2193,7 @@ function maybeReturnToListening() {
     setState('paused');
     return;
   }
-  if (isHeldTurnActive()) {
+  if (isHoldToTalkActive()) {
     pendingIdle = false;
     setState('listening');
     return;
@@ -2299,12 +2217,6 @@ function resetCaptureBuffer() {
 function resetInterruptSpeechDetection() {
   interruptCooldownUntil = 0;
   speechGateHoldUntil = 0;
-}
-
-function resetInterruptProbeCapture() {
-  interruptProbeChunks = [];
-  interruptProbeSpeechMs = 0;
-  interruptProbeSilenceMs = 0;
 }
 
 function resetBargeInCapture() {
@@ -2334,9 +2246,7 @@ function startPlaybackSession() {
 
 function rearmVoiceInterrupt() {
   resetInterruptSpeechDetection();
-  resetInterruptProbeCapture();
   resetBargeInCapture();
-  manualFinishProbeCooldownUntil = 0;
 }
 
 function setReplyActive(active) {
@@ -2353,18 +2263,6 @@ function isInterruptibleAudioState() {
   );
 }
 
-function isVoiceCommandProbeState() {
-  return Boolean(
-    ws
-    && ws.readyState === WebSocket.OPEN
-    && !interruptPending
-    && (
-      paused
-      || (!busy && !replyActive && !currentAudio && audioQueue.length === 0)
-    ),
-  );
-}
-
 function isBargeInState() {
   return Boolean(
     ws
@@ -2372,7 +2270,7 @@ function isBargeInState() {
     && !paused
     && !voiceInterruptDisabled()
     && !interruptPending
-    && !isHeldTurnActive()
+    && !isHoldToTalkActive()
     && (replyActive || currentAudio || audioQueue.length > 0),
   );
 }
@@ -2399,144 +2297,31 @@ function arrayBufferToBase64(buffer) {
   return btoa(binary);
 }
 
-async function probeVoiceCommand(audioBuffer, { allowSendPhrase = false, vadOnly = false } = {}) {
-  if ((interruptProbePending && !allowSendPhrase) || (manualFinishProbePending && allowSendPhrase) || !ws || ws.readyState !== WebSocket.OPEN) {
-    return { action: '', heard: '', content: '', usableSpeech: false };
+async function probeUsableSpeech(audioBuffer) {
+  if (speechProbePending || !ws || ws.readyState !== WebSocket.OPEN) {
+    return { usableSpeech: false };
   }
-  if (allowSendPhrase) {
-    manualFinishProbePending = true;
-  } else {
-    interruptProbePending = true;
-  }
+  speechProbePending = true;
   try {
-    const response = await fetch(appUrl('api/runtime/interrupt-probe'), {
+    const response = await fetch(appUrl('api/runtime/speech-probe'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         audio_b64: arrayBufferToBase64(audioBuffer),
-        allow_send_phrase: allowSendPhrase,
-        send_phrase: allowSendPhrase ? 'hey go' : '',
-        vad_only: vadOnly,
       }),
     });
     if (!response.ok) {
-      return { action: '', heard: '', content: '', usableSpeech: false };
+      return { usableSpeech: false };
     }
     const payload = await response.json();
     return {
-      action: String(payload.action || ''),
-      heard: String(payload.heard || ''),
-      content: String(payload.content || payload.heard || ''),
       usableSpeech: Boolean(payload.usable_speech),
     };
   } catch (_) {
-    return { action: '', heard: '', content: '', usableSpeech: false };
+    return { usableSpeech: false };
   } finally {
-    if (allowSendPhrase) {
-      manualFinishProbePending = false;
-    } else {
-      interruptProbePending = false;
-    }
+    speechProbePending = false;
   }
-}
-
-function maybeProbeManualFinish(now, speechDuration, silenceDuration) {
-  if (
-    !manualFinishEnabled
-    || paused
-    || (busy && !isHeldTurnActive())
-    || interruptPending
-    || !hasSpeech
-    || !silenceStart
-    || manualFinishProbePending
-    || now < manualFinishProbeCooldownUntil
-  ) {
-    return false;
-  }
-  const minSpeechDuration = Math.max(settings.min_speech_ms, TURN_COMMIT_MIN_SPEECH_MS);
-  if (speechDuration < minSpeechDuration || silenceDuration < MANUAL_FINISH_PROBE_MIN_SILENCE_MS) {
-    return false;
-  }
-  const bufferedAudio = flattenAudio(audioChunks);
-  manualFinishProbeCooldownUntil = now + MANUAL_FINISH_PROBE_COOLDOWN_MS;
-  void probeVoiceCommand(bufferedAudio, { allowSendPhrase: true }).then((result) => {
-    if (
-      result.action !== 'send'
-      || !ws
-      || ws.readyState !== WebSocket.OPEN
-      || ((busy && !isHeldTurnActive()))
-      || paused
-      || interruptPending
-    ) {
-      return;
-    }
-    sendBufferedTurn(bufferedAudio, { prefixText: heldTurnPrefixText });
-    resetCaptureBuffer();
-  });
-  return true;
-}
-
-function maybeCaptureVoiceCommandProbe(pcm, displayedLevel, speechLike, frameMs, now) {
-  if (!isVoiceCommandProbeState()) {
-    resetInterruptSpeechDetection();
-    resetInterruptProbeCapture();
-    return false;
-  }
-  if (interruptProbePending || now < interruptCooldownUntil) {
-    return false;
-  }
-
-  const commandThreshold = tuning.inputThresholdDb;
-  const minSpeechMs = paused ? PAUSED_COMMAND_MIN_SPEECH_MS : INTERRUPT_PROBE_MIN_SPEECH_MS;
-  const maxProbeMs = paused ? PAUSED_COMMAND_MAX_MS : INTERRUPT_PROBE_MAX_MS;
-  const aboveThreshold = speechLike && displayedLevel >= commandThreshold;
-  const hasCapture = interruptProbeChunks.length > 0;
-  if (!hasCapture && !aboveThreshold) {
-    return false;
-  }
-
-  interruptProbeChunks.push(pcm.slice());
-  if (aboveThreshold) {
-    interruptProbeSpeechMs += frameMs;
-    interruptProbeSilenceMs = 0;
-  } else {
-    interruptProbeSilenceMs += frameMs;
-  }
-
-  const totalMs = interruptProbeSpeechMs + interruptProbeSilenceMs;
-  const shouldProbe = (
-    interruptProbeSpeechMs >= minSpeechMs
-    && (
-      interruptProbeSilenceMs >= INTERRUPT_PROBE_SILENCE_MS
-      || totalMs >= maxProbeMs
-    )
-  );
-
-  if (!shouldProbe) {
-    return false;
-  }
-
-  const probeBuffer = flattenInt16Chunks(interruptProbeChunks);
-  resetInterruptProbeCapture();
-  interruptCooldownUntil = now + INTERRUPT_COOLDOWN_MS;
-  void probeVoiceCommand(probeBuffer).then(async (result) => {
-    if (result.action === 'hold' && !paused) {
-      armHeldTurn(result.content);
-      return;
-    }
-    if (result.action === 'interrupt' && isInterruptibleAudioState()) {
-      requestInterrupt({ keepPaused: false });
-      return;
-    }
-    if (result.action === 'pause') {
-      if (paused) {
-        await setPausedState(false);
-        return;
-      }
-      await setPausedState(true, { forceInterrupt: true });
-    }
-  });
-  return true;
 }
 
 function pausePlaybackForBargeIn() {
@@ -2583,7 +2368,6 @@ function resumePlaybackAfterBargeIn() {
 function promoteBargeIn(bufferedAudio) {
   playbackSoftPaused = false;
   pendingBargeInAudio = bufferedAudio;
-  pendingBargeInPrefixText = '';
   requestInterrupt({ keepPaused: false });
 }
 
@@ -2658,19 +2442,9 @@ function maybeCaptureBargeInProbe(pcm, displayedLevel, speechLike, frameMs, now)
 
   const probeBuffer = flattenInt16Chunks(bargeInChunks);
   bargeInProbePending = true;
-  void probeVoiceCommand(probeBuffer, { vadOnly: allowFreeformBargeIn }).then(async (result) => {
+  void probeUsableSpeech(probeBuffer).then((result) => {
     bargeInProbePending = false;
-    if (result.action === 'pause') {
-      resetBargeInCapture();
-      await setPausedState(true, { forceInterrupt: true });
-      return;
-    }
-    if (result.action === 'interrupt') {
-      requestInterrupt({ keepPaused: false });
-      resetBargeInCapture();
-      return;
-    }
-    if (allowFreeformBargeIn && (result.action === 'send' || result.usableSpeech)) {
+    if (result.usableSpeech) {
       promoteBargeIn(probeBuffer);
       resetBargeInCapture();
       return;
@@ -2717,9 +2491,7 @@ function requestInterrupt({ keepPaused = paused, preservePendingInput = false } 
   resetBargeInCapture();
   if (!preservePendingInput) {
     pendingBargeInAudio = null;
-    pendingBargeInPrefixText = '';
     pendingBargeInCommitMeta = null;
-    clearHeldTurnState();
   }
   pendingIdle = false;
   interruptPending = true;
@@ -2735,7 +2507,6 @@ function requestInterrupt({ keepPaused = paused, preservePendingInput = false } 
     busy = false;
     if (!preservePendingInput) {
       pendingBargeInAudio = null;
-      pendingBargeInPrefixText = '';
       pendingBargeInCommitMeta = null;
     }
     setState(keepPaused ? 'paused' : 'listening');
@@ -2752,15 +2523,15 @@ function manualInterrupt() {
   requestInterrupt({ keepPaused: false });
 }
 
-async function beginPushToTalk() {
-  if (!pushToTalkEnabled || pushToTalkActive) {
+async function beginHoldToTalk() {
+  if (holdToTalkActive) {
     return;
   }
-  pushToTalkActive = true;
+  holdToTalkActive = true;
+  setMutedState(false, { commitOnMute: false });
   if (paused) {
     await setPausedState(false);
   }
-  armHeldTurn('');
   if (busy || replyActive || currentAudio || audioQueue.length > 0 || currentState === 'speaking' || currentState === 'thinking') {
     requestInterrupt({ keepPaused: false, preservePendingInput: true });
     return;
@@ -2771,15 +2542,16 @@ async function beginPushToTalk() {
   }
 }
 
-function endPushToTalk() {
-  if (!pushToTalkActive) {
+function endHoldToTalk() {
+  if (!holdToTalkActive) {
     return false;
   }
-  pushToTalkActive = false;
-  if (commitBufferedTurnNow()) {
+  const sent = commitBufferedTurnNow();
+  holdToTalkActive = false;
+  setMutedState(true, { commitOnMute: false });
+  if (sent) {
     return true;
   }
-  clearHeldTurnState();
   if (!paused && !busy && !interruptPending) {
     pendingIdle = false;
     setState('listening');
@@ -2787,28 +2559,11 @@ function endPushToTalk() {
   return false;
 }
 
-function setPushToTalkEnabled(nextEnabled) {
-  pushToTalkEnabled = Boolean(nextEnabled);
-  if (!pushToTalkEnabled) {
-    pushToTalkActive = false;
-    clearHeldTurnState();
-    resetCaptureBuffer();
-    if (!paused && !busy && !interruptPending) {
-      pendingIdle = false;
-      setState('listening');
-    }
-  }
-  savePushToTalkEnabled();
-  updateControlStates();
-}
-
 async function setPausedState(nextPaused, { forceInterrupt = false } = {}) {
   paused = Boolean(nextPaused);
-  pushToTalkActive = false;
   if (paused) {
+    holdToTalkActive = false;
     pendingBargeInAudio = null;
-    pendingBargeInPrefixText = '';
-    clearHeldTurnState();
     setReplyActive(false);
     requestInterrupt({ keepPaused: true });
     return;
@@ -2833,7 +2588,6 @@ async function setPausedState(nextPaused, { forceInterrupt = false } = {}) {
   busy = false;
   pendingIdle = false;
   pendingBargeInAudio = null;
-  pendingBargeInPrefixText = '';
   pendingBargeInCommitMeta = null;
   if (forceInterrupt) {
     stopPlayback();
@@ -2841,8 +2595,6 @@ async function setPausedState(nextPaused, { forceInterrupt = false } = {}) {
   setReplyActive(false);
   resetCaptureBuffer();
   resetInterruptSpeechDetection();
-  resetInterruptProbeCapture();
-  clearHeldTurnState();
   setState('listening');
   updateControlStates();
 }
@@ -2881,9 +2633,8 @@ async function connect() {
     pendingIdle = false;
     interruptPending = false;
     pendingBargeInAudio = null;
-    pendingBargeInPrefixText = '';
     pendingBargeInCommitMeta = null;
-    clearHeldTurnState();
+    holdToTalkActive = false;
     setReplyActive(false);
     stopPlayback();
     setState('reconnecting');
@@ -2928,9 +2679,8 @@ async function connect() {
       pendingIdle = false;
       interruptPending = false;
       pendingBargeInAudio = null;
-      pendingBargeInPrefixText = '';
       pendingBargeInCommitMeta = null;
-      clearHeldTurnState();
+      holdToTalkActive = false;
       setReplyActive(false);
       if (paused) {
         setState('paused');
@@ -2955,18 +2705,6 @@ async function connect() {
       }
       return;
     }
-    if (data.type === 'voice-command') {
-      if (data.action === 'hold' && !paused) {
-        armHeldTurn(String(data.content || data.heard || ''));
-      } else if (data.action === 'pause') {
-        await setPausedState(!paused, { forceInterrupt: true });
-      } else if (data.action === 'interrupt' && !paused) {
-        requestInterrupt({ keepPaused: false });
-      }
-      updateControlStates();
-      syncShellState();
-      return;
-    }
     if (data.source === 'server_speak') {
       if (data.status === 'speaking') {
         pendingServerSpeakRequestId = String(data.request_id || '');
@@ -2980,7 +2718,7 @@ async function connect() {
       rearmVoiceInterrupt();
       busy = true;
       pendingIdle = false;
-      if (!paused && !interruptPending && !isHeldTurnActive()) {
+      if (!paused && !interruptPending && !isHoldToTalkActive()) {
         setState('thinking');
       }
     } else if (data.status === 'speaking') {
@@ -2989,7 +2727,7 @@ async function connect() {
       rearmVoiceInterrupt();
       busy = true;
       pendingIdle = false;
-      if (!paused && !interruptPending && !isHeldTurnActive()) {
+      if (!paused && !interruptPending && !isHoldToTalkActive()) {
         setState('speaking');
       }
     } else if (data.status === 'idle') {
@@ -2999,21 +2737,16 @@ async function connect() {
       interruptPending = false;
       if (pendingBargeInAudio && !paused && ws && ws.readyState === WebSocket.OPEN) {
         const bufferedAudio = pendingBargeInAudio;
-        const prefixText = pendingBargeInPrefixText;
         const commitMeta = pendingBargeInCommitMeta;
         pendingBargeInAudio = null;
-        pendingBargeInPrefixText = '';
         pendingBargeInCommitMeta = null;
-        if (prefixText) {
-          sendTranscriptPrefix(prefixText);
-        }
         sendTurnCommitMeta(commitMeta);
         busy = true;
         pendingIdle = false;
         setState('thinking');
         ws.send(bufferedAudio);
       } else {
-        pendingIdle = !paused && !isHeldTurnActive();
+        pendingIdle = !paused && !isHoldToTalkActive();
         maybeReturnToListening();
       }
     }
@@ -3104,13 +2837,11 @@ function onAudioProcess(event) {
     interruptPending
   ) {
     resetInterruptSpeechDetection();
-    resetInterruptProbeCapture();
     return;
   }
   if (muted) {
     resetCaptureBuffer();
     resetInterruptSpeechDetection();
-    resetInterruptProbeCapture();
     resetBargeInCapture();
     if (currentLevelDb !== LEVEL_DB_FLOOR) {
       setLevelDb(LEVEL_DB_FLOOR);
@@ -3166,24 +2897,14 @@ function onAudioProcess(event) {
   const displayedLevel = Math.max(baseLevel, currentLevelDb - (speechLike ? 1.2 : 2.8));
   setLevelDb(displayedLevel);
   const frameMs = (pcm.length / TARGET_CAPTURE_SAMPLE_RATE) * 1000;
-  if (pushToTalkEnabled && !pushToTalkActive) {
-    resetCaptureBuffer();
-    resetInterruptSpeechDetection();
-    resetInterruptProbeCapture();
-    resetBargeInCapture();
-    return;
-  }
   if (maybeCaptureBargeInProbe(pcm, displayedLevel, interruptSpeechLike, frameMs, now)) {
-    return;
-  }
-  if (maybeCaptureVoiceCommandProbe(pcm, displayedLevel, interruptSpeechLike, frameMs, now)) {
     return;
   }
   if (paused) {
     resetCaptureBuffer();
     return;
   }
-  if (!isHeldTurnActive() && (busy || currentAudio || audioQueue.length > 0 || currentState === 'speaking')) {
+  if (!isHoldToTalkActive() && (busy || currentAudio || audioQueue.length > 0 || currentState === 'speaking')) {
     return;
   }
   const turnThresholdDb = tuning.inputThresholdDb;
@@ -3201,7 +2922,6 @@ function onAudioProcess(event) {
       && speechDuration >= MAX_BUFFERED_TURN_MS
     ) {
       sendBufferedTurn(flattenAudio(audioChunks), {
-        prefixText: heldTurnPrefixText,
         commitMeta: {
           reason: 'max-buffer',
           speechMs: speechDuration,
@@ -3220,12 +2940,6 @@ function onAudioProcess(event) {
   if (!silenceStart) silenceStart = now;
   const speechDuration = speechStart ? now - speechStart : 0;
   const silenceDuration = now - silenceStart;
-  if (maybeProbeManualFinish(now, speechDuration, silenceDuration)) {
-    return;
-  }
-  if (manualFinishProbePending) {
-    return;
-  }
   const minSpeechDuration = Math.max(settings.min_speech_ms, TURN_COMMIT_MIN_SPEECH_MS);
   const turnEndSilenceMs = resolveWaitAfterSpeakMs();
   if (
@@ -3236,7 +2950,6 @@ function onAudioProcess(event) {
     )
   ) {
     sendBufferedTurn(flattenAudio(audioChunks), {
-      prefixText: heldTurnPrefixText,
       commitMeta: {
         reason: silenceDuration >= turnEndSilenceMs ? 'silence-timeout' : 'max-buffer',
         speechMs: speechDuration,
@@ -3321,7 +3034,11 @@ document.getElementById('pause-btn').addEventListener('click', async () => {
 });
 
 document.getElementById('mute-btn').addEventListener('click', () => {
-  setMutedState(!muted);
+  const nextMuted = !muted;
+  setMutedState(nextMuted);
+  if (!nextMuted && paused) {
+    void setPausedState(false);
+  }
 });
 
 document.getElementById('play-reply-btn').addEventListener('click', () => {
@@ -3337,15 +3054,11 @@ setState('paused');
 resizeStateVisual();
 configureSetupLink();
 configureTuningControls();
-loadPushToTalkEnabled();
 updateControlStates();
-document.getElementById('push-to-talk-btn').addEventListener('click', () => {
-  setPushToTalkEnabled(!pushToTalkEnabled);
-});
 
 window.__marasSwitchboardManualInterrupt = manualInterrupt;
-window.__marasSwitchboardPushToTalkStart = beginPushToTalk;
-window.__marasSwitchboardPushToTalkEnd = endPushToTalk;
+window.__marasSwitchboardHoldToTalkStart = beginHoldToTalk;
+window.__marasSwitchboardHoldToTalkEnd = endHoldToTalk;
 window.__marasSwitchboardToggleVoiceInterrupt = () => setInterruptMode(
   interruptMode === 'barge-in' ? 'off' : 'barge-in'
 );

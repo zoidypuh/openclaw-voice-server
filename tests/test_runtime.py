@@ -89,20 +89,6 @@ class FakeWebSocketResponse:
         return None
 
 
-def test_interrupt_stt_settings_disable_faster_whisper_vad():
-    settings = VoiceRuntime._interrupt_stt_settings(
-        {
-            "default_backend": "faster-whisper",
-            "language": "de",
-            "device": "cuda",
-            "compute_type": "float16",
-            "backend_models": {"faster-whisper": "large-v3"},
-        }
-    )
-
-    assert settings["vad_filter"] is False
-
-
 def test_turn_stt_settings_disable_faster_whisper_vad():
     settings = VoiceRuntime._turn_stt_settings(
         {
@@ -115,20 +101,6 @@ def test_turn_stt_settings_disable_faster_whisper_vad():
     )
 
     assert settings["vad_filter"] is False
-
-
-def test_interrupt_stt_settings_leave_non_faster_whisper_unchanged():
-    settings = VoiceRuntime._interrupt_stt_settings(
-        {
-            "default_backend": "whisper",
-            "language": "de",
-            "device": "cpu",
-            "compute_type": "int8",
-            "backend_models": {"whisper": "large"},
-        }
-    )
-
-    assert "vad_filter" not in settings
 
 
 def test_turn_stt_settings_leave_non_faster_whisper_unchanged():
@@ -238,60 +210,6 @@ def test_handle_ws_interrupts_active_stream_and_rejects_overlap(monkeypatch):
     assert {"status": "speaking"} not in ws.json_messages
 
 
-def test_handle_ws_applies_pending_transcript_prefix(monkeypatch):
-    FakeWebSocketResponse.created.clear()
-    captured = {}
-
-    class FakeTranscriber:
-        def transcribe(self, audio_bytes):
-            return type("Result", (), {"text": "weiter sprechen", "duration_seconds": 1.0})()
-
-    class FakeSynthesizer:
-        async def synthesize(self, text, *, preset_name=None):
-            return b"audio"
-
-    class FakeGateway:
-        def __init__(self, **kwargs):
-            pass
-
-        async def stream_reply(self, text, abort_event):
-            captured["text"] = text
-            yield "okay"
-
-    monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
-    monkeypatch.setattr(runtime_module, "build_synthesizer", lambda tts, secrets: FakeSynthesizer())
-    monkeypatch.setattr(runtime_module, "DirectGatewayClient", lambda **kwargs: FakeGateway())
-    monkeypatch.setattr(runtime_module.web, "WebSocketResponse", FakeWebSocketResponse)
-
-    async def scenario():
-        runtime = VoiceRuntime(FakeStore())
-        handler_task = asyncio.create_task(runtime.handle_ws(object()))
-
-        while not FakeWebSocketResponse.created:
-            await asyncio.sleep(0)
-        ws = FakeWebSocketResponse.created[-1]
-
-        await ws.messages.put(
-            FakeMessage(
-                WSMsgType.TEXT,
-                payload={"type": "set-transcript-prefix", "prefix_text": "ich denke"},
-            )
-        )
-        await ws.messages.put(FakeMessage(WSMsgType.BINARY, data=b"x" * 3200))
-
-        while not any(payload.get("status") == "idle" for payload in ws.json_messages):
-            await asyncio.sleep(0)
-
-        await ws.messages.put(FakeWebSocketResponse.STOP)
-        await handler_task
-        return ws
-
-    ws = asyncio.run(scenario())
-
-    assert captured["text"] == "ich denke weiter sprechen"
-    assert ws.binary_messages == [b"audio"]
-
-
 def test_handle_ws_applies_reply_style_directive_once(monkeypatch):
     FakeWebSocketResponse.created.clear()
     synth_calls = []
@@ -340,109 +258,6 @@ def test_handle_ws_applies_reply_style_directive_once(monkeypatch):
         ("Second sentence.", "expressive"),
     ]
     assert {"status": "speaking"} in ws.json_messages
-
-
-def test_handle_ws_intercepts_voice_pause_command_before_gateway(monkeypatch):
-    FakeWebSocketResponse.created.clear()
-    gateway_calls = []
-
-    class FakeTranscriber:
-        def transcribe(self, audio_bytes):
-            return type("Result", (), {"text": "hey pause"})()
-
-    class FakeSynthesizer:
-        async def synthesize(self, text, *, preset_name=None):
-            return b"audio"
-
-    class FakeGateway:
-        def __init__(self, **kwargs):
-            pass
-
-        async def stream_reply(self, text, abort_event):
-            gateway_calls.append(text)
-            if False:  # pragma: no cover - keeps this as an async generator
-                yield ""
-
-    monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
-    monkeypatch.setattr(runtime_module, "build_synthesizer", lambda tts, secrets: FakeSynthesizer())
-    monkeypatch.setattr(runtime_module, "DirectGatewayClient", lambda **kwargs: FakeGateway())
-    monkeypatch.setattr(runtime_module.web, "WebSocketResponse", FakeWebSocketResponse)
-
-    async def scenario():
-        runtime = VoiceRuntime(FakeStore())
-        handler_task = asyncio.create_task(runtime.handle_ws(object()))
-
-        while not FakeWebSocketResponse.created:
-            await asyncio.sleep(0)
-        ws = FakeWebSocketResponse.created[-1]
-
-        await ws.messages.put(FakeMessage(WSMsgType.BINARY, data=b"x" * 3200))
-        while not ws.json_messages:
-            await asyncio.sleep(0)
-        await asyncio.sleep(0)
-        await ws.messages.put(FakeWebSocketResponse.STOP)
-        await handler_task
-        return ws
-
-    ws = asyncio.run(scenario())
-
-    assert gateway_calls == []
-    assert {"type": "voice-command", "action": "pause", "heard": "hey pause"} in ws.json_messages
-    assert ws.json_messages[-1] == {"status": "idle"}
-
-
-def test_handle_ws_rearms_held_turn_when_committed_audio_resolves_to_hold(monkeypatch):
-    FakeWebSocketResponse.created.clear()
-    gateway_calls = []
-
-    class FakeTranscriber:
-        def transcribe(self, audio_bytes):
-            return type("Result", (), {"text": "ich denke noch warte", "duration_seconds": 1.0})()
-
-    class FakeSynthesizer:
-        async def synthesize(self, text, *, preset_name=None):
-            return b"audio"
-
-    class FakeGateway:
-        def __init__(self, **kwargs):
-            pass
-
-        async def stream_reply(self, text, abort_event):
-            gateway_calls.append(text)
-            if False:  # pragma: no cover - keeps this as an async generator
-                yield ""
-
-    monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
-    monkeypatch.setattr(runtime_module, "build_synthesizer", lambda tts, secrets: FakeSynthesizer())
-    monkeypatch.setattr(runtime_module, "DirectGatewayClient", lambda **kwargs: FakeGateway())
-    monkeypatch.setattr(runtime_module.web, "WebSocketResponse", FakeWebSocketResponse)
-
-    async def scenario():
-        runtime = VoiceRuntime(FakeStore())
-        handler_task = asyncio.create_task(runtime.handle_ws(object()))
-
-        while not FakeWebSocketResponse.created:
-            await asyncio.sleep(0)
-        ws = FakeWebSocketResponse.created[-1]
-
-        await ws.messages.put(FakeMessage(WSMsgType.BINARY, data=b"x" * 3200))
-        while not ws.json_messages:
-            await asyncio.sleep(0)
-        await asyncio.sleep(0)
-        await ws.messages.put(FakeWebSocketResponse.STOP)
-        await handler_task
-        return ws
-
-    ws = asyncio.run(scenario())
-
-    assert gateway_calls == []
-    assert {
-        "type": "voice-command",
-        "action": "hold",
-        "heard": "ich denke noch warte",
-        "content": "ich denke noch",
-    } in ws.json_messages
-    assert ws.json_messages[-1] == {"status": "idle"}
 
 
 def test_handle_ws_keeps_short_real_speech_for_gateway(monkeypatch):
@@ -497,109 +312,6 @@ def test_handle_ws_keeps_short_real_speech_for_gateway(monkeypatch):
         {"type": "reply-text", "text": "", "replace": True},
         {"status": "idle"},
     ]
-
-
-def test_handle_ws_manual_finish_mode_strips_trailing_language_specific_phrase_before_gateway(monkeypatch):
-    FakeWebSocketResponse.created.clear()
-    gateway_calls = []
-
-    class FakeTranscriber:
-        def transcribe(self, audio_bytes):
-            return type("Result", (), {"text": "sag mir das wetter hey los", "duration_seconds": 1.4})()
-
-    class FakeSynthesizer:
-        async def synthesize(self, text, *, preset_name=None):
-            return b"audio"
-
-    class FakeGateway:
-        def __init__(self, **kwargs):
-            pass
-
-        async def stream_reply(self, text, abort_event):
-            gateway_calls.append(text)
-            yield "Done."
-
-    monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
-    monkeypatch.setattr(runtime_module, "build_synthesizer", lambda tts, secrets: FakeSynthesizer())
-    monkeypatch.setattr(runtime_module, "DirectGatewayClient", lambda **kwargs: FakeGateway())
-    monkeypatch.setattr(runtime_module.web, "WebSocketResponse", FakeWebSocketResponse)
-
-    async def scenario():
-        runtime = VoiceRuntime(FakeStore())
-        handler_task = asyncio.create_task(runtime.handle_ws(object()))
-
-        while not FakeWebSocketResponse.created:
-            await asyncio.sleep(0)
-        ws = FakeWebSocketResponse.created[-1]
-
-        await ws.messages.put(
-            FakeMessage(
-                WSMsgType.TEXT,
-                payload={"type": "set-capture-mode", "manual_finish": True, "send_phrase": "hey go"},
-            )
-        )
-        await ws.messages.put(FakeMessage(WSMsgType.BINARY, data=b"x" * 3200))
-        while not ws.binary_messages:
-            await asyncio.sleep(0)
-        await ws.messages.put(FakeWebSocketResponse.STOP)
-        await handler_task
-        return ws
-
-    ws = asyncio.run(scenario())
-
-    assert gateway_calls == ["sag mir das wetter"]
-    assert {"status": "speaking"} in ws.json_messages
-
-
-def test_handle_ws_manual_finish_mode_keeps_language_specific_short_fallback(monkeypatch):
-    FakeWebSocketResponse.created.clear()
-    gateway_calls = []
-
-    class FakeTranscriber:
-        def transcribe(self, audio_bytes):
-            return type("Result", (), {"text": "sag mir das wetter los", "duration_seconds": 1.4})()
-
-    class FakeSynthesizer:
-        async def synthesize(self, text, *, preset_name=None):
-            return b"audio"
-
-    class FakeGateway:
-        def __init__(self, **kwargs):
-            pass
-
-        async def stream_reply(self, text, abort_event):
-            gateway_calls.append(text)
-            yield "Done."
-
-    monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
-    monkeypatch.setattr(runtime_module, "build_synthesizer", lambda tts, secrets: FakeSynthesizer())
-    monkeypatch.setattr(runtime_module, "DirectGatewayClient", lambda **kwargs: FakeGateway())
-    monkeypatch.setattr(runtime_module.web, "WebSocketResponse", FakeWebSocketResponse)
-
-    async def scenario():
-        runtime = VoiceRuntime(FakeStore())
-        handler_task = asyncio.create_task(runtime.handle_ws(object()))
-
-        while not FakeWebSocketResponse.created:
-            await asyncio.sleep(0)
-        ws = FakeWebSocketResponse.created[-1]
-
-        await ws.messages.put(
-            FakeMessage(
-                WSMsgType.TEXT,
-                payload={"type": "set-capture-mode", "manual_finish": True, "send_phrase": "hey go"},
-            )
-        )
-        await ws.messages.put(FakeMessage(WSMsgType.BINARY, data=b"x" * 3200))
-        while not ws.binary_messages:
-            await asyncio.sleep(0)
-        await ws.messages.put(FakeWebSocketResponse.STOP)
-        await handler_task
-        return ws
-
-    asyncio.run(scenario())
-
-    assert gateway_calls == ["sag mir das wetter"]
 
 
 def test_handle_ws_logs_human_readable_turn_timing(monkeypatch, caplog):
@@ -1361,13 +1073,7 @@ def test_handle_speak_request_rejects_invalid_timeout():
     asyncio.run(scenario())
 
 
-def test_handle_interrupt_probe_uses_configured_language(monkeypatch):
-    captured_settings = {}
-
-    class FakeTranscriber:
-        def transcribe(self, audio_bytes):
-            return type("Result", (), {"text": "hey stopp"})()
-
+def test_handle_speech_probe_returns_usable_speech(monkeypatch):
     class FakeRequest:
         can_read_body = True
 
@@ -1376,28 +1082,17 @@ def test_handle_interrupt_probe_uses_configured_language(monkeypatch):
                 "audio_b64": base64.b64encode(b"x" * 3200).decode("ascii"),
             }
 
-    def fake_build_transcriber(settings):
-        captured_settings.update(settings)
-        return FakeTranscriber()
-
-    monkeypatch.setattr(runtime_module, "build_transcriber", fake_build_transcriber)
     monkeypatch.setattr("maras_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: True)
 
     async def scenario():
         runtime = VoiceRuntime(FakeStore())
-        response = await runtime.handle_interrupt_probe(FakeRequest())
+        response = await runtime.handle_speech_probe(FakeRequest())
         return response
 
     response = asyncio.run(scenario())
 
-    assert captured_settings["default_backend"] == "faster-whisper"
-    assert captured_settings["language"] == "de"
     assert json.loads(response.text) == {
         "ok": True,
-        "matched": True,
-        "action": "interrupt",
-        "heard": "hey stopp",
-        "content": "",
         "usable_speech": True,
     }
 
@@ -1448,11 +1143,7 @@ def test_handle_ws_builds_turn_transcriber_with_backend_vad_disabled(monkeypatch
     assert captured_settings["speech_precheck"] is False
 
 
-def test_handle_interrupt_probe_returns_pause_action(monkeypatch):
-    class FakeTranscriber:
-        def transcribe(self, audio_bytes):
-            return type("Result", (), {"text": "hey pause"})()
-
+def test_handle_speech_probe_returns_false_without_speech(monkeypatch):
     class FakeRequest:
         can_read_body = True
 
@@ -1461,89 +1152,16 @@ def test_handle_interrupt_probe_returns_pause_action(monkeypatch):
                 "audio_b64": base64.b64encode(b"x" * 3200).decode("ascii"),
             }
 
-    monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
-    monkeypatch.setattr("maras_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: True)
+    monkeypatch.setattr("maras_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: False)
 
     async def scenario():
         runtime = VoiceRuntime(FakeStore())
-        response = await runtime.handle_interrupt_probe(FakeRequest())
+        response = await runtime.handle_speech_probe(FakeRequest())
         return response
 
     response = asyncio.run(scenario())
 
     assert json.loads(response.text) == {
         "ok": True,
-        "matched": False,
-        "action": "pause",
-        "heard": "hey pause",
-        "content": "",
-        "usable_speech": True,
-    }
-
-
-def test_handle_interrupt_probe_returns_send_action_for_language_specific_manual_finish_phrase(monkeypatch):
-    class FakeTranscriber:
-        def transcribe(self, audio_bytes):
-            return type("Result", (), {"text": "sag mir das wetter hey los"})()
-
-    class FakeRequest:
-        can_read_body = True
-
-        async def json(self):
-            return {
-                "audio_b64": base64.b64encode(b"x" * 3200).decode("ascii"),
-                "allow_send_phrase": True,
-                "send_phrase": "hey go",
-            }
-
-    monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
-    monkeypatch.setattr("maras_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: True)
-
-    async def scenario():
-        runtime = VoiceRuntime(FakeStore())
-        response = await runtime.handle_interrupt_probe(FakeRequest())
-        return response
-
-    response = asyncio.run(scenario())
-
-    assert json.loads(response.text) == {
-        "ok": True,
-        "matched": False,
-        "action": "send",
-        "heard": "sag mir das wetter hey los",
-        "content": "sag mir das wetter hey los",
-        "usable_speech": True,
-    }
-
-
-def test_handle_interrupt_probe_returns_hold_action_and_content(monkeypatch):
-    class FakeTranscriber:
-        def transcribe(self, audio_bytes):
-            return type("Result", (), {"text": "warte ich denke noch"})()
-
-    class FakeRequest:
-        can_read_body = True
-
-        async def json(self):
-            return {
-                "audio_b64": base64.b64encode(b"x" * 3200).decode("ascii"),
-            }
-
-    monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
-    monkeypatch.setattr("maras_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: True)
-
-    async def scenario():
-        runtime = VoiceRuntime(FakeStore())
-        response = await runtime.handle_interrupt_probe(FakeRequest())
-        return response
-
-    response = asyncio.run(scenario())
-
-    assert json.loads(response.text) == {
-        "ok": True,
-        "matched": False,
-        "action": "hold",
-        "heard": "warte ich denke noch",
-        "content": "ich denke noch",
-        "usable_speech": True,
+        "usable_speech": False,
     }

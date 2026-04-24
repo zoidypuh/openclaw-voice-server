@@ -2,16 +2,13 @@
 
 This is a Windows-oriented client wrapper for the existing Python voice server.
 
-It does not replace the Python backend. It opens the existing voice runtime at `http://127.0.0.1:8765/voice` inside a hidden Tauri window, keeps the app available in the tray, and registers a few global shortcuts. The tray is the primary presence for normal use: the shell starts stopped/paused, and the tray menu can start voice and surface the window when microphone permission needs to be accepted. Spoken commands are handled by the backend, for example `hey stop` and `hey pause`.
+It does not replace the Python backend. It opens the existing voice runtime at `http://127.0.0.1:8765/voice` inside a hidden Tauri window and keeps the app available in the tray. The shell starts muted. Click `mute` to unmute for normal freehand conversation, or hold the single global shortcut to record one turn.
 
-## Default shortcuts
+## Keyboard Shortcut
 
-- `Ctrl+Shift+Space`: show or hide the main window
-- `Ctrl+Shift+S`: hold to talk, release to send the current turn
-- `Ctrl+Shift+P`: click the existing `paused` / `listening` button in the voice UI
-- immediate interrupt: `Ctrl+Alt+A`
+- `Ctrl+Alt+Shift+A`: hold to record, release to send the captured speech to the Python backend, then return to mute.
 
-These are the default bindings. They can now be changed in the backend setup UI under `Windows Client`, and the Windows tray client will pick them up on next launch.
+There are no configurable keyboard shortcuts in the setup UI.
 
 ## Tray status
 
@@ -169,12 +166,10 @@ The shell does not bundle the Python server. Keep the backend and client as sepa
 
 ## Manual verification
 
-When testing voice control behavior, verify all of these cases explicitly:
+When testing voice behavior, verify all of these cases explicitly:
 
-- holding `Ctrl+Shift+S` captures a held turn and releasing it sends immediately without waiting for silence timeout.
-- `Ctrl+Alt+A` interrupts immediately while the agent is speaking.
+- the UI starts muted.
+- clicking `mute` un-mutes the mic for normal freehand conversation.
+- holding `Ctrl+Alt+Shift+A` captures a held turn and releasing it sends immediately, then returns the UI to mute.
 - Tray `Interrupt Now` interrupts immediately while the agent is speaking.
-- saying `hey stop` interrupts the current reply reliably.
-- saying `hey pause` pauses or resumes voice mode reliably.
-- minor non-speech noises near the mic do not trigger `hey stop` or `hey pause`: sniffing, rustling, touching the mic, desk bumps.
-- with the app configured for German STT, English or mixed German/English speech must not cause premature command detection from half-awake mumbling or partial speech.
+- no spoken command phrases are interpreted by the backend.

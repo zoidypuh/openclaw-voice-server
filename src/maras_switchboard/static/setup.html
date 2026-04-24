@@ -400,32 +400,6 @@
     <div class="result" id="gateway-result"></div>
   </section>
 
-  <section class="section hidden" id="windows-client-section">
-    <div class="section-header">
-      <div class="section-title">
-        <h2>7. Windows Client</h2>
-        <p>Configure the global keyboard shortcuts used by the Windows tray client.</p>
-      </div>
-      <div class="badge" id="windows-client-badge">Not saved</div>
-    </div>
-    <div class="grid">
-      <label>Show / Hide Window
-        <input id="shortcut-toggle-window" type="text" placeholder="Ctrl+Shift+Space">
-      </label>
-      <label>Pause / Resume
-        <input id="shortcut-pause-resume" type="text" placeholder="Ctrl+Shift+P">
-      </label>
-      <label>Interrupt Now
-        <input id="shortcut-interrupt" type="text" placeholder="Ctrl+Alt+A">
-      </label>
-    </div>
-    <div class="note" id="windows-shortcuts-note"></div>
-    <div class="actions">
-      <button class="primary" id="save-windows-shortcuts">Save Windows Shortcuts</button>
-    </div>
-    <div class="result" id="windows-client-result"></div>
-  </section>
-
   <section class="section hidden" id="launch-section">
     <div class="section-header">
       <div class="section-title">
@@ -556,14 +530,6 @@ function syncRememberedRemoteSttFromInputs() {
     document.getElementById('whisper-endpoint-url').value,
     document.getElementById('whisper-endpoint-model').value,
   );
-}
-
-function currentWindowsShortcutValues() {
-  return {
-    toggle_window: document.getElementById('shortcut-toggle-window').value.trim(),
-    pause_resume: document.getElementById('shortcut-pause-resume').value.trim(),
-    interrupt: document.getElementById('shortcut-interrupt').value.trim(),
-  };
 }
 
 function updateDeviceNotes() {
@@ -841,14 +807,6 @@ function getEffectiveStatus() {
   );
   const conversationReady = gatewayReady || hermesReady;
 
-  const savedWindowsShortcuts = saved.windows_client?.shortcuts || {};
-  const currentWindowsShortcuts = currentWindowsShortcutValues();
-  const windowsShortcutsSaved = Boolean(
-    currentWindowsShortcuts.toggle_window === (savedWindowsShortcuts.toggle_window || '')
-    && currentWindowsShortcuts.pause_resume === (savedWindowsShortcuts.pause_resume || '')
-    && currentWindowsShortcuts.interrupt === (savedWindowsShortcuts.interrupt || '')
-  );
-
   return {
     stt_ready: sttReady,
     tts_ready: ttsReady,
@@ -858,7 +816,6 @@ function getEffectiveStatus() {
     gateway_ready: gatewayReady,
     hermes_ready: hermesReady,
     conversation_ready: conversationReady,
-    windows_shortcuts_saved: windowsShortcutsSaved,
     runtime_ready: Boolean(conversationReady && status.runtime_ready),
   };
 }
@@ -881,7 +838,6 @@ function updateFlowVisibility() {
           ? true
         : false;
   const showGateway = showTts && effective.tts_ready && providerReady;
-  const showWindowsClient = showGateway;
   const showLaunch = showGateway && effective.runtime_ready;
 
   document.getElementById('tts-section').classList.toggle('hidden', !showTts);
@@ -889,7 +845,6 @@ function updateFlowVisibility() {
   document.getElementById('eleven-section').classList.toggle('hidden', !showEleven);
   document.getElementById('supertonic-section').classList.toggle('hidden', !showSupertonic);
   document.getElementById('gateway-section').classList.toggle('hidden', !showGateway);
-  document.getElementById('windows-client-section').classList.toggle('hidden', !showWindowsClient);
   document.getElementById('launch-section').classList.toggle('hidden', !showLaunch);
 
   setBadge('stt-badge', effective.stt_ready ? 'Validated' : 'Needs validation', effective.stt_ready);
@@ -901,11 +856,6 @@ function updateFlowVisibility() {
     'gateway-badge',
     effective.conversation_ready ? 'Validated' : 'Needs validation',
     effective.conversation_ready,
-  );
-  setBadge(
-    'windows-client-badge',
-    effective.windows_shortcuts_saved ? 'Saved' : 'Needs save',
-    effective.windows_shortcuts_saved,
   );
   setBadge('launch-badge', effective.runtime_ready ? 'Ready' : 'Waiting', effective.runtime_ready);
   document.getElementById('continue-stt').disabled = !effective.stt_ready;
@@ -1050,12 +1000,6 @@ function populateFromState(state) {
   document.getElementById('gateway-session-key').value = gateway.session_key || state.hints.default_voice_session_key;
   renderConversationBackendControls();
 
-  const windowsClient = state.saved.windows_client || {};
-  const shortcuts = windowsClient.shortcuts || state.hints.default_windows_shortcuts || {};
-  document.getElementById('shortcut-toggle-window').value = shortcuts.toggle_window || '';
-  document.getElementById('shortcut-pause-resume').value = shortcuts.pause_resume || '';
-  document.getElementById('shortcut-interrupt').value = shortcuts.interrupt || '';
-  document.getElementById('windows-shortcuts-note').textContent = state.hints.windows_shortcuts_note || '';
   updateDeviceNotes();
   document.getElementById('launch-link').href = appUrl('');
   updateFlowVisibility();
@@ -1158,10 +1102,6 @@ document.getElementById('gateway-url').addEventListener('input', updateFlowVisib
 document.getElementById('gateway-token').addEventListener('input', updateFlowVisibility);
 document.getElementById('gateway-model').addEventListener('input', updateFlowVisibility);
 document.getElementById('gateway-session-key').addEventListener('input', updateFlowVisibility);
-document.getElementById('shortcut-toggle-window').addEventListener('input', updateFlowVisibility);
-document.getElementById('shortcut-pause-resume').addEventListener('input', updateFlowVisibility);
-document.getElementById('shortcut-interrupt').addEventListener('input', updateFlowVisibility);
-
 document.getElementById('validate-stt').addEventListener('click', async () => {
   try {
     const backend = currentSttBackend();
@@ -1338,23 +1278,6 @@ document.getElementById('validate-gateway').addEventListener('click', async () =
     scrollToSection('launch-summary');
   } catch (error) {
     setResult('gateway-result', error.message, false);
-  }
-});
-
-document.getElementById('save-windows-shortcuts').addEventListener('click', async () => {
-  try {
-    setResult('windows-client-result', 'Saving Windows shortcuts...');
-    const payload = await fetchJson(appUrl('api/setup/validate-windows-client'), {
-      method: 'POST',
-      body: JSON.stringify(currentWindowsShortcutValues()),
-    });
-    document.getElementById('shortcut-toggle-window').value = payload.shortcuts.toggle_window;
-    document.getElementById('shortcut-pause-resume').value = payload.shortcuts.pause_resume;
-    document.getElementById('shortcut-interrupt').value = payload.shortcuts.interrupt;
-    setResult('windows-client-result', 'Windows shortcuts saved.', true);
-    await refreshState();
-  } catch (error) {
-    setResult('windows-client-result', error.message, false);
   }
 });
 

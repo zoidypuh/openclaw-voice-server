@@ -108,12 +108,6 @@ def create_app() -> web.Application:
     async def voice_page_slash(request: web.Request) -> NoReturn:
         canonical_path_redirect("/voice")
 
-    async def record_page(request: web.Request) -> web.StreamResponse:
-        return _html_file_response(static_dir / "record.html")
-
-    async def record_page_slash(request: web.Request) -> NoReturn:
-        canonical_path_redirect("/record")
-
     async def health(request: web.Request) -> web.Response:
         state = setup_service.state()
         return web.json_response(
@@ -143,8 +137,8 @@ def create_app() -> web.Application:
             }
         )
 
-    async def runtime_interrupt_probe(request: web.Request) -> web.Response:
-        return await runtime.handle_interrupt_probe(request)
+    async def runtime_speech_probe(request: web.Request) -> web.Response:
+        return await runtime.handle_speech_probe(request)
 
     async def runtime_speak(request: web.Request) -> web.Response:
         return await runtime.handle_speak_request(request)
@@ -233,12 +227,10 @@ def create_app() -> web.Application:
     add_route("GET", "/setup/", setup_page_slash)
     add_route("GET", "/voice", voice_page)
     add_route("GET", "/voice/", voice_page_slash)
-    add_route("GET", "/record", record_page)
-    add_route("GET", "/record/", record_page_slash)
     add_route("GET", "/health", health)
     add_route("GET", "/api/setup/state", setup_state)
     add_route("GET", "/api/runtime/state", runtime_state)
-    add_route("POST", "/api/runtime/interrupt-probe", runtime_interrupt_probe)
+    add_route("POST", "/api/runtime/speech-probe", runtime_speech_probe)
     add_route("POST", "/api/runtime/speak", runtime_speak)
     add_route("GET", "/api/windows-client/status", windows_client_status)
     add_route("POST", "/api/windows-client/status", update_windows_client_status)
