@@ -1,0 +1,1224 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ASCII Avatar Lab</title>
+  <style>
+    :root {
+      --bg: #0c1115;
+      --panel: rgba(17, 23, 29, 0.92);
+      --panel-border: rgba(203, 176, 137, 0.26);
+      --panel-strong: rgba(203, 176, 137, 0.42);
+      --text: #efe4cf;
+      --muted: #b8a68b;
+      --accent: #d99a5b;
+      --accent-strong: #f0b473;
+      --shadow: rgba(0, 0, 0, 0.28);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top, rgba(217, 154, 91, 0.14), transparent 30%),
+        radial-gradient(circle at bottom left, rgba(120, 150, 176, 0.12), transparent 28%),
+        linear-gradient(180deg, #121920 0%, var(--bg) 100%);
+      color: var(--text);
+      font-family: "Cascadia Mono", "JetBrains Mono", "IBM Plex Mono", monospace;
+    }
+
+    main {
+      width: min(1480px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 18px 0 40px;
+    }
+
+    .lab-grid {
+      display: grid;
+      grid-template-columns: minmax(320px, 1fr) 320px;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 22px;
+      box-shadow: 0 18px 56px var(--shadow);
+      overflow: hidden;
+      backdrop-filter: blur(16px);
+    }
+
+    .hero {
+      padding: 18px 20px 0;
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .hero p {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+      max-width: 72ch;
+    }
+
+    .stage-shell {
+      margin: 16px 18px 18px;
+      border-radius: 18px;
+      border: 1px solid rgba(233, 223, 207, 0.08);
+      background:
+        linear-gradient(180deg, rgba(240, 228, 207, 0.04), rgba(240, 228, 207, 0.015)),
+        linear-gradient(180deg, rgba(9, 12, 15, 0.72), rgba(9, 12, 15, 0.86));
+      overflow: hidden;
+    }
+
+    .status-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(233, 223, 207, 0.08);
+      background: rgba(0, 0, 0, 0.18);
+    }
+
+    .pill {
+      border: 1px solid rgba(233, 223, 207, 0.14);
+      border-radius: 999px;
+      padding: 7px 10px;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .stage {
+      position: relative;
+      min-height: 74vh;
+      padding: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: auto;
+    }
+
+    .stage::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at center, rgba(217, 154, 91, 0.12), transparent 42%),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.03), transparent 60%);
+      pointer-events: none;
+    }
+
+    #avatar-screen {
+      position: relative;
+      z-index: 1;
+      margin: 0;
+      color: #f6efe5;
+      white-space: pre;
+      font-size: 7px;
+      line-height: 6px;
+      letter-spacing: 0;
+      text-shadow:
+        0 0 12px rgba(255, 230, 200, 0.07),
+        0 0 24px rgba(217, 154, 91, 0.08);
+      user-select: none;
+    }
+
+    .sidebar {
+      display: grid;
+      gap: 18px;
+    }
+
+    .controls {
+      padding: 18px;
+    }
+
+    .controls h2,
+    .legend h2 {
+      margin: 0 0 12px;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent-strong);
+    }
+
+    .button-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid rgba(233, 223, 207, 0.14);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text);
+      font: inherit;
+      font-size: 13px;
+      padding: 11px 12px;
+      cursor: pointer;
+      transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      border-color: var(--panel-strong);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    button.active {
+      border-color: rgba(240, 180, 115, 0.72);
+      background: rgba(217, 154, 91, 0.16);
+      color: #fff7ef;
+    }
+
+    button.secondary {
+      background: rgba(120, 150, 176, 0.08);
+    }
+
+    button.full {
+      grid-column: 1 / -1;
+    }
+
+    .slider-wrap {
+      margin-top: 8px;
+    }
+
+    .slider-wrap label,
+    .meta p {
+      display: block;
+      margin: 0 0 6px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    .legend {
+      padding: 18px;
+    }
+
+    .legend-list,
+    .frame-list {
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .legend-item,
+    .frame-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(233, 223, 207, 0.08);
+      background: rgba(255, 255, 255, 0.02);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .legend-item strong,
+    .frame-item strong {
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    .frame-item.current {
+      border-color: rgba(240, 180, 115, 0.56);
+      background: rgba(217, 154, 91, 0.12);
+    }
+
+    .meta {
+      padding: 0 18px 18px;
+    }
+
+    .meta code {
+      color: var(--text);
+      font-size: 12px;
+    }
+
+    .indicator-board {
+      margin-top: 18px;
+      padding: 18px;
+    }
+
+    .indicator-board h2 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent-strong);
+    }
+
+    .indicator-board p {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+      max-width: 72ch;
+    }
+
+    .indicator-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 16px;
+    }
+
+    .indicator-card {
+      padding: 14px;
+      border-radius: 18px;
+      border: 1px solid rgba(233, 223, 207, 0.08);
+      background: rgba(255, 255, 255, 0.02);
+      transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+    }
+
+    .indicator-card.active {
+      border-color: rgba(240, 180, 115, 0.46);
+      background: rgba(217, 154, 91, 0.08);
+      transform: translateY(-1px);
+    }
+
+    .indicator-label-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .indicator-label-row strong {
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    .indicator-canvas {
+      display: block;
+      width: 100%;
+      aspect-ratio: 5 / 4;
+      height: auto;
+      border-radius: 14px;
+      border: 1px solid rgba(233, 223, 207, 0.08);
+      background: #090d10;
+    }
+
+    @media (max-width: 1080px) {
+      .lab-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .stage {
+        min-height: 62vh;
+      }
+
+      .indicator-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="hero">
+      <h1>ASCII Avatar Lab</h1>
+      <p>
+        Standalone motion prototype for the girl avatar. This page treats <code>media/1.txt</code> through
+        <code>media/13.txt</code> as ordered keyframes on one timeline, fills the in-between frames in JavaScript,
+        and drives the playhead by state plus audio energy instead of hard frame swaps.
+        The interpolation now uses smaller local tiles so the face can bend and drift in pieces.
+      </p>
+    </div>
+
+    <div class="lab-grid">
+      <section class="panel">
+        <div class="stage-shell">
+          <div class="status-strip">
+            <div class="pill" id="state-pill">state: loading</div>
+            <div class="pill" id="playhead-pill">playhead: --</div>
+            <div class="pill" id="energy-pill">energy: 0.00</div>
+            <div class="pill" id="mode-pill">mode: synthetic</div>
+          </div>
+          <div class="stage">
+            <pre id="avatar-screen" aria-live="polite"></pre>
+          </div>
+        </div>
+      </section>
+
+      <aside class="sidebar">
+        <section class="panel controls">
+          <h2>State Driver</h2>
+          <div class="button-grid">
+            <button type="button" data-state="away">look away</button>
+            <button type="button" data-state="listening">listening</button>
+            <button type="button" data-state="thinking">thinking</button>
+            <button type="button" data-state="smile">look up + smile</button>
+            <button type="button" data-state="speaking" class="full">speaking</button>
+            <button type="button" id="demo-toggle" class="secondary">run demo sequence</button>
+            <button type="button" id="mic-toggle" class="secondary">use microphone</button>
+          </div>
+
+          <div class="slider-wrap">
+            <label for="energy-slider">Synthetic speech energy. Used when the mic is off, and also by the demo step.</label>
+            <input id="energy-slider" type="range" min="0" max="100" value="72">
+          </div>
+        </section>
+
+        <section class="panel legend">
+          <h2>Pose Map</h2>
+          <ul class="legend-list">
+            <li class="legend-item"><strong>look away</strong><span>frames 1-2</span></li>
+            <li class="legend-item"><strong>listening</strong><span>frames 3-6</span></li>
+            <li class="legend-item"><strong>thinking</strong><span>frames 7-10</span></li>
+            <li class="legend-item"><strong>smile / speaking base</strong><span>frames 11-13</span></li>
+          </ul>
+
+          <h2 style="margin-top:18px;">Keyframe Rail</h2>
+          <ul class="frame-list" id="frame-list"></ul>
+        </section>
+
+        <section class="panel meta">
+          <p>
+            Motion engine notes:
+          </p>
+          <p>
+            1. The page stays on one floating playhead across the 13 saved frames.
+          </p>
+          <p>
+            2. Each render blends the surrounding keyframes through a local motion field, so the portrait can move in
+            smaller pieces instead of one global slide.
+          </p>
+          <p>
+            3. Speaking accelerates the playhead inside the smile cluster and scales it with live audio energy.
+          </p>
+        </section>
+      </aside>
+    </div>
+
+    <section class="panel indicator-board">
+      <h2>Fallback Indicators</h2>
+      <p>
+        Lower-risk placeholders for the runtime UI. These do not depend on the face renderer. The speaking indicator
+        already follows the shared audio energy, so this board is the easier thing to port into the real voice page.
+      </p>
+      <div class="indicator-grid">
+        <article class="indicator-card" data-indicator-card="paused">
+          <div class="indicator-label-row">
+            <strong>idle / paused</strong>
+            <span>hold</span>
+          </div>
+          <canvas class="indicator-canvas" data-indicator-state="paused" width="260" height="208"></canvas>
+        </article>
+        <article class="indicator-card" data-indicator-card="listening">
+          <div class="indicator-label-row">
+            <strong>listening</strong>
+            <span>scan</span>
+          </div>
+          <canvas class="indicator-canvas" data-indicator-state="listening" width="260" height="208"></canvas>
+        </article>
+        <article class="indicator-card" data-indicator-card="thinking">
+          <div class="indicator-label-row">
+            <strong>thinking</strong>
+            <span>orbit</span>
+          </div>
+          <canvas class="indicator-canvas" data-indicator-state="thinking" width="260" height="208"></canvas>
+        </article>
+        <article class="indicator-card" data-indicator-card="speaking">
+          <div class="indicator-label-row">
+            <strong>speaking</strong>
+            <span>energy</span>
+          </div>
+          <canvas class="indicator-canvas" data-indicator-state="speaking" width="260" height="208"></canvas>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const KEYFRAME_IDS = Array.from({ length: 13 }, (_, index) => index + 1);
+    const FRAME_COUNT = KEYFRAME_IDS.length;
+    const MOTION_CHARS = [' ', '░', '▒', '▓', '█'];
+    const TILE_WIDTH = 12;
+    const TILE_HEIGHT = 8;
+    const TILE_SEARCH_RADIUS = 4;
+    const INDICATOR_STATES = ['paused', 'listening', 'thinking', 'speaking'];
+    const POSE_RANGES = {
+      away: { start: 1.0, end: 2.25, speed: 0.55, sway: 0.30 },
+      paused: { start: 1.0, end: 2.25, speed: 0.14, sway: 0.12 },
+      listening: { start: 2.8, end: 6.2, speed: 0.48, sway: 0.96 },
+      thinking: { start: 6.8, end: 10.35, speed: 0.34, sway: 1.08 },
+      smile: { start: 10.8, end: 13.0, speed: 0.58, sway: 0.44 },
+      speaking: { start: 10.9, end: 13.0, speed: 1.24, sway: 0.82 },
+    };
+    const DEMO_SEQUENCE = [
+      { state: 'away', durationMs: 2200, energy: 0.08 },
+      { state: 'listening', durationMs: 2800, energy: 0.10 },
+      { state: 'thinking', durationMs: 3000, energy: 0.02 },
+      { state: 'smile', durationMs: 1500, energy: 0.08 },
+      { state: 'speaking', durationMs: 4200, energy: 0.86 },
+      { state: 'listening', durationMs: 2600, energy: 0.12 },
+    ];
+
+    const avatarScreen = document.getElementById('avatar-screen');
+    const statePill = document.getElementById('state-pill');
+    const playheadPill = document.getElementById('playhead-pill');
+    const energyPill = document.getElementById('energy-pill');
+    const modePill = document.getElementById('mode-pill');
+    const frameList = document.getElementById('frame-list');
+    const energySlider = document.getElementById('energy-slider');
+    const demoToggle = document.getElementById('demo-toggle');
+    const micToggle = document.getElementById('mic-toggle');
+    const stateButtons = Array.from(document.querySelectorAll('[data-state]'));
+    const indicatorCards = Array.from(document.querySelectorAll('[data-indicator-card]'));
+    const indicatorContexts = Array.from(document.querySelectorAll('.indicator-canvas')).map((canvas) => ({
+      canvas,
+      state: canvas.dataset.indicatorState,
+      ctx: canvas.getContext('2d'),
+    }));
+
+    let keyframes = [];
+    let frameMotion = new Map();
+    let playhead = 3.9;
+    let activeState = 'listening';
+    let manualEnergy = Number(energySlider.value) / 100;
+    let syntheticEnergy = manualEnergy;
+    let speakingPhase = 0;
+    let lastFrameAt = 0;
+    let demoEnabled = true;
+    let demoStartedAt = 0;
+    let demoIndex = 0;
+    let micStream = null;
+    let micAnalyser = null;
+    let micArray = null;
+    let lastMicEnergy = 0;
+
+    function appUrl(path) {
+      const normalized = String(path || '').replace(/^\/+/, '');
+      const pathname = window.location.pathname || '/';
+      const staticIndex = pathname.indexOf('/static/');
+      const base = staticIndex >= 0 ? pathname.slice(0, staticIndex) : '';
+      return `${base}/${normalized}`;
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function wrapPlayhead(value) {
+      let wrapped = Number(value) || 1;
+      while (wrapped < 1) {
+        wrapped += FRAME_COUNT;
+      }
+      while (wrapped >= FRAME_COUNT + 1) {
+        wrapped -= FRAME_COUNT;
+      }
+      return wrapped;
+    }
+
+    function shortestRingDelta(from, to) {
+      let delta = to - from;
+      while (delta > FRAME_COUNT / 2) {
+        delta -= FRAME_COUNT;
+      }
+      while (delta < -FRAME_COUNT / 2) {
+        delta += FRAME_COUNT;
+      }
+      return delta;
+    }
+
+    function frameIdAt(playheadValue) {
+      const wrapped = wrapPlayhead(playheadValue);
+      const whole = Math.floor(wrapped);
+      return whole > FRAME_COUNT ? 1 : whole;
+    }
+
+    function charWeight(char) {
+      const index = MOTION_CHARS.indexOf(char);
+      if (index >= 0) {
+        return index / (MOTION_CHARS.length - 1);
+      }
+      return char === ' ' ? 0 : 1;
+    }
+
+    function weightChar(weight) {
+      const scaled = clamp(Math.round(weight * (MOTION_CHARS.length - 1)), 0, MOTION_CHARS.length - 1);
+      return MOTION_CHARS[scaled];
+    }
+
+    function parseFrame(id, text) {
+      const lines = String(text || '').replace(/\r/g, '').split('\n');
+      return {
+        id,
+        rawLines: lines,
+      };
+    }
+
+    function normalizeFrames(frames) {
+      const height = Math.max(...frames.map((frame) => frame.rawLines.length), 1);
+      const width = Math.max(
+        ...frames.flatMap((frame) => frame.rawLines.map((line) => line.length)),
+        1,
+      );
+      return frames.map((frame) => {
+        const lines = [];
+        for (let row = 0; row < height; row += 1) {
+          lines.push((frame.rawLines[row] || '').padEnd(width, ' '));
+        }
+        const weights = lines.map((line) => Array.from(line, charWeight));
+        return {
+          id: frame.id,
+          lines,
+          weights,
+          width,
+          height,
+        };
+      });
+    }
+
+    async function loadFrames() {
+      const loaded = await Promise.all(
+        KEYFRAME_IDS.map(async (id) => {
+          const response = await fetch(appUrl(`media/${id}.txt`));
+          if (!response.ok) {
+            throw new Error(`failed to load media/${id}.txt`);
+          }
+          return parseFrame(id, await response.text());
+        }),
+      );
+      keyframes = normalizeFrames(loaded);
+    }
+
+    function sampleWeight(frame, row, col) {
+      if (!frame || row < 0 || col < 0 || row > frame.height - 1 || col > frame.width - 1) {
+        return 0;
+      }
+      const row0 = Math.floor(row);
+      const col0 = Math.floor(col);
+      const row1 = Math.min(row0 + 1, frame.height - 1);
+      const col1 = Math.min(col0 + 1, frame.width - 1);
+      const rowMix = row - row0;
+      const colMix = col - col0;
+      const top = frame.weights[row0][col0] * (1 - colMix) + frame.weights[row0][col1] * colMix;
+      const bottom = frame.weights[row1][col0] * (1 - colMix) + frame.weights[row1][col1] * colMix;
+      return top * (1 - rowMix) + bottom * rowMix;
+    }
+
+    function diffCost(frameA, frameB, dx, dy, region = null) {
+      const rowStart = region ? region.row : 0;
+      const rowEnd = region ? region.row + region.height : frameA.height;
+      const colStart = region ? region.col : 0;
+      const colEnd = region ? region.col + region.width : frameA.width;
+      let total = 0;
+      for (let row = rowStart; row < rowEnd; row += 2) {
+        for (let col = colStart; col < colEnd; col += 2) {
+          const weightA = frameA.weights[row][col];
+          const weightB = sampleWeight(frameB, row + dy, col + dx);
+          total += Math.abs(weightA - weightB);
+        }
+      }
+      return total;
+    }
+
+    function findBestMotion(frameA, frameB, region = null) {
+      let best = { dx: 0, dy: 0, cost: Number.POSITIVE_INFINITY };
+      for (let dy = -TILE_SEARCH_RADIUS; dy <= TILE_SEARCH_RADIUS; dy += 1) {
+        for (let dx = -TILE_SEARCH_RADIUS; dx <= TILE_SEARCH_RADIUS; dx += 1) {
+          const cost = diffCost(frameA, frameB, dx, dy, region);
+          if (cost < best.cost) {
+            best = { dx, dy, cost };
+          }
+        }
+      }
+      return best;
+    }
+
+    function buildTileMotionField(frameA, frameB) {
+      const cols = Math.ceil(frameA.width / TILE_WIDTH);
+      const rows = Math.ceil(frameA.height / TILE_HEIGHT);
+      const tiles = [];
+      for (let tileRow = 0; tileRow < rows; tileRow += 1) {
+        for (let tileCol = 0; tileCol < cols; tileCol += 1) {
+          const region = {
+            row: tileRow * TILE_HEIGHT,
+            col: tileCol * TILE_WIDTH,
+            height: Math.min(TILE_HEIGHT, frameA.height - tileRow * TILE_HEIGHT),
+            width: Math.min(TILE_WIDTH, frameA.width - tileCol * TILE_WIDTH),
+          };
+          tiles.push(findBestMotion(frameA, frameB, region));
+        }
+      }
+      return { rows, cols, tiles };
+    }
+
+    function buildMotionMap() {
+      frameMotion.clear();
+      for (let index = 0; index < keyframes.length; index += 1) {
+        const current = keyframes[index];
+        const next = keyframes[(index + 1) % keyframes.length];
+        frameMotion.set(`${current.id}->${next.id}`, buildTileMotionField(current, next));
+      }
+    }
+
+    function easeInOut(value) {
+      return value < 0.5
+        ? 4 * value * value * value
+        : 1 - Math.pow(-2 * value + 2, 3) / 2;
+    }
+
+    function tileMotionAt(field, tileRow, tileCol) {
+      const row = clamp(tileRow, 0, field.rows - 1);
+      const col = clamp(tileCol, 0, field.cols - 1);
+      return field.tiles[row * field.cols + col] || { dx: 0, dy: 0 };
+    }
+
+    function sampleMotionField(field, row, col) {
+      if (!field) {
+        return { dx: 0, dy: 0 };
+      }
+      const gridX = clamp(col / TILE_WIDTH - 0.5, 0, field.cols - 1);
+      const gridY = clamp(row / TILE_HEIGHT - 0.5, 0, field.rows - 1);
+      const col0 = Math.floor(gridX);
+      const row0 = Math.floor(gridY);
+      const col1 = Math.min(col0 + 1, field.cols - 1);
+      const row1 = Math.min(row0 + 1, field.rows - 1);
+      const mixX = gridX - col0;
+      const mixY = gridY - row0;
+      const topLeft = tileMotionAt(field, row0, col0);
+      const topRight = tileMotionAt(field, row0, col1);
+      const bottomLeft = tileMotionAt(field, row1, col0);
+      const bottomRight = tileMotionAt(field, row1, col1);
+      const dxTop = topLeft.dx * (1 - mixX) + topRight.dx * mixX;
+      const dxBottom = bottomLeft.dx * (1 - mixX) + bottomRight.dx * mixX;
+      const dyTop = topLeft.dy * (1 - mixX) + topRight.dy * mixX;
+      const dyBottom = bottomLeft.dy * (1 - mixX) + bottomRight.dy * mixX;
+      return {
+        dx: dxTop * (1 - mixY) + dxBottom * mixY,
+        dy: dyTop * (1 - mixY) + dyBottom * mixY,
+      };
+    }
+
+    function renderPlayheadFrame(playheadValue) {
+      const wrapped = wrapPlayhead(playheadValue);
+      const indexA = Math.floor(wrapped) - 1;
+      const indexB = (indexA + 1) % keyframes.length;
+      const frameA = keyframes[indexA];
+      const frameB = keyframes[indexB];
+      const blend = easeInOut(wrapped - Math.floor(wrapped));
+      const motionField = frameMotion.get(`${frameA.id}->${frameB.id}`);
+      const lines = [];
+
+      for (let row = 0; row < frameA.height; row += 1) {
+        let line = '';
+        for (let col = 0; col < frameA.width; col += 1) {
+          const motion = sampleMotionField(motionField, row, col);
+          const weightA = sampleWeight(frameA, row - motion.dy * blend, col - motion.dx * blend);
+          const weightB = sampleWeight(frameB, row + motion.dy * (1 - blend), col + motion.dx * (1 - blend));
+          const weight = weightA * (1 - blend) + weightB * blend;
+          line += weightChar(weight);
+        }
+        lines.push(line);
+      }
+      return lines.join('\n');
+    }
+
+    function poseCenter(state) {
+      const range = POSE_RANGES[state];
+      return range ? (range.start + range.end) / 2 : 4;
+    }
+
+    function currentEnergy() {
+      if (demoEnabled) {
+        return syntheticEnergy;
+      }
+      if (micAnalyser && micArray) {
+        micAnalyser.getByteTimeDomainData(micArray);
+        let sum = 0;
+        for (const value of micArray) {
+          const centered = (value - 128) / 128;
+          sum += centered * centered;
+        }
+        const rms = Math.sqrt(sum / micArray.length);
+        lastMicEnergy = clamp(rms * 3.8, 0, 1);
+        return lastMicEnergy;
+      }
+      return manualEnergy;
+    }
+
+    function poseGoal(state, nowSeconds, energy) {
+      const pose = POSE_RANGES[state] || POSE_RANGES.listening;
+      const center = (pose.start + pose.end) / 2;
+      const span = Math.max((pose.end - pose.start) / 2, 0.02);
+      if (state === 'speaking') {
+        const amplitude = clamp(span * (0.30 + energy * 0.95), 0.25, span);
+        return clamp(center + Math.sin(speakingPhase) * amplitude, pose.start, pose.end);
+      }
+      return clamp(center + Math.sin(nowSeconds * pose.speed) * span * pose.sway, pose.start, pose.end);
+    }
+
+    function syncButtonState() {
+      for (const button of stateButtons) {
+        button.classList.toggle('active', button.dataset.state === activeState);
+      }
+      demoToggle.classList.toggle('active', demoEnabled);
+      micToggle.classList.toggle('active', Boolean(micAnalyser));
+      syncIndicatorCards();
+    }
+
+    function activeIndicatorState() {
+      if (activeState === 'thinking') {
+        return 'thinking';
+      }
+      if (activeState === 'speaking' || activeState === 'smile') {
+        return 'speaking';
+      }
+      if (activeState === 'listening') {
+        return 'listening';
+      }
+      return 'paused';
+    }
+
+    function syncIndicatorCards() {
+      const current = activeIndicatorState();
+      for (const card of indicatorCards) {
+        card.classList.toggle('active', card.dataset.indicatorCard === current);
+      }
+    }
+
+    function indicatorTheme(state) {
+      switch (state) {
+        case 'listening':
+          return { accent: '#74d7ff', glow: 'rgba(116, 215, 255, 0.34)', line: 'rgba(201, 241, 255, 0.84)' };
+        case 'thinking':
+          return { accent: '#f0c784', glow: 'rgba(240, 199, 132, 0.32)', line: 'rgba(255, 239, 211, 0.86)' };
+        case 'speaking':
+          return { accent: '#ff8f66', glow: 'rgba(255, 143, 102, 0.34)', line: 'rgba(255, 232, 220, 0.88)' };
+        default:
+          return { accent: '#8b94a8', glow: 'rgba(139, 148, 168, 0.24)', line: 'rgba(220, 226, 236, 0.72)' };
+      }
+    }
+
+    function drawIndicatorBackdrop(ctx, width, height, theme) {
+      ctx.clearRect(0, 0, width, height);
+      const gradient = ctx.createLinearGradient(0, 0, 0, height);
+      gradient.addColorStop(0, '#0d1419');
+      gradient.addColorStop(1, '#070b0f');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+      for (let row = 12; row < height; row += 12) {
+        for (let col = 12; col < width; col += 12) {
+          ctx.fillRect(col, row, 1, 1);
+        }
+      }
+
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(0.5, 0.5, width - 1, height - 1);
+
+      ctx.strokeStyle = theme.glow;
+      ctx.strokeRect(10.5, 10.5, width - 21, height - 21);
+    }
+
+    function drawListeningIndicator(ctx, width, height, nowSeconds, energy, theme) {
+      const centerX = width / 2;
+      const centerY = height * 0.44;
+      const sweep = 24 + (width - 48) * (0.5 + 0.5 * Math.sin(nowSeconds * 0.88));
+
+      ctx.strokeStyle = theme.glow;
+      ctx.lineWidth = 2;
+      for (let ring = 0; ring < 3; ring += 1) {
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 24 + ring * 16, Math.PI * 0.22, Math.PI * 0.78);
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = theme.line;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(sweep, 26);
+      ctx.lineTo(sweep, height - 58);
+      ctx.stroke();
+
+      const barCount = 18;
+      const gap = 4;
+      const barWidth = (width - 46 - gap * (barCount - 1)) / barCount;
+      const baseY = height - 22;
+      for (let index = 0; index < barCount; index += 1) {
+        const local = 0.22 + 0.78 * Math.pow(Math.sin(nowSeconds * 1.8 + index * 0.72), 2);
+        const barHeight = 8 + local * 16 + energy * 10;
+        const x = 23 + index * (barWidth + gap);
+        ctx.fillStyle = index % 2 === 0 ? theme.glow : theme.line;
+        ctx.fillRect(x, baseY - barHeight, barWidth, barHeight);
+      }
+
+      ctx.fillStyle = theme.line;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function drawThinkingIndicator(ctx, width, height, nowSeconds, _energy, theme) {
+      const centerX = width / 2;
+      const centerY = height * 0.46;
+
+      ctx.strokeStyle = theme.glow;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 28, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 42, 0, Math.PI * 2);
+      ctx.stroke();
+
+      for (let index = 0; index < 6; index += 1) {
+        const angle = nowSeconds * (0.55 + index * 0.03) + (index * Math.PI * 2) / 6;
+        const radius = index % 2 === 0 ? 28 : 42;
+        const x = centerX + Math.cos(angle) * radius;
+        const y = centerY + Math.sin(angle) * radius;
+        const size = index % 2 === 0 ? 5 : 3.5;
+        ctx.fillStyle = index % 2 === 0 ? theme.line : theme.glow;
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      for (let index = 0; index < 3; index += 1) {
+        const pulse = 0.28 + 0.72 * (0.5 + 0.5 * Math.sin(nowSeconds * 2.8 - index * 0.72));
+        ctx.fillStyle = `rgba(255, 239, 211, ${0.25 + pulse * 0.55})`;
+        ctx.beginPath();
+        ctx.arc(centerX - 20 + index * 20, height - 34, 4 + pulse * 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function drawSpeakingIndicator(ctx, width, height, nowSeconds, energy, theme) {
+      const centerX = width / 2;
+      const centerY = height * 0.45;
+      const baseRadius = 26;
+      const barCount = 28;
+
+      ctx.strokeStyle = theme.glow;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, baseRadius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      for (let index = 0; index < barCount; index += 1) {
+        const angle = -Math.PI / 2 + (index / barCount) * Math.PI * 2;
+        const local = 0.22 + 0.78 * Math.pow(Math.sin(nowSeconds * 8.4 + index * 0.78), 2);
+        const length = 8 + energy * 28 * local;
+        const innerX = centerX + Math.cos(angle) * (baseRadius + 4);
+        const innerY = centerY + Math.sin(angle) * (baseRadius + 4);
+        const outerX = centerX + Math.cos(angle) * (baseRadius + 4 + length);
+        const outerY = centerY + Math.sin(angle) * (baseRadius + 4 + length);
+        ctx.strokeStyle = index % 2 === 0 ? theme.line : theme.glow;
+        ctx.lineWidth = index % 2 === 0 ? 2.2 : 1.6;
+        ctx.beginPath();
+        ctx.moveTo(innerX, innerY);
+        ctx.lineTo(outerX, outerY);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = theme.line;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 7 + energy * 7 + Math.sin(nowSeconds * 6.2) * 1.4, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = theme.line;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let x = 20; x <= width - 20; x += 1) {
+        const progress = (x - 20) / (width - 40);
+        const waveform = Math.sin(progress * Math.PI * 8 + nowSeconds * 10.5) * (8 + energy * 14);
+        const y = height - 34 + waveform * (0.22 + 0.78 * Math.sin(progress * Math.PI) ** 2);
+        if (x === 20) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.stroke();
+    }
+
+    function drawPausedIndicator(ctx, width, height, nowSeconds, _energy, theme) {
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const breath = 0.5 + 0.5 * Math.sin(nowSeconds * 0.8);
+
+      ctx.strokeStyle = theme.glow;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 34 + breath * 3, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = theme.line;
+      ctx.fillRect(centerX - 16, centerY - 22, 9, 44);
+      ctx.fillRect(centerX + 7, centerY - 22, 9, 44);
+
+      ctx.fillStyle = 'rgba(220, 226, 236, 0.16)';
+      ctx.fillRect(34, height - 28, width - 68, 4);
+      ctx.fillStyle = theme.glow;
+      ctx.fillRect(34, height - 28, (width - 68) * (0.22 + breath * 0.12), 4);
+    }
+
+    function drawIndicatorFrame(state, ctx, nowSeconds, energy) {
+      if (!ctx) {
+        return;
+      }
+      const width = ctx.canvas.width;
+      const height = ctx.canvas.height;
+      const theme = indicatorTheme(state);
+      drawIndicatorBackdrop(ctx, width, height, theme);
+
+      if (state === 'listening') {
+        drawListeningIndicator(ctx, width, height, nowSeconds, energy * 0.2, theme);
+        return;
+      }
+      if (state === 'thinking') {
+        drawThinkingIndicator(ctx, width, height, nowSeconds, energy, theme);
+        return;
+      }
+      if (state === 'speaking') {
+        drawSpeakingIndicator(ctx, width, height, nowSeconds, energy, theme);
+        return;
+      }
+      drawPausedIndicator(ctx, width, height, nowSeconds, energy, theme);
+    }
+
+    function renderIndicators(nowSeconds, energy) {
+      syncIndicatorCards();
+      for (const entry of indicatorContexts) {
+        drawIndicatorFrame(entry.state, entry.ctx, nowSeconds, energy);
+      }
+    }
+
+    function updateFrameRail() {
+      const current = frameIdAt(playhead);
+      for (const item of frameList.querySelectorAll('.frame-item')) {
+        item.classList.toggle('current', Number(item.dataset.frameId) === current);
+      }
+    }
+
+    function fitFrame(text) {
+      const stage = avatarScreen.parentElement;
+      if (!stage || !text) {
+        return;
+      }
+      const lines = String(text).split('\n');
+      const width = Math.max(...lines.map((line) => line.length), 1);
+      const height = Math.max(lines.length, 1);
+      const widthBased = stage.clientWidth / (width * 0.62);
+      const heightBased = stage.clientHeight / (height * 0.82);
+      const fontSize = clamp(Math.min(widthBased, heightBased), 3.2, 10.6);
+      avatarScreen.style.fontSize = `${fontSize}px`;
+      avatarScreen.style.lineHeight = `${fontSize * 0.82}px`;
+    }
+
+    function renderStatus(energy) {
+      statePill.textContent = `state: ${activeState}`;
+      playheadPill.textContent = `playhead: ${playhead.toFixed(2)}`;
+      energyPill.textContent = `energy: ${energy.toFixed(2)}`;
+      modePill.textContent = demoEnabled ? 'mode: scripted' : (micAnalyser ? 'mode: microphone' : 'mode: synthetic');
+    }
+
+    function renderFrame() {
+      const frame = renderPlayheadFrame(playhead);
+      avatarScreen.textContent = frame;
+      fitFrame(frame);
+      updateFrameRail();
+    }
+
+    function setState(nextState, { stopDemo = true } = {}) {
+      if (stopDemo) {
+        demoEnabled = false;
+      }
+      activeState = nextState;
+      syncButtonState();
+    }
+
+    function beginDemoScript() {
+      demoEnabled = true;
+      demoStartedAt = performance.now();
+      demoIndex = 0;
+      activeState = DEMO_SEQUENCE[0].state;
+      syncButtonState();
+    }
+
+    function tickDemo(nowMs) {
+      if (!demoEnabled) {
+        syntheticEnergy = manualEnergy;
+        return;
+      }
+      const step = DEMO_SEQUENCE[demoIndex];
+      const stepStartedAt = DEMO_SEQUENCE
+        .slice(0, demoIndex)
+        .reduce((sum, item) => sum + item.durationMs, demoStartedAt);
+      const elapsed = nowMs - stepStartedAt;
+      if (elapsed >= step.durationMs) {
+        demoIndex = (demoIndex + 1) % DEMO_SEQUENCE.length;
+        activeState = DEMO_SEQUENCE[demoIndex].state;
+        syncButtonState();
+        return tickDemo(nowMs);
+      }
+      activeState = step.state;
+      if (step.state === 'speaking') {
+        const local = elapsed / step.durationMs;
+        syntheticEnergy = clamp((step.energy || 0.8) * (0.45 + 0.55 * Math.sin(local * Math.PI * 7) ** 2), 0, 1);
+      } else {
+        syntheticEnergy = step.energy || 0.08;
+      }
+    }
+
+    async function activateMicrophone() {
+      if (micStream) {
+        micStream.getTracks().forEach((track) => track.stop());
+        micStream = null;
+        micAnalyser = null;
+        micArray = null;
+        syncButtonState();
+        return;
+      }
+      demoEnabled = false;
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 1024;
+        const source = audioContext.createMediaStreamSource(stream);
+        source.connect(analyser);
+        micStream = stream;
+        micAnalyser = analyser;
+        micArray = new Uint8Array(analyser.fftSize);
+        syncButtonState();
+      } catch (error) {
+        console.error(error);
+        micToggle.textContent = 'microphone unavailable';
+      }
+    }
+
+    function buildFrameRail() {
+      const items = [];
+      for (const id of KEYFRAME_IDS) {
+        let label = 'transition';
+        if (id <= 2) {
+          label = 'away';
+        } else if (id <= 6) {
+          label = 'listening';
+        } else if (id <= 10) {
+          label = 'thinking';
+        } else {
+          label = 'smile';
+        }
+        items.push(`
+          <li class="frame-item" data-frame-id="${id}">
+            <strong>#${id}</strong>
+            <span>${label}</span>
+          </li>
+        `);
+      }
+      frameList.innerHTML = items.join('');
+    }
+
+    function animationLoop(nowMs) {
+      const nowSeconds = nowMs / 1000;
+      if (!lastFrameAt) {
+        lastFrameAt = nowMs;
+      }
+      const deltaSeconds = Math.min((nowMs - lastFrameAt) / 1000, 0.08);
+      lastFrameAt = nowMs;
+
+      tickDemo(nowMs);
+      manualEnergy = Number(energySlider.value) / 100;
+      const energy = currentEnergy();
+      const goal = poseGoal(activeState, nowSeconds, energy);
+      const delta = shortestRingDelta(playhead, goal);
+      const travelSpeed = activeState === 'speaking'
+        ? 3.1 + energy * 6.3
+        : 1.9 + Math.abs(delta) * 0.7;
+      const step = clamp(delta, -travelSpeed * deltaSeconds, travelSpeed * deltaSeconds);
+      playhead = wrapPlayhead(playhead + step);
+
+      if (activeState === 'speaking') {
+        speakingPhase += deltaSeconds * (2.4 + energy * 11.0);
+      } else {
+        speakingPhase = 0;
+      }
+
+      renderFrame();
+      renderIndicators(nowSeconds, energy);
+      renderStatus(energy);
+      requestAnimationFrame(animationLoop);
+    }
+
+    async function init() {
+      buildFrameRail();
+      syncButtonState();
+      await loadFrames();
+      buildMotionMap();
+      renderFrame();
+      renderIndicators(0, 0);
+      renderStatus(0);
+
+      for (const button of stateButtons) {
+        button.addEventListener('click', () => setState(button.dataset.state));
+      }
+      demoToggle.addEventListener('click', () => {
+        if (demoEnabled) {
+          demoEnabled = false;
+          syntheticEnergy = manualEnergy;
+          syncButtonState();
+          return;
+        }
+        beginDemoScript();
+      });
+      micToggle.addEventListener('click', () => {
+        void activateMicrophone();
+      });
+      window.addEventListener('resize', () => fitFrame(avatarScreen.textContent));
+
+      beginDemoScript();
+      requestAnimationFrame(animationLoop);
+    }
+
+    init().catch((error) => {
+      console.error(error);
+      avatarScreen.textContent = `ascii avatar lab failed to load\n\n${error.message}`;
+    });
+  </script>
+</body>
+</html>

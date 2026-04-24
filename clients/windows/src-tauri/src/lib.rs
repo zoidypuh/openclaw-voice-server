@@ -1,5 +1,4 @@
 use std::{
-    io,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -16,7 +15,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
-use tauri_plugin_global_shortcut::{Builder as GlobalShortcutBuilder, Code, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{Builder as GlobalShortcutBuilder, Shortcut, ShortcutState};
 use url::Url;
 
 const MAIN_WINDOW_LABEL: &str = "main";
@@ -28,6 +27,7 @@ const MENU_QUIT: &str = "quit";
 const VOICE_URL: &str = "http://127.0.0.1:8765/voice";
 const STATUS_URL: &str = "http://127.0.0.1:8765/api/windows-client/status";
 const STATUS_POLL_INTERVAL: Duration = Duration::from_millis(1200);
+const HOLD_TO_TALK_SHORTCUT: &str = "CONTROL+ALT+SHIFT+KeyA";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum TrayState {
@@ -108,7 +108,7 @@ fn open_in_browser(url: &Url) {
 }
 
 fn tray_tooltip(state: TrayState) -> String {
-    format!("OpenClaw Voice: {}", state.label())
+    format!("Mara's Switchboard: {}", state.label())
 }
 
 fn set_pixel(rgba: &mut [u8], x: i32, y: i32, color: [u8; 4]) {
@@ -271,7 +271,7 @@ fn build_main_window<R: tauri::Runtime>(
         MAIN_WINDOW_LABEL,
         WebviewUrl::External(voice_url.clone()),
     )
-    .title("OpenClaw Voice")
+    .title("Mara's Switchboard")
     .inner_size(460.0, 620.0)
     .min_inner_size(360.0, 520.0)
     .resizable(true)
@@ -347,25 +347,14 @@ fn start_voice_runtime<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
                             }
                             return;
                         }
-                        const isPaused = document.body.dataset.state === 'paused' || button.classList.contains('active');
+                        const label = button.textContent.trim().toLowerCase();
+                        const isPaused = document.body.dataset.state === 'paused' || label === 'paused';
                         if (isPaused) button.click();
                     };
                     tryStart();
                 })();
             "#;
             let _ = window.eval(script);
-        }
-    });
-}
-
-fn click_voice_button<R: tauri::Runtime>(app: &tauri::AppHandle<R>, selector: &'static str) {
-    let handle = app.clone();
-    let _ = app.run_on_main_thread(move || {
-        if let Some(window) = handle.get_webview_window(MAIN_WINDOW_LABEL) {
-            let script = format!(
-                "(() => {{ const button = document.querySelector({selector:?}); if (button && !button.disabled) button.click(); }})();"
-            );
-            let _ = window.eval(&script);
         }
     });
 }
@@ -421,7 +410,7 @@ fn build_tray<R: tauri::Runtime>(
             let quitting = quitting.clone();
             move |app, event| match event.id().as_ref() {
                 MENU_START => start_voice_runtime(app),
-                MENU_INTERRUPT => invoke_voice_action(app, "__openclawManualInterrupt"),
+                MENU_INTERRUPT => invoke_voice_action(app, "__marasSwitchboardManualInterrupt"),
                 MENU_TOGGLE => toggle_main_window(app),
                 MENU_QUIT => {
                     quitting.store(true, Ordering::SeqCst);
@@ -446,40 +435,30 @@ fn build_tray<R: tauri::Runtime>(
 
 pub fn run() {
     if let Err(error) = run_inner() {
-        eprintln!("failed to launch OpenClaw Voice Windows client: {error}");
+        eprintln!("failed to launch Mara's Switchboard Windows client: {error}");
     }
 }
 
 fn run_inner() -> tauri::Result<()> {
     let quitting = Arc::new(AtomicBool::new(false));
     let shell_id = generate_shell_id();
-
-    let show_hide_shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space);
-    let pause_shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyP);
-    let interrupt_shortcuts = vec![Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyA)];
-
-    let show_hide_shortcut_id = show_hide_shortcut.id();
-    let pause_shortcut_id = pause_shortcut.id();
-    let interrupt_shortcut_ids: Vec<_> = interrupt_shortcuts.iter().map(|shortcut| shortcut.id()).collect();
-
-    let mut shortcuts = vec![show_hide_shortcut, pause_shortcut];
-    shortcuts.extend(interrupt_shortcuts);
+    let hold_to_talk_shortcut = HOLD_TO_TALK_SHORTCUT
+        .parse::<Shortcut>()
+        .expect("fixed hold-to-talk shortcut must parse");
+    let hold_to_talk_shortcut_id = hold_to_talk_shortcut.id();
 
     let shortcut_plugin = GlobalShortcutBuilder::new()
-        .with_shortcuts(shortcuts).map_err(|error| {
-            io::Error::other(format!("failed to register global shortcuts: {error}"))
-        })?
+        .with_shortcuts(vec![hold_to_talk_shortcut])?
         .with_handler(move |app, shortcut, event| {
-            if event.state != ShortcutState::Pressed {
-                return;
-            }
-
-            if shortcut.id() == show_hide_shortcut_id {
-                toggle_main_window(app);
-            } else if shortcut.id() == pause_shortcut_id {
-                click_voice_button(app, "#pause-btn");
-            } else if interrupt_shortcut_ids.iter().any(|shortcut_id| *shortcut_id == shortcut.id()) {
-                invoke_voice_action(app, "__openclawManualInterrupt");
+            if shortcut.id() == hold_to_talk_shortcut_id {
+                match event.state {
+                    ShortcutState::Pressed => {
+                        invoke_voice_action(app, "__marasSwitchboardHoldToTalkStart");
+                    }
+                    ShortcutState::Released => {
+                        invoke_voice_action(app, "__marasSwitchboardHoldToTalkEnd");
+                    }
+                }
             }
         })
         .build();

@@ -1,0 +1,226 @@
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+from typing import Any
+
+from .catalog import ALL_SECRET_ENV_KEYS, CONFIG_ENV_TO_CONFIG, default_config, normalize_agent_backend
+
+
+def _parse_scalar(value: str) -> Any:
+    text = value.strip()
+    if not text:
+        return ""
+    lowered = text.lower()
+    if lowered in {"true", "false"}:
+        return lowered == "true"
+    if text.isdigit():
+        return int(text)
+    try:
+        return float(text)
+    except ValueError:
+        return text
+
+
+def _deep_merge(target: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
+    for key, value in updates.items():
+        if isinstance(value, dict) and isinstance(target.get(key), dict):
+            _deep_merge(target[key], value)
+        else:
+            target[key] = value
+    return target
+
+
+def _get_nested(data: dict[str, Any], path: tuple[str, ...]) -> Any:
+    node: Any = data
+    for key in path:
+        if not isinstance(node, dict):
+            return None
+        node = node.get(key)
+    return node
+
+
+def _set_nested(data: dict[str, Any], path: tuple[str, ...], value: Any) -> None:
+    node = data
+    for key in path[:-1]:
+        child = node.get(key)
+        if not isinstance(child, dict):
+            child = {}
+            node[key] = child
+        node = child
+    node[path[-1]] = value
+
+
+def _has_explicit_nested_value(data: dict[str, Any], path: tuple[str, ...]) -> bool:
+    return _get_nested(data, path) not in (None, "", [])
+
+
+def _split_env_line(line: str) -> tuple[str, str] | None:
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#") or "=" not in stripped:
+        return None
+    key, value = stripped.split("=", 1)
+    key = key.strip()
+    value = value.strip()
+    if value.startswith(("'", '"')) and value.endswith(("'", '"')) and len(value) >= 2:
+        value = value[1:-1]
+    return key, value
+
+
+def _quote_env_value(value: str) -> str:
+    if value == "":
+        return '""'
+    if any(ch.isspace() for ch in value) or "#" in value or value.startswith(("'", '"')):
+        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+    return value
+
+
+def _first_env_value(env_values: dict[str, str], *keys: str) -> str:
+    for key in keys:
+        value = env_values.get(key)
+        if value not in (None, ""):
+            return value
+    return ""
+
+
+class ConfigStore:
+    def __init__(self, config_path: Path | None = None, env_path: Path | None = None):
+        cwd = Path.cwd()
+        self.config_path = Path(
+            os.environ.get("MARAS_SWITCHBOARD_CONFIG_FILE")
+            or os.environ.get("AGENTIC_SWITCHBOARD_CONFIG_FILE")
+            or config_path
+            or cwd / "config.json"
+        )
+        self.env_path = Path(
+            os.environ.get("MARAS_SWITCHBOARD_ENV_FILE")
+            or os.environ.get("AGENTIC_SWITCHBOARD_ENV_FILE")
+            or env_path
+            or cwd / ".env"
+        )
+
+    def load_env_values(self) -> dict[str, str]:
+        values: dict[str, str] = {}
+        if self.env_path.exists():
+            for line in self.env_path.read_text(encoding="utf-8").splitlines():
+                parsed = _split_env_line(line)
+                if parsed is None:
+                    continue
+                key, value = parsed
+                values[key] = value
+        for key in ALL_SECRET_ENV_KEYS | set(CONFIG_ENV_TO_CONFIG):
+            env_value = os.environ.get(key)
+            if env_value is not None:
+                values[key] = env_value
+        return values
+
+    def load_config(self) -> dict[str, Any]:
+        config = default_config()
+        raw_config: dict[str, Any] = {}
+        if self.config_path.exists():
+            raw = json.loads(self.config_path.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                raw_config = raw
+                _deep_merge(config, raw)
+
+        env_values = self.load_env_values()
+        for env_key, path in CONFIG_ENV_TO_CONFIG.items():
+            env_value = env_values.get(env_key)
+            if env_value is None:
+                continue
+            if _has_explicit_nested_value(raw_config, path):
+                continue
+            _set_nested(config, path, _parse_scalar(env_value))
+
+        agent = config.get("agent")
+        if isinstance(agent, dict):
+            agent["backend"] = normalize_agent_backend(agent.get("backend"))
+
+        return config
+
+    def load_runtime_settings(self) -> dict[str, Any]:
+        config = self.load_config()
+        env_values = self.load_env_values()
+        config["secrets"] = {
+            "gateway_token": _first_env_value(
+                env_values,
+                "MARAS_SWITCHBOARD_GATEWAY_TOKEN",
+                "AGENTIC_SWITCHBOARD_GATEWAY_TOKEN",
+            ),
+            "elevenlabs_api_key": _first_env_value(
+                env_values,
+                "MARAS_SWITCHBOARD_ELEVENLABS_API_KEY",
+                "AGENTIC_SWITCHBOARD_ELEVENLABS_API_KEY",
+            ),
+        }
+        return config
+
+    def save_config(self, config: dict[str, Any]) -> None:
+        self.config_path.write_text(
+            json.dumps(config, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+    def update_config(self, updates: dict[str, Any]) -> dict[str, Any]:
+        config = self.load_config()
+        _deep_merge(config, updates)
+        if isinstance(updates.get("validation"), dict) and isinstance(config.get("validation"), dict):
+            for key, value in updates["validation"].items():
+                config["validation"][key] = value
+        self.save_config(config)
+        return config
+
+    def update_secrets(self, updates: dict[str, str | None]) -> None:
+        existing_lines = []
+        if self.env_path.exists():
+            existing_lines = self.env_path.read_text(encoding="utf-8").splitlines()
+
+        seen: set[str] = set()
+        rendered: list[str] = []
+        for line in existing_lines:
+            parsed = _split_env_line(line)
+            if parsed is None:
+                rendered.append(line)
+                continue
+            key, _ = parsed
+            if key in updates:
+                seen.add(key)
+                value = updates[key]
+                if value in (None, ""):
+                    continue
+                rendered.append(f"{key}={_quote_env_value(value)}")
+                continue
+            rendered.append(line)
+
+        for key, value in updates.items():
+            if key in seen or value in (None, ""):
+                continue
+            rendered.append(f"{key}={_quote_env_value(value)}")
+
+        final_text = "\n".join(rendered).rstrip()
+        if final_text:
+            final_text += "\n"
+        self.env_path.write_text(final_text, encoding="utf-8")
+
+    def public_setup_state(self) -> dict[str, Any]:
+        settings = self.load_runtime_settings()
+        return {
+            "config_path": str(self.config_path),
+            "env_path": str(self.env_path),
+            "gateway": {
+                "url": settings["gateway"]["url"],
+                "model": settings["gateway"]["model"],
+                "session_key": settings["gateway"]["session_key"],
+                "token_present": bool(settings["secrets"]["gateway_token"]),
+            },
+            "agent": settings["agent"],
+            "stt": settings["stt"],
+            "tts": {
+                **settings["tts"],
+                "elevenlabs_api_key_present": bool(settings["secrets"]["elevenlabs_api_key"]),
+            },
+            "audio": settings["audio"],
+            "windows_client": settings["windows_client"],
+        }

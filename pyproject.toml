@@ -3,15 +3,16 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [project]
-name = "openclaw-voice-server"
-version = "0.0.4"
-description = "Standalone browser-to-OpenClaw voice server."
+name = "maras-switchboard"
+version = "0.1"
+description = "Standalone browser voice runtime for text agents."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "aiohttp>=3.11.0",
   "httpx>=0.28.0",
-  "numpy>=2.0.0",
+  "numpy>=1.24.0",
+  "rich>=14.0.0",
 ]
 
 [project.optional-dependencies]
@@ -29,23 +30,29 @@ tts-edge = [
 ]
 
 [project.scripts]
-openclaw-voice-server = "openclaw_voice_server.app:main"
+maras-switchboard = "maras_switchboard.app:main"
+maras-switchboard-speak = "maras_switchboard.speak_paragraphs:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/openclaw_voice_server"]
+packages = ["src/maras_switchboard"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/openclaw_voice_server/static" = "openclaw_voice_server/static"
+"src/maras_switchboard/static" = "maras_switchboard/static"
+"media/ascii-art.txt" = "maras_switchboard/static/media/ascii-art.txt"
 
 [tool.hatch.build.targets.sdist]
 include = [
-  "/src/openclaw_voice_server/**/*.py",
-  "/src/openclaw_voice_server/static/**/*",
+  "/src/maras_switchboard/**/*.py",
+  "/src/maras_switchboard/static/**/*",
+  "/media/ascii-art.txt",
   "/tests/**/*",
   "/README.md",
   "/pyproject.toml",
   "/.env.example",
 ]
+
+[tool.hatch.build.targets.sdist.force-include]
+"media/ascii-art.txt" = "media/ascii-art.txt"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

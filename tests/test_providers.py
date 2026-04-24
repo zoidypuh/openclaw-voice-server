@@ -2,13 +2,19 @@ import asyncio
 import sys
 import types
 
-from openclaw_voice_server.providers import stt as stt_module
-from openclaw_voice_server.providers.tts import (
+from maras_switchboard.stt import backends as stt_module
+from maras_switchboard.tts import backends as tts_module
+from maras_switchboard.tts import edge as edge_module
+from maras_switchboard.tts import elevenlabs as elevenlabs_module
+from maras_switchboard.tts import supertonic as supertonic_module
+from maras_switchboard.tts.backends import (
     ElevenLabsSynthesizer,
     list_elevenlabs_voices,
     normalize_elevenlabs_preset,
+    normalize_supertonic_voice,
     validate_elevenlabs_voice,
     validate_edge_voice,
+    validate_supertonic_voice,
 )
 
 
@@ -69,13 +75,82 @@ def test_validate_edge_voice_checks_listed_voice_and_audio(monkeypatch):
     fake_module.list_voices = list_voices
     fake_module.Communicate = Communicate
 
-    monkeypatch.setattr("openclaw_voice_server.providers.tts.ensure_python_package", lambda requirement, import_name: {"installed": False})
+    monkeypatch.setattr(edge_module, "ensure_python_package", lambda requirement, import_name: {"installed": False})
     monkeypatch.setitem(sys.modules, "edge_tts", fake_module)
 
     result = asyncio.run(validate_edge_voice(voice="de-DE-KatjaNeural", rate="+0%"))
 
     assert result["ok"] is True
     assert result["voice_name"] == "Katja"
+
+
+def test_validate_supertonic_voice_uses_external_python_and_returns_audio(monkeypatch, tmp_path):
+    python_path = tmp_path / "python"
+    python_path.write_text("#!/bin/sh\n", encoding="utf-8")
+    python_path.chmod(0o755)
+    calls = []
+
+    def fake_run(
+        text,
+        *,
+        python_path,
+        voice,
+        language,
+        total_steps,
+        speed,
+    ):
+        calls.append(
+            {
+                "text": text,
+                "python_path": python_path,
+                "voice": voice,
+                "language": language,
+                "total_steps": total_steps,
+                "speed": speed,
+            }
+        )
+        return b"RIFFdemo"
+
+    monkeypatch.setattr(supertonic_module, "_run_supertonic_synthesis", fake_run)
+
+    result = asyncio.run(
+        validate_supertonic_voice(
+            python_path=str(python_path),
+            voice="m4",
+            language="en",
+            total_steps="2",
+            speed="1.1",
+        )
+    )
+
+    assert calls == [
+        {
+            "text": "Mara's Switchboard setup validation.",
+            "python_path": str(python_path.resolve()),
+            "voice": "M4",
+            "language": "en",
+            "total_steps": 2,
+            "speed": 1.1,
+        }
+    ]
+    assert result == {
+        "ok": True,
+        "python_path": str(python_path.resolve()),
+        "voice": "M4",
+        "voice_name": "Male 4",
+        "language": "en",
+        "language_name": "English",
+        "total_steps": 2,
+        "speed": 1.1,
+    }
+
+
+def test_normalize_supertonic_voice_uppercases_known_voice():
+    assert normalize_supertonic_voice("m4") == "M4"
+
+
+def test_normalize_supertonic_total_steps_defaults_to_three():
+    assert supertonic_module.normalize_supertonic_total_steps(None) == 3
 
 
 def test_validate_stt_selection_normalizes_gpu_to_cuda(monkeypatch):
@@ -213,6 +288,32 @@ def test_build_transcriber_uses_local_whisper_when_endpoint_is_blank(monkeypatch
     assert isinstance(transcriber, FakeLocalWhisper)
 
 
+def test_build_transcriber_passes_faster_whisper_vad_settings(monkeypatch):
+    captured = {}
+
+    class FakeFasterWhisper:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(stt_module, "BACKEND_CLASSES", {"faster-whisper": FakeFasterWhisper})
+
+    transcriber = stt_module.build_transcriber(
+        {
+            "default_backend": "faster-whisper",
+            "language": "de",
+            "device": "cuda",
+            "compute_type": "float16",
+            "vad_filter": False,
+            "vad_min_silence_duration_ms": 120,
+            "backend_models": {"faster-whisper": "large-v3"},
+        }
+    )
+
+    assert isinstance(transcriber, FakeFasterWhisper)
+    assert captured["vad_filter"] is False
+    assert captured["vad_min_silence_duration_ms"] == 120
+
+
 def test_list_elevenlabs_voices_returns_sorted_voice_names(monkeypatch):
     class FakeResponse:
         status_code = 200
@@ -236,7 +337,7 @@ def test_list_elevenlabs_voices_returns_sorted_voice_names(monkeypatch):
             assert headers["xi-api-key"] == "sk-test"
             return FakeResponse()
 
-    monkeypatch.setattr("openclaw_voice_server.providers.tts.httpx.AsyncClient", lambda timeout: FakeClient())
+    monkeypatch.setattr(elevenlabs_module.httpx, "AsyncClient", lambda timeout: FakeClient())
 
     voices = asyncio.run(list_elevenlabs_voices("sk-test"))
 
@@ -264,7 +365,7 @@ def test_elevenlabs_preset_helpers_fall_back_to_natural():
     assert normalize_elevenlabs_preset("unknown") == "natural"
 
 
-def test_elevenlabs_synthesize_omits_voice_settings(monkeypatch):
+def test_elevenlabs_synthesize_includes_voice_settings_and_voice_override(monkeypatch):
     captured = {}
 
     class FakeResponse:
@@ -279,10 +380,11 @@ def test_elevenlabs_synthesize_omits_voice_settings(monkeypatch):
             return False
 
         async def post(self, url, headers, json):
+            captured["url"] = url
             captured["json"] = json
             return FakeResponse()
 
-    monkeypatch.setattr("openclaw_voice_server.providers.tts.httpx.AsyncClient", lambda timeout: FakeClient())
+    monkeypatch.setattr(elevenlabs_module.httpx, "AsyncClient", lambda timeout: FakeClient())
 
     audio = asyncio.run(
         ElevenLabsSynthesizer(
@@ -290,11 +392,46 @@ def test_elevenlabs_synthesize_omits_voice_settings(monkeypatch):
             voice_id="voice-123",
             model_id="eleven-model",
             default_preset="natural",
-        ).synthesize("hello", preset_name="expressive")
+        ).synthesize("hello", preset_name="expressive", voice_id="voice-override")
     )
 
     assert audio == b"mp3"
-    assert "voice_settings" not in captured["json"]
+    assert captured["url"].endswith("/voice-override")
+    assert captured["json"]["voice_settings"]["style"] == 0.46
+
+
+def test_elevenlabs_synthesize_archives_mp3_to_tts_eleven(monkeypatch, tmp_path):
+    class FakeResponse:
+        status_code = 200
+        content = b"fake-mp3-data"
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, headers, json):
+            return FakeResponse()
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(elevenlabs_module.httpx, "AsyncClient", lambda timeout: FakeClient())
+
+    audio = asyncio.run(
+        ElevenLabsSynthesizer(
+            api_key="sk-test",
+            voice_id="Voice Test/123",
+            model_id="eleven-model",
+            default_preset="natural",
+        ).synthesize("Hello from ElevenLabs")
+    )
+
+    archived_files = list((tmp_path / "tts-eleven").glob("*.mp3"))
+
+    assert audio == b"fake-mp3-data"
+    assert len(archived_files) == 1
+    assert archived_files[0].read_bytes() == b"fake-mp3-data"
 
 
 def test_validate_elevenlabs_voice_omits_voice_settings(monkeypatch):
@@ -324,7 +461,7 @@ def test_validate_elevenlabs_voice_omits_voice_settings(monkeypatch):
             captured["json"] = json
             return FakeAudioResponse()
 
-    monkeypatch.setattr("openclaw_voice_server.providers.tts.httpx.AsyncClient", lambda timeout: FakeClient())
+    monkeypatch.setattr(elevenlabs_module.httpx, "AsyncClient", lambda timeout: FakeClient())
 
     result = asyncio.run(
         validate_elevenlabs_voice(

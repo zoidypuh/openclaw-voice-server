@@ -1,300 +1,357 @@
-# OpenClaw Voice Server
+# Mara's Switchboard
 
-![OpenClaw voice runtime screenshot](image.png)
+![Mara's Switchboard voice runtime screenshot](image.png)
 
-`openclaw-voice-server` is an alpha browser voice client for an existing OpenClaw gateway session.
+`maras-switchboard` is a local voice frontend for text agents. It gives you a browser setup page at `/setup`, a voice UI at `/voice`, local or remote Whisper-family STT, multiple TTS backends, and an optional Windows tray client.
 
-It is provided as-is. It works well in the tested path, but it can still break, regress, or have rough edges.
+Current version: `0.1`. This repo is still alpha. The main path works, but rough edges still exist.
 
-## What It Does
+## What This Repo Does
 
-- serves a browser setup flow at `/setup`
-- serves a minimal voice runtime at `/voice`
 - records mic audio in the browser
-- detects end-of-utterance in the browser
 - sends speech to the Python server for transcription
-- sends the transcript to an OpenClaw gateway chat-completions endpoint
-- synthesizes the reply with Edge TTS or ElevenLabs
-- streams reply audio back to the browser
+- sends the transcript to your configured conversation backend
+- optionally speaks the reply with TTS
+- can run in text-only mode with TTS disabled
+- exposes a setup page so you can validate each step before launch
 
-## How It Works
+## Before You Start
 
-High level flow:
+You need all of these before the app can work:
 
-1. The browser captures microphone input.
-2. The browser decides when the user finished speaking.
-3. The Python server transcribes the audio with a Whisper-family backend.
-4. The server sends the transcript to OpenClaw through the local gateway.
-5. The server synthesizes the model reply with the selected TTS provider.
-6. The browser plays the streamed reply audio and returns to listening.
-
-## Alpha Status
-
-- this is alpha software
-- it is meant for real-world testing, not polished distribution
-- gateway restarts, shared-session edge cases, and UI gaps can still cause failures
-- if you need a stable production-grade voice client, this is not there yet
-
-## Requirements
-
-- Python 3.11+
-- an existing OpenClaw installation
-- an OpenClaw gateway reachable locally from the same host, typically `http://127.0.0.1:18789`
+- `git`
+- Python `3.11+`
+- one working conversation backend
 - one working STT backend
-- one working TTS backend
-- a supported voice client surface
-- Tailscale if you want to use the app from other devices over MagicDNS
+- optionally one TTS backend
 
-Optional, depending on chosen providers:
+The currently tested path is:
 
-- CUDA if using GPU STT
-- ElevenLabs API key if using ElevenLabs
-- Edge TTS package if using Edge TTS
+- backend on Linux, macOS, or WSL
+- browser UI at `http://127.0.0.1:8765`
+- optional Windows tray client from `clients/windows`
 
-Supported access paths right now:
+Treat iOS, macOS Safari, and random remote mobile browser paths as unsupported unless you personally verify them.
 
-- `http://127.0.0.1:8765` on the host itself
-- the Windows Tauri client in [clients/windows](clients/windows)
-- `https://<machine>.ts.net/voice/` only for browser paths that actually work in your environment
-
-Current platform limitation:
-
-- the tested remote path is the existing Windows setup
-- iOS and macOS browser clients should currently be treated as unsupported
-- Safari/WebKit behavior is not a working target right now
-
-Network model:
-
-- `127.0.0.1` is local to the machine running the service
-- the voice server itself runs locally on that machine
-- the browser can still reach it from other devices when your existing OpenClaw/Tailscale setup proxies `/voice/`
-- the voice server talks to the OpenClaw gateway locally on the same host
-- Tailscale/MagicDNS is for browser access from other devices, not for the voice server's backend-to-backend gateway call
-- remote browser reachability does not imply the voice runtime will work correctly on iOS/macOS
-
-## Tests
-
-Run tests with:
+Install missing base tools:
 
 ```bash
-PYTHONPATH=src python3 -m pytest
+# Debian/Ubuntu/WSL
+sudo apt update
+sudo apt install -y git python3 python3-venv python3-pip
 ```
 
-## Install
+```powershell
+# Windows, for the optional tray client
+winget install Git.Git OpenJS.NodeJS.LTS Rustlang.Rustup Microsoft.EdgeWebView2Runtime
+```
 
-The backend and the Windows client are separate components. Install and run them separately.
+## Fast Start
 
-### Backend
+If you want the shortest route to a first working run, do this.
 
-Use this on Linux, macOS, or WSL.
+1. Clone the repo.
 
 ```bash
-git clone <repo-url>
-cd openclaw-voice-server
+git clone https://github.com/zoidypuh/maras-switchboard.git maras-switchboard
+cd maras-switchboard
+```
+
+2. Create and activate a virtual environment.
+
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
+```
+
+3. Install the app.
+
+```bash
 python -m pip install --upgrade pip
 pip install -e .[dev]
+```
+
+4. Create your local env file.
+
+```bash
 cp .env.example .env
 ```
 
-Edit `.env` and set at least:
+5. Edit `.env`.
+
+At minimum, if you use the gateway backend, set:
 
 ```dotenv
-OPENCLAW_VOICE_GATEWAY_TOKEN=your-openclaw-gateway-token
+MARAS_SWITCHBOARD_GATEWAY_TOKEN=replace-me
 ```
 
-Add `OPENCLAW_VOICE_ELEVENLABS_API_KEY=...` only if you plan to use ElevenLabs.
+If you use ElevenLabs, also set:
 
-Important runtime detail:
+```dotenv
+MARAS_SWITCHBOARD_ELEVENLABS_API_KEY=replace-me
+```
 
-- start `openclaw-voice-server` from the repo root unless you also set `OPENCLAW_VOICE_CONFIG_FILE` and `OPENCLAW_VOICE_ENV_FILE`
-- by default the server reads `config.json` and `.env` from the current working directory
+6. Start the server from the repo root.
 
-Optional extras, depending on the providers you actually want to use:
+```bash
+source .venv/bin/activate
+maras-switchboard
+```
+
+7. Open the setup page in a browser.
+
+```text
+http://127.0.0.1:8765/setup
+```
+
+8. In the setup page, do these steps in order:
+
+- validate one STT backend
+- validate one TTS backend, or choose `Disabled (text only)` for the simplest first run
+- validate the conversation backend
+- open the voice app
+
+9. Open the voice UI.
+
+```text
+http://127.0.0.1:8765/voice
+```
+
+If setup is complete, `http://127.0.0.1:8765/` will also open the voice UI.
+
+## Easiest First Run
+
+If you only want to prove the pipeline works and do not care about spoken replies yet:
+
+- set up STT
+- choose `Disabled (text only)` in the TTS section
+- validate the conversation backend
+- open `/voice`
+
+That removes TTS from the first-run debugging path.
+
+## Voice UI Notes
+
+- Browser and Windows client windows use the title `Mara's Switchboard`.
+- The voice UI starts with a shaded ASCII `Mara's` over `Switchboard` title.
+- The voice UI starts muted. Click `mute` to unmute for normal freehand conversation; click it again to mute.
+- The only global keyboard shortcut is `Ctrl+Alt+Shift+A`: hold it to record, release it to send the captured speech, then the client returns to mute.
+- The shortcut is shown above the ASCII title in small text.
+- The `interrupt` button toggles between inactive and `barge in`. There is no separate interrupt mode panel.
+- The `mute` button keeps the same label and uses its active state to show whether mute is enabled.
+- The sliders button opens the two live tuning controls: voice threshold and wait-after-speak.
+- The state display uses a lower-resolution pixel spectrum renderer with cached ASCII backdrop art so it costs less per frame than the older high-resolution visual.
+
+## Important Runtime Rule
+
+Run `maras-switchboard` from the repo root unless you also set:
+
+- `MARAS_SWITCHBOARD_CONFIG_FILE`
+- `MARAS_SWITCHBOARD_ENV_FILE`
+
+By default, the server reads:
+
+- `config.json`
+- `.env`
+
+from the current working directory.
+
+## Run In Background At Login
+
+On Linux or WSL with systemd enabled, install a user service from the repo root:
+
+```bash
+REPO_DIR="$(pwd)"
+mkdir -p ~/.config/systemd/user
+cat > ~/.config/systemd/user/maras-switchboard.service <<EOF
+[Unit]
+Description=Mara's Switchboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=$REPO_DIR
+ExecStart=$REPO_DIR/.venv/bin/maras-switchboard
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
+EOF
+
+systemctl --user daemon-reload
+systemctl --user enable --now maras-switchboard.service
+loginctl enable-linger "$USER"
+```
+
+Check it later with:
+
+```bash
+systemctl --user status maras-switchboard.service
+journalctl --user -u maras-switchboard.service -f
+```
+
+## Optional Python Extras
+
+You do not need every provider installed on day one.
+
+Base install:
+
+```bash
+pip install -e .[dev]
+```
+
+Optional extras:
 
 ```bash
 pip install -e .[dev,stt-faster-whisper,stt-whisper,tts-edge]
 ```
 
-Run the backend:
+Notes:
 
-```bash
-cd /path/to/openclaw-voice-server
-source .venv/bin/activate
-openclaw-voice-server
-```
+- the setup page can install some missing Python packages while validating providers
+- legacy community TTS providers live under `plugins/tts-community-legacy` and are not maintained by core
 
-Health check:
+## STT Backends
 
-```bash
-curl http://127.0.0.1:8765/health
-```
+Currently supported:
 
-Finish setup in the browser:
+- Faster Whisper local STT, including CUDA when the local machine has a working NVIDIA/CUDA setup
+- OpenAI Whisper local STT when `openai-whisper` is installed and no endpoint URL is configured
+- OpenAI-compatible remote Whisper endpoint via `POST /v1/audio/transcriptions`
 
-1. Open `http://127.0.0.1:8765/setup`.
-2. Validate one STT backend.
-3. Validate one TTS provider and voice.
-4. Validate the OpenClaw gateway URL, model, session key, and token.
-5. Open `http://127.0.0.1:8765/voice`.
+The setup page has presets for the common STT paths:
 
-Voice control tuning:
+- `Local GPU Whisper` selects in-process `faster-whisper` on CUDA and does not use a remote endpoint.
+- `Remote Whisper` selects the Whisper-compatible HTTP transcription endpoint and sends recorded audio to that server.
 
-- use the `threshold` control in the voice UI to dial in end-of-turn detection and barge-in behavior
-- there is no separate command-calibration workflow in this repo
+The OpenAI-compatible endpoint support is for STT only. Core TTS does not currently include a generic OpenAI-compatible TTS endpoint provider.
 
-### Windows Client
+## TTS Backends
 
-Use this only if you want the Windows tray/Tauri wrapper. It does not replace the Python backend.
+Currently supported:
 
-Prerequisites:
+- Edge TTS
+- ElevenLabs
+- Supertonic
+- `Disabled (text only)`
 
-- Windows with WebView2
-- Node.js 20+
-- Rust installed through `rustup`
-- the Python backend above already running on `http://127.0.0.1:8765`
+## Remote Access
 
-Install and run the client from Windows:
-
-```powershell
-cd C:\path\to\openclaw-voice-server\clients\windows
-npm install
-npm run tauri:dev
-```
-
-Build a Windows bundle:
-
-```powershell
-cd C:\path\to\openclaw-voice-server\clients\windows
-npm install
-npm run tauri:build
-```
-
-Startup order:
-
-1. Start the Python backend.
-2. Start the Windows client.
-3. Use the tray app or the window at `http://127.0.0.1:8765/voice`.
-
-For tray behavior, shortcuts, and Windows-specific verification notes, see [clients/windows/README.md](clients/windows/README.md).
-
-Default local bind:
+Local browser URL:
 
 ```text
 http://127.0.0.1:8765
 ```
 
-Recommended Tailscale/MagicDNS address when routed through the existing OpenClaw gateway:
+Possible remote browser URL behind your own reverse proxy or Tailscale setup:
 
 ```text
 https://<machine>.ts.net/voice/
 ```
 
-Treat that as a remote access URL, not as a promise that every browser engine works. The current tested path is still Windows-first.
+Important:
 
-## Configuration
+- the browser URL and the conversation backend URL are not the same thing
+- use your local gateway URL inside setup, not the public browser URL
+- iPhone/iPad browsers will not show the microphone permission prompt for plain `http://<lan-ip>:8765`; use a trusted `https://` URL such as Tailscale HTTPS or another reverse proxy
+- remote browser reachability does not mean every browser engine will work correctly
 
-Configuration is split across:
+## Windows Client
 
-- `config.json` for normal settings
-- `.env` for secrets
+The Windows tray client is optional.
 
-The setup UI validates each section before saving it.
+This repo does not ship a prebuilt Windows release or checked-in bundle artifacts. Build it yourself from source.
 
-Setup sections:
+Development run on Windows:
 
-1. `STT`
-   Pick the speech-to-text backend, language, device, and model.
-2. `TTS`
-   Pick the speech provider.
-3. `Edge Voice`
-   If Edge is selected, choose and validate the voice.
-4. `ElevenLabs`
-   If ElevenLabs is selected, validate the API key and voice.
-5. `Conversation Backend`
-   Point the app at the local OpenClaw gateway and validate the session/model/token.
-
-Important gateway rule:
-
-- use the local gateway URL, for example `http://127.0.0.1:18789`
-- the app will normalize it to `/v1/chat/completions`
-- do not use the public `.ts.net` URL in the gateway field
-- the `.ts.net` URL is for opening the voice UI from another device in a browser
-
-## Sessions
-
-By default, the app is intended to use a dedicated voice-chat session key.
-
-That default can be overridden with another existing session key, including one that also routes messages to a channel such as Telegram.
-
-That gives you two useful modes:
-
-- dedicated voice session
-  voice chat stays isolated from other channels
-- shared channel-linked session
-  for example, if voice uses the same session as Telegram:
-  the agent can speak with you in voice chat and also send messages into Telegram
-  and if you write to the agent in Telegram, that context can later be recalled inside the voice chat
-
-This shared-session mode is powerful, but it also means voice and the other channel are using the same OpenClaw session state.
-
-## Known Bugs
-
-- minor: unnecessary OpenAI/OpenAI-compat sessions may still be spawned in some flows
-- spoken voice command detection still needs more real-world tuning
-- Windows tray shell is usable, but still has rough edges and should be treated as alpha
-- iOS/macOS browser use should currently be treated as unsupported; do not assume Safari/WebKit will behave like the tested Windows path
-
-## Tested
-
-Tested successfully in the main path:
-
-- Faster Whisper on CUDA
-- ElevenLabs TTS
-- OpenClaw local gateway on `127.0.0.1:18789`
-- proxied `/voice/` route behind the existing OpenClaw/Tailscale setup
-- Windows Tauri tray shell with a local WSL backend
-
-## Not Yet Tested
-
-- Edge TTS
-- OpenAI Whisper on CPU
-
-## Not Supported Right Now
-
-- iPhone/iOS browser use
-- macOS browser use
-- assuming Safari/WebKit behaves like the tested Windows browser/Tauri path
-
-## TODO
-
-- test Edge TTS end to end
-- test Whisper on CPU end to end
-- keep tuning spoken command detection for `hey stop` and `hey pause`
-- move desktop shortcut bindings into configuration instead of hardcoded defaults
-
-## Routes
-
-- `GET /` serves `/setup` until runtime config is valid, then serves `/voice`
-- `GET /setup` setup flow
-- `GET /voice` voice runtime
-- `GET /health` liveness/readiness
-- `GET /api/setup/state` setup state
-- `GET /api/runtime/state` runtime browser settings
-- `POST /api/runtime/interrupt-probe` short STT probe for spoken control detection
-- `POST /api/runtime/speak` synthesize arbitrary text and push it to the active voice client
-- `GET /ws/voice` voice websocket
-
-Example:
-
-```bash
-curl -X POST http://127.0.0.1:8765/api/runtime/speak \
-  -H 'content-type: application/json' \
-  -d '{"text":"[voice:expressive]Hello from OpenClaw voice."}'
+```powershell
+cd C:\path\to\maras-switchboard\clients\windows
+npm install
+npm run tauri:dev
 ```
 
-Notes:
+Build the Windows client:
 
-- this only works while a `/voice` browser tab or Windows shell is actively connected
-- the injected speech is serialized with normal voice turns, so it will wait for any in-flight reply to finish
+```powershell
+cd C:\path\to\maras-switchboard\clients\windows
+npm install
+npm run tauri:build
+```
+
+Prerequisites:
+
+- WebView2
+- Node.js `20+`
+- Rust via `rustup`
+- the Python backend already running on `http://127.0.0.1:8765`
+
+For the full Windows-specific setup and autostart notes, read [clients/windows/README.md](clients/windows/README.md).
+
+## Tests
+
+Run the test suite from the repo root:
+
+```bash
+source .venv/bin/activate
+PYTHONPATH=src python3 -m pytest
+```
+
+If you just want to verify a file or feature while editing, run a smaller slice, for example:
+
+```bash
+source .venv/bin/activate
+PYTHONPATH=src python3 -m pytest tests/test_runtime.py
+```
+
+## Speak Paragraphs via HTTP
+
+The runtime exposes `POST /api/runtime/speak` on the same host/port as the web UI (default `http://127.0.0.1:8765`).
+That endpoint waits for an active voice client, synthesizes the provided text, and pushes playback to the connected browser/app.
+
+Raw curl example:
+
+```bash
+curl -sS http://127.0.0.1:8765/api/runtime/speak \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "text": "First paragraph.",
+    "timeout_seconds": 15,
+    "preset_name": "expressive",
+    "speaker_name": "Speaker-B"
+  }'
+```
+
+If you want to feed a longer reply and send each paragraph separately, use the helper:
+
+```bash
+source .venv/bin/activate
+printf 'First paragraph.\n\nSecond paragraph.\n' | maras-switchboard-speak
+```
+
+It also accepts inline text or a file:
+
+```bash
+source .venv/bin/activate
+maras-switchboard-speak --preset-name expressive --speaker-name Speaker-B \
+  "First paragraph."
+
+source .venv/bin/activate
+maras-switchboard-speak --file reply.txt
+```
+
+Help:
+
+```bash
+source .venv/bin/activate
+maras-switchboard-speak --help
+```
+
+## Troubleshooting
+
+- If the app cannot find your config, you probably started it from the wrong directory.
+- If the setup page says validation failed, fix that step before touching the next one.
+- If you want the simplest debug path, disable TTS first.
+- If the browser page loads but replies do not work, the conversation backend is usually misconfigured.
+- If remote `.ts.net` access is flaky, validate everything locally on `127.0.0.1` first.

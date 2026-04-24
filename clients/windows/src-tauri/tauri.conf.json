@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "OpenClaw Voice",
+  "productName": "Mara's Switchboard",
   "version": "0.1.0",
-  "identifier": "com.openclaw.voice.desktop",
+  "identifier": "com.marasswitchboard.desktop",
   "build": {
     "devUrl": "http://127.0.0.1:8765/voice",
     "frontendDist": "http://127.0.0.1:8765/voice"

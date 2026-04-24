@@ -1,14 +1,19 @@
-import httpx
+import asyncio
 
-from openclaw_voice_server.gateway import (
+import httpx
+import pytest
+
+from maras_switchboard.gateway import (
+    DirectGatewayClient,
     _friendly_connection_error,
     normalize_gateway_url,
     resolve_voice_session_key,
 )
+from maras_switchboard.errors import ValidationError
 
 
 def test_resolve_voice_session_key_keeps_configured_value():
-    assert resolve_voice_session_key("voice-session") == "voice-session"
+    assert resolve_voice_session_key("voice-speaker-a") == "voice-speaker-a"
 
 
 def test_resolve_voice_session_key_defaults_to_stable_voice_chat_key_when_blank():
@@ -41,7 +46,7 @@ def test_friendly_connection_error_guides_ts_net_users_to_local_gateway():
 
     message = _friendly_connection_error("https://machine.example.ts.net/v1/chat/completions", exc)
 
-    assert "Use the local OpenClaw gateway URL http://127.0.0.1:18789" in message
+    assert "Use the local gateway URL http://127.0.0.1:18789" in message
 
 
 def test_validate_gateway_connection_includes_session_key_header(monkeypatch):
@@ -66,20 +71,76 @@ def test_validate_gateway_connection_includes_session_key_header(monkeypatch):
             captured["json"] = json
             return FakeResponse()
 
-    monkeypatch.setattr("openclaw_voice_server.gateway.httpx.AsyncClient", lambda timeout: FakeClient())
+    monkeypatch.setattr("maras_switchboard.gateway.httpx.AsyncClient", lambda timeout: FakeClient())
 
-    import asyncio
-    from openclaw_voice_server.gateway import validate_gateway_connection
+    from maras_switchboard.gateway import validate_gateway_connection
 
     result = asyncio.run(
         validate_gateway_connection(
             url="http://127.0.0.1:18789",
-            token="test-token",
-            model="openclaw:main",
+            token="speaker-a",
+            model="maras-switchboard:main",
             session_key="agent:main:voice-chat-main",
         )
     )
 
     assert result["reply_preview"] == "OK"
     assert captured["url"] == "http://127.0.0.1:18789/v1/chat/completions"
-    assert captured["headers"]["X-OpenClaw-Session-Key"] == "agent:main:voice-chat-main"
+    assert captured["headers"]["X-Maras-Switchboard-Scopes"] == "operator.write"
+    assert captured["headers"]["X-Maras-Switchboard-Session-Key"] == "agent:main:voice-chat-main"
+
+
+def test_stream_reply_reads_stream_error_body_before_parsing(monkeypatch):
+    class FakeResponse:
+        status_code = 403
+        headers = {"content-type": "application/json"}
+
+        def __init__(self):
+            self._read = False
+
+        async def aread(self):
+            self._read = True
+            return b'{"error":{"message":"Forbidden"}}'
+
+        def json(self):
+            if not self._read:
+                raise httpx.ResponseNotRead()
+            return {"error": {"message": "Forbidden"}}
+
+        @property
+        def text(self):
+            if not self._read:
+                raise httpx.ResponseNotRead()
+            return '{"error":{"message":"Forbidden"}}'
+
+    class FakeStreamContext:
+        def __init__(self, response):
+            self._response = response
+
+        async def __aenter__(self):
+            return self._response
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        def stream(self, method, url, headers, json):
+            return FakeStreamContext(FakeResponse())
+
+    monkeypatch.setattr("maras_switchboard.gateway.httpx.AsyncClient", lambda timeout: FakeClient())
+
+    gateway = DirectGatewayClient(url="http://127.0.0.1:18789", token="speaker-a", model="maras-switchboard:main")
+
+    async def run_stream():
+        abort_event = asyncio.Event()
+        async for _chunk in gateway.stream_reply("hello", abort_event):
+            pass
+
+    with pytest.raises(ValidationError, match="Forbidden"):
+        asyncio.run(run_stream())

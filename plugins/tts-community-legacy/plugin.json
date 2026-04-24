@@ -1,0 +1,14 @@
+{
+  "id": "tts-community-legacy",
+  "name": "TTS Community Legacy Providers",
+  "status": "unmaintained",
+  "description": "Archived Piper, Chatterbox, Pocket TTS, VibeVoice, and NeuTTS providers moved out of Mara's Switchboard core.",
+  "providers": [
+    "piper",
+    "chatterbox",
+    "pockettts",
+    "vibevoice",
+    "neutts"
+  ],
+  "package": "maras-switchboard-tts-community-legacy"
+}
