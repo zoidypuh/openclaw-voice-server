@@ -29,7 +29,7 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "agentic-switchboard"
+name = "maras-switchboard"
 version = "0.1"
 source = { editable = "." }
 dependencies = [

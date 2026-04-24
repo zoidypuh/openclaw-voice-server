@@ -3,7 +3,7 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [project]
-name = "agentic-switchboard"
+name = "maras-switchboard"
 version = "0.1"
 description = "Standalone browser voice runtime for text agents."
 readme = "README.md"
@@ -29,21 +29,21 @@ tts-edge = [
 ]
 
 [project.scripts]
-agentic-switchboard = "agentic_switchboard.app:main"
-agentic-switchboard-calibrate = "agentic_switchboard.calibrate_commands:main"
-agentic-switchboard-speak = "agentic_switchboard.speak_paragraphs:main"
+maras-switchboard = "maras_switchboard.app:main"
+maras-switchboard-calibrate = "maras_switchboard.calibrate_commands:main"
+maras-switchboard-speak = "maras_switchboard.speak_paragraphs:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/agentic_switchboard"]
+packages = ["src/maras_switchboard"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/agentic_switchboard/static" = "agentic_switchboard/static"
-"media/ascii-art.txt" = "agentic_switchboard/static/media/ascii-art.txt"
+"src/maras_switchboard/static" = "maras_switchboard/static"
+"media/ascii-art.txt" = "maras_switchboard/static/media/ascii-art.txt"
 
 [tool.hatch.build.targets.sdist]
 include = [
-  "/src/agentic_switchboard/**/*.py",
-  "/src/agentic_switchboard/static/**/*",
+  "/src/maras_switchboard/**/*.py",
+  "/src/maras_switchboard/static/**/*",
   "/media/ascii-art.txt",
   "/tests/**/*",
   "/README.md",

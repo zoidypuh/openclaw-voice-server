@@ -1,5 +1,5 @@
-from agentic_switchboard.windows_client_state import WindowsClientStateStore
-from agentic_switchboard.errors import ValidationError
+from maras_switchboard.windows_client_state import WindowsClientStateStore
+from maras_switchboard.errors import ValidationError
 
 
 def test_windows_client_state_store_tracks_and_expires_status():

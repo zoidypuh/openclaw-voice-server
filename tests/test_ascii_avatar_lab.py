@@ -1,4 +1,4 @@
-from agentic_switchboard.app import _static_dir
+from maras_switchboard.app import _static_dir
 
 
 def test_ascii_avatar_lab_uses_media_keyframes_and_interpolation():

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Windows bootstrap script for agentic-switchboard v1.
+Windows bootstrap script for maras-switchboard v1.
 
 Usage on Windows (PowerShell or CMD):
     py bootstrap-windows.py
@@ -26,12 +26,12 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 VENV_PATH = REPO_ROOT / ".venv"
 ENV_FILE = REPO_ROOT / ".env"
 REQUIRED_SECRETS = [
-    "AGENTIC_SWITCHBOARD_GATEWAY_TOKEN",
-    "AGENTIC_SWITCHBOARD_ELEVENLABS_API_KEY",
+    "MARAS_SWITCHBOARD_GATEWAY_TOKEN",
+    "MARAS_SWITCHBOARD_ELEVENLABS_API_KEY",
 ]
 OPTIONAL_SECRETS = [
-    ("AGENTIC_SWITCHBOARD_HTTP_HOST", "127.0.0.1"),
-    ("AGENTIC_SWITCHBOARD_HTTP_PORT", "8765"),
+    ("MARAS_SWITCHBOARD_HTTP_HOST", "127.0.0.1"),
+    ("MARAS_SWITCHBOARD_HTTP_PORT", "8765"),
 ]
 
 
@@ -63,7 +63,7 @@ def rmtree(path: Path) -> None:
 
 
 def main() -> None:
-    print(f"=== agentic-switchboard Windows bootstrap ===")
+    print(f"=== maras-switchboard Windows bootstrap ===")
     print(f"Repo root: {REPO_ROOT}")
     print()
 
@@ -154,7 +154,7 @@ def main() -> None:
     print(f"       stt.device: 'cpu'  (or set a remote whisper_endpoint_url)")
     print(f"       tts.enabled_providers: ['elevenlabs']  (or keep ['edge'])")
     print(f"  2. Start the server:")
-    print(f"       .\\.venv\\Scripts\\python.exe -m agentic_switchboard")
+    print(f"       .\\.venv\\Scripts\\python.exe -m maras_switchboard")
     print(f"  3. Or use the Tauri tray client: run 'npm run tauri:dev' from src-tauri/")
     print()
 

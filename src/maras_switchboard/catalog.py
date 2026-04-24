@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 APP_VERSION_LABEL = "v0.1"
-DEFAULT_SAMPLE_TEXT = "Agentic Switchboard setup validation."
+DEFAULT_SAMPLE_TEXT = "Mara's Switchboard setup validation."
 DEFAULT_VOICE_SESSION_KEY = "agent:main:voice-chat-main"
 DEFAULT_LOCAL_GATEWAY_URL = "http://127.0.0.1:18789"
 DEFAULT_HERMES_ROOT = str((Path.home() / ".hermes" / "hermes-agent").resolve())
@@ -135,26 +135,41 @@ SUPPORTED_AGENT_BACKENDS = {
 }
 
 SECRET_ENV_KEYS = {
-    "AGENTIC_SWITCHBOARD_GATEWAY_TOKEN",
-    "AGENTIC_SWITCHBOARD_ELEVENLABS_API_KEY",
+    "MARAS_SWITCHBOARD_GATEWAY_TOKEN",
+    "MARAS_SWITCHBOARD_ELEVENLABS_API_KEY",
+}
+
+LEGACY_SECRET_ENV_KEYS = {
+    key.replace("MARAS_SWITCHBOARD_", "AGENTIC_SWITCHBOARD_")
+    for key in SECRET_ENV_KEYS
 }
 
 ENV_TO_CONFIG = {
-    "AGENTIC_SWITCHBOARD_GATEWAY_URL": ("gateway", "url"),
-    "AGENTIC_SWITCHBOARD_GATEWAY_MODEL": ("gateway", "model"),
-    "AGENTIC_SWITCHBOARD_GATEWAY_SESSION_KEY": ("gateway", "session_key"),
-    "AGENTIC_SWITCHBOARD_HERMES_ROOT": ("agent", "hermes_root"),
-    "AGENTIC_SWITCHBOARD_HTTP_HOST": ("server", "host"),
-    "AGENTIC_SWITCHBOARD_HTTP_PORT": ("server", "port"),
-    "AGENTIC_SWITCHBOARD_WHISPER_MODEL": ("stt", "backend_models", "faster-whisper"),
-    "AGENTIC_SWITCHBOARD_WHISPER_ENDPOINT_URL": ("stt", "whisper_endpoint_url"),
-    "AGENTIC_SWITCHBOARD_WHISPER_ENDPOINT_MODEL": ("stt", "whisper_endpoint_model"),
-    "AGENTIC_SWITCHBOARD_WHISPER_DEVICE": ("stt", "device"),
-    "AGENTIC_SWITCHBOARD_WHISPER_COMPUTE_TYPE": ("stt", "compute_type"),
-    "AGENTIC_SWITCHBOARD_WHISPER_LANG": ("stt", "language"),
-    "AGENTIC_SWITCHBOARD_ELEVENLABS_VOICE_ID": ("tts", "elevenlabs_voice_id"),
-    "AGENTIC_SWITCHBOARD_ELEVENLABS_MODEL": ("tts", "elevenlabs_model"),
+    "MARAS_SWITCHBOARD_GATEWAY_URL": ("gateway", "url"),
+    "MARAS_SWITCHBOARD_GATEWAY_MODEL": ("gateway", "model"),
+    "MARAS_SWITCHBOARD_GATEWAY_SESSION_KEY": ("gateway", "session_key"),
+    "MARAS_SWITCHBOARD_HERMES_ROOT": ("agent", "hermes_root"),
+    "MARAS_SWITCHBOARD_HTTP_HOST": ("server", "host"),
+    "MARAS_SWITCHBOARD_HTTP_PORT": ("server", "port"),
+    "MARAS_SWITCHBOARD_WHISPER_MODEL": ("stt", "backend_models", "faster-whisper"),
+    "MARAS_SWITCHBOARD_WHISPER_ENDPOINT_URL": ("stt", "whisper_endpoint_url"),
+    "MARAS_SWITCHBOARD_WHISPER_ENDPOINT_MODEL": ("stt", "whisper_endpoint_model"),
+    "MARAS_SWITCHBOARD_WHISPER_DEVICE": ("stt", "device"),
+    "MARAS_SWITCHBOARD_WHISPER_COMPUTE_TYPE": ("stt", "compute_type"),
+    "MARAS_SWITCHBOARD_WHISPER_LANG": ("stt", "language"),
+    "MARAS_SWITCHBOARD_ELEVENLABS_VOICE_ID": ("tts", "elevenlabs_voice_id"),
+    "MARAS_SWITCHBOARD_ELEVENLABS_MODEL": ("tts", "elevenlabs_model"),
 }
+
+LEGACY_ENV_TO_CONFIG = {
+    key.replace("MARAS_SWITCHBOARD_", "AGENTIC_SWITCHBOARD_"): path
+    for key, path in ENV_TO_CONFIG.items()
+}
+CONFIG_ENV_TO_CONFIG = {
+    **LEGACY_ENV_TO_CONFIG,
+    **ENV_TO_CONFIG,
+}
+ALL_SECRET_ENV_KEYS = SECRET_ENV_KEYS | LEGACY_SECRET_ENV_KEYS
 
 
 def normalize_agent_backend(value: str | None) -> str:
@@ -173,7 +188,7 @@ DEFAULT_CONFIG = {
     },
     "gateway": {
         "url": DEFAULT_LOCAL_GATEWAY_URL,
-        "model": "agentic-switchboard:main",
+        "model": "maras-switchboard:main",
         "session_key": DEFAULT_VOICE_SESSION_KEY,
     },
     "agent": {

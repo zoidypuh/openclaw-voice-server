@@ -1,8 +1,8 @@
-# Agentic Switchboard
+# Mara's Switchboard
 
-![Agentic Switchboard voice runtime screenshot](image.png)
+![Mara's Switchboard voice runtime screenshot](image.png)
 
-`agentic-switchboard` is a local voice frontend for text agents. It gives you a browser setup page at `/setup`, a voice UI at `/voice`, local or remote Whisper-family STT, multiple TTS backends, and an optional Windows tray client.
+`maras-switchboard` is a local voice frontend for text agents. It gives you a browser setup page at `/setup`, a voice UI at `/voice`, local or remote Whisper-family STT, multiple TTS backends, and an optional Windows tray client.
 
 Current version: `0.1`. This repo is still alpha. The main path works, but rough edges still exist.
 
@@ -53,8 +53,8 @@ If you want the shortest route to a first working run, do this.
 1. Clone the repo.
 
 ```bash
-git clone https://github.com/zoidypuh/openclaw-voice-server.git agentic-switchboard
-cd agentic-switchboard
+git clone https://github.com/zoidypuh/maras-switchboard.git maras-switchboard
+cd maras-switchboard
 ```
 
 2. Create and activate a virtual environment.
@@ -82,20 +82,20 @@ cp .env.example .env
 At minimum, if you use the gateway backend, set:
 
 ```dotenv
-AGENTIC_SWITCHBOARD_GATEWAY_TOKEN=replace-me
+MARAS_SWITCHBOARD_GATEWAY_TOKEN=replace-me
 ```
 
 If you use ElevenLabs, also set:
 
 ```dotenv
-AGENTIC_SWITCHBOARD_ELEVENLABS_API_KEY=replace-me
+MARAS_SWITCHBOARD_ELEVENLABS_API_KEY=replace-me
 ```
 
 6. Start the server from the repo root.
 
 ```bash
 source .venv/bin/activate
-agentic-switchboard
+maras-switchboard
 ```
 
 7. Open the setup page in a browser.
@@ -132,8 +132,8 @@ That removes TTS from the first-run debugging path.
 
 ## Voice UI Notes
 
-- Browser and Windows client windows use the title `agentic switchboard`.
-- The voice UI starts with a shaded ASCII `Switchboard` title.
+- Browser and Windows client windows use the title `Mara's Switchboard`.
+- The voice UI starts with a shaded ASCII `Mara's` over `Switchboard` title.
 - The talk on/off button is currently hidden; normal mic capture stays controlled by the top-row `paused` / `listening` button and mute.
 - Keyboard shortcut reminders are not shown in the voice UI.
 - The `interrupt` button toggles between inactive and `barge in`. There is no separate interrupt mode panel.
@@ -143,10 +143,10 @@ That removes TTS from the first-run debugging path.
 
 ## Important Runtime Rule
 
-Run `agentic-switchboard` from the repo root unless you also set:
+Run `maras-switchboard` from the repo root unless you also set:
 
-- `AGENTIC_SWITCHBOARD_CONFIG_FILE`
-- `AGENTIC_SWITCHBOARD_ENV_FILE`
+- `MARAS_SWITCHBOARD_CONFIG_FILE`
+- `MARAS_SWITCHBOARD_ENV_FILE`
 
 By default, the server reads:
 
@@ -162,16 +162,16 @@ On Linux or WSL with systemd enabled, install a user service from the repo root:
 ```bash
 REPO_DIR="$(pwd)"
 mkdir -p ~/.config/systemd/user
-cat > ~/.config/systemd/user/agentic-switchboard.service <<EOF
+cat > ~/.config/systemd/user/maras-switchboard.service <<EOF
 [Unit]
-Description=Agentic Switchboard
+Description=Mara's Switchboard
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 WorkingDirectory=$REPO_DIR
-ExecStart=$REPO_DIR/.venv/bin/agentic-switchboard
+ExecStart=$REPO_DIR/.venv/bin/maras-switchboard
 Restart=on-failure
 RestartSec=3
 
@@ -180,15 +180,15 @@ WantedBy=default.target
 EOF
 
 systemctl --user daemon-reload
-systemctl --user enable --now agentic-switchboard.service
+systemctl --user enable --now maras-switchboard.service
 loginctl enable-linger "$USER"
 ```
 
 Check it later with:
 
 ```bash
-systemctl --user status agentic-switchboard.service
-journalctl --user -u agentic-switchboard.service -f
+systemctl --user status maras-switchboard.service
+journalctl --user -u maras-switchboard.service -f
 ```
 
 ## Optional Python Extras
@@ -266,7 +266,7 @@ This repo does not ship a prebuilt Windows release or checked-in bundle artifact
 Development run on Windows:
 
 ```powershell
-cd C:\path\to\agentic-switchboard\clients\windows
+cd C:\path\to\maras-switchboard\clients\windows
 npm install
 npm run tauri:dev
 ```
@@ -274,7 +274,7 @@ npm run tauri:dev
 Build the Windows client:
 
 ```powershell
-cd C:\path\to\agentic-switchboard\clients\windows
+cd C:\path\to\maras-switchboard\clients\windows
 npm install
 npm run tauri:build
 ```
@@ -312,14 +312,14 @@ Example:
 
 ```bash
 source .venv/bin/activate
-agentic-switchboard-calibrate samples/hey-go --expected-action send --send-phrase "hey go"
+maras-switchboard-calibrate samples/hey-go --expected-action send --send-phrase "hey go"
 ```
 
 Help:
 
 ```bash
 source .venv/bin/activate
-agentic-switchboard-calibrate --help
+maras-switchboard-calibrate --help
 ```
 
 ## Speak Paragraphs via HTTP
@@ -344,25 +344,25 @@ If you want to feed a longer reply and send each paragraph separately, use the h
 
 ```bash
 source .venv/bin/activate
-printf 'First paragraph.\n\nSecond paragraph.\n' | agentic-switchboard-speak
+printf 'First paragraph.\n\nSecond paragraph.\n' | maras-switchboard-speak
 ```
 
 It also accepts inline text or a file:
 
 ```bash
 source .venv/bin/activate
-agentic-switchboard-speak --preset-name expressive --speaker-name Speaker-B \
+maras-switchboard-speak --preset-name expressive --speaker-name Speaker-B \
   "First paragraph."
 
 source .venv/bin/activate
-agentic-switchboard-speak --file reply.txt
+maras-switchboard-speak --file reply.txt
 ```
 
 Help:
 
 ```bash
 source .venv/bin/activate
-agentic-switchboard-speak --help
+maras-switchboard-speak --help
 ```
 
 ## Troubleshooting

@@ -9,9 +9,9 @@ import wave
 import aiohttp
 import httpx
 
-from agentic_switchboard.errors import ValidationError
-from agentic_switchboard.tts.base import BaseSynthesizer
-from agentic_switchboard.tts.elevenlabs import _http_error_message
+from maras_switchboard.errors import ValidationError
+from maras_switchboard.tts.base import BaseSynthesizer
+from maras_switchboard.tts.elevenlabs import _http_error_message
 
 from .catalog import DEFAULT_SAMPLE_TEXT
 

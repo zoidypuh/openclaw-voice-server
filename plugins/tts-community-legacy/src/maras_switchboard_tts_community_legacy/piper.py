@@ -9,9 +9,9 @@ import subprocess
 import sys
 import tempfile
 
-from agentic_switchboard.errors import ValidationError
-from agentic_switchboard.installer import ensure_python_package
-from agentic_switchboard.tts.base import BaseSynthesizer
+from maras_switchboard.errors import ValidationError
+from maras_switchboard.installer import ensure_python_package
+from maras_switchboard.tts.base import BaseSynthesizer
 
 from .catalog import DEFAULT_SAMPLE_TEXT, SUPPORTED_TTS_PROVIDERS
 

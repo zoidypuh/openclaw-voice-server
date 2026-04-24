@@ -3,7 +3,7 @@ from io import StringIO
 import httpx
 import pytest
 
-from agentic_switchboard.speak_paragraphs import DEFAULT_SPEAK_ENDPOINT, main, speak_paragraphs, split_paragraphs
+from maras_switchboard.speak_paragraphs import DEFAULT_SPEAK_ENDPOINT, main, speak_paragraphs, split_paragraphs
 
 
 def test_split_paragraphs_collapses_wrapped_lines_and_skips_empty_blocks():
@@ -63,7 +63,7 @@ def test_main_reads_stdin_and_uses_default_endpoint(monkeypatch, capsys):
             for paragraph in paragraphs
         ]
 
-    monkeypatch.setattr("agentic_switchboard.speak_paragraphs.speak_paragraphs", fake_speak_paragraphs)
+    monkeypatch.setattr("maras_switchboard.speak_paragraphs.speak_paragraphs", fake_speak_paragraphs)
     monkeypatch.setattr("sys.stdin", StringIO("Alpha\n\nBeta\nline two\n"))
 
     assert main([]) == 0

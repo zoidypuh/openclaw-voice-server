@@ -1,6 +1,6 @@
 # TTS Community Legacy Providers
 
-This package archives TTS providers that were removed from Agentic Switchboard core:
+This package archives TTS providers that were removed from Mara's Switchboard core:
 
 - Piper
 - Chatterbox
@@ -8,7 +8,7 @@ This package archives TTS providers that were removed from Agentic Switchboard c
 - VibeVoice Realtime
 - NeuTTS
 
-Status: unmaintained by core. These files are kept so someone can turn them into a real plugin without making Agentic Switchboard carry their setup, dependencies, UI, or validation paths.
+Status: unmaintained by core. These files are kept so someone can turn them into a real plugin without making Mara's Switchboard carry their setup, dependencies, UI, or validation paths.
 
 Install locally for experimentation:
 

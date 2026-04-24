@@ -1,4 +1,4 @@
-from agentic_switchboard.app import _static_dir
+from maras_switchboard.app import _static_dir
 
 
 def test_voice_html_has_start_of_playback_barge_in_grace_window():
@@ -67,10 +67,14 @@ def test_voice_html_uses_echo_controls_and_apple_specific_barge_in_guard():
 def test_voice_html_has_mute_button_and_mic_gate():
     voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
 
-    assert "<title>agentic switchboard</title>" in voice_html
-    assert '<pre id="ascii-title" aria-label="Switchboard">' in voice_html
+    assert "<title>Mara's Switchboard</title>" in voice_html
+    assert '<div id="ascii-title" aria-label="Mara\'s Switchboard">' in voice_html
+    assert 'class="ascii-title-line ascii-title-mara"' in voice_html
+    assert 'class="ascii-title-line ascii-title-switchboard"' in voice_html
     assert "background-clip: text;" in voice_html
     assert "filter: drop-shadow(0 8px 14px rgba(0,0,0,0.72));" in voice_html
+    assert "|_|  |_|\\__,_|_|  \\__,_| |___/</pre>" in voice_html
+    assert " ___|_      _(_) |_ ___| |__ | |__   ___   __ _ _ __ __| |" in voice_html
     assert "|____/ \\_/\\_/ |_|\\__\\___|_| |_|_.__/ \\___/ \\__,_|_|  \\__,_|</pre>" in voice_html
     assert '<a id="setup-link" href="./setup">setup</a>' in voice_html
     assert '<div id="version">v0.1 <span class="alpha">ALPHA</span></div>' in voice_html
@@ -79,8 +83,8 @@ def test_voice_html_has_mute_button_and_mic_gate():
     assert '<button id="mute-btn" class="mini-btn" type="button">mute</button>' in voice_html
     assert "let muted = false;" in voice_html
     assert "let interruptMode = 'off';" in voice_html
-    assert "const INTERRUPT_MODE_STORAGE_KEY = 'agentic-switchboard.voice.interrupt-mode.v1';" in voice_html
-    assert "const PUSH_TO_TALK_STORAGE_KEY = 'agentic-switchboard.voice.push-to-talk.v1';" in voice_html
+    assert "const INTERRUPT_MODE_STORAGE_KEY = 'maras-switchboard.voice.interrupt-mode.v1';" in voice_html
+    assert "const PUSH_TO_TALK_STORAGE_KEY = 'maras-switchboard.voice.push-to-talk.v1';" in voice_html
     assert "function voiceInterruptDisabled() {" in voice_html
     assert "function setInterruptMode(nextMode) {" in voice_html
     assert "function commitBufferedTurnNow() {" in voice_html
@@ -96,8 +100,8 @@ def test_voice_html_has_mute_button_and_mic_gate():
     assert "document.getElementById('interrupt-btn').addEventListener('click', () => {" in voice_html
     assert "document.getElementById('mute-btn').addEventListener('click', () => {" in voice_html
     assert "muteBtn.textContent = 'mute';" in voice_html
-    assert "window.__agenticSwitchboardPushToTalkStart = beginPushToTalk;" in voice_html
-    assert "window.__agenticSwitchboardPushToTalkEnd = endPushToTalk;" in voice_html
+    assert "window.__marasSwitchboardPushToTalkStart = beginPushToTalk;" in voice_html
+    assert "window.__marasSwitchboardPushToTalkEnd = endPushToTalk;" in voice_html
 
 
 def test_voice_html_uses_root_app_base_so_trailing_slash_urls_do_not_404():

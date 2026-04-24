@@ -5,9 +5,9 @@ import logging
 from aiohttp import WSMsgType
 import pytest
 
-from agentic_switchboard import runtime as runtime_module
-from agentic_switchboard.errors import ValidationError
-from agentic_switchboard.runtime import VoiceRuntime
+from maras_switchboard import runtime as runtime_module
+from maras_switchboard.errors import ValidationError
+from maras_switchboard.runtime import VoiceRuntime
 
 
 class FakeStore:
@@ -24,7 +24,7 @@ class FakeStore:
             "secrets": {"gateway_token": "token"},
             "gateway": {
                 "url": "http://127.0.0.1:18789/v1/chat/completions",
-                "model": "agentic-switchboard:test",
+                "model": "maras-switchboard:test",
                 "session_key": "voice-main",
             },
         }
@@ -1108,7 +1108,7 @@ def test_handle_ws_uses_hermes_agent_when_selected(monkeypatch):
             assert project_root == "/tmp/hermes-agent"
             assert gateway_url == "http://127.0.0.1:18789/v1/chat/completions"
             assert gateway_token == "token"
-            assert gateway_model == "agentic-switchboard:test"
+            assert gateway_model == "maras-switchboard:test"
             assert use_context_files is True
             assert use_memory is True
             assert enabled_toolsets is None
@@ -1381,7 +1381,7 @@ def test_handle_interrupt_probe_uses_configured_language(monkeypatch):
         return FakeTranscriber()
 
     monkeypatch.setattr(runtime_module, "build_transcriber", fake_build_transcriber)
-    monkeypatch.setattr("agentic_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: True)
+    monkeypatch.setattr("maras_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: True)
 
     async def scenario():
         runtime = VoiceRuntime(FakeStore())
@@ -1462,7 +1462,7 @@ def test_handle_interrupt_probe_returns_pause_action(monkeypatch):
             }
 
     monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
-    monkeypatch.setattr("agentic_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: True)
+    monkeypatch.setattr("maras_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: True)
 
     async def scenario():
         runtime = VoiceRuntime(FakeStore())
@@ -1497,7 +1497,7 @@ def test_handle_interrupt_probe_returns_send_action_for_language_specific_manual
             }
 
     monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
-    monkeypatch.setattr("agentic_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: True)
+    monkeypatch.setattr("maras_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: True)
 
     async def scenario():
         runtime = VoiceRuntime(FakeStore())
@@ -1530,7 +1530,7 @@ def test_handle_interrupt_probe_returns_hold_action_and_content(monkeypatch):
             }
 
     monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
-    monkeypatch.setattr("agentic_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: True)
+    monkeypatch.setattr("maras_switchboard.stt.silero_vad.audio_contains_speech", lambda audio: True)
 
     async def scenario():
         runtime = VoiceRuntime(FakeStore())

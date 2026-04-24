@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>agentic switchboard</title>
+<title>Mara's Switchboard</title>
 <style>
   :root {
     color-scheme: dark;
@@ -72,9 +72,14 @@
     width: 100%;
     margin: 0 0 -2px;
     overflow: hidden;
+    display: grid;
+    gap: 0.08rem;
+    justify-items: center;
+    filter: drop-shadow(0 8px 14px rgba(0,0,0,0.72));
+  }
+  .ascii-title-line {
+    margin: 0;
     color: transparent;
-    background:
-      linear-gradient(180deg, #f5fdff 0%, #9ae5ff 30%, #3984b5 64%, #0a2232 100%);
     -webkit-background-clip: text;
     background-clip: text;
     font-family: "IBM Plex Mono", "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
@@ -84,14 +89,23 @@
     letter-spacing: 0;
     text-align: center;
     white-space: pre;
+  }
+  .ascii-title-mara {
+    background: linear-gradient(180deg, #fff1c0 0%, #ff9f3d 38%, #d94812 70%, #651704 100%);
+    text-shadow:
+      0 0 10px rgba(255,123,45,0.42),
+      0 1px 0 rgba(255,237,188,0.22),
+      0 3px 12px rgba(180,52,12,0.42);
+  }
+  .ascii-title-switchboard {
+    background: linear-gradient(180deg, #f5fdff 0%, #9ae5ff 30%, #3984b5 64%, #0a2232 100%);
     text-shadow:
       0 0 10px rgba(109,226,255,0.32),
       0 1px 0 rgba(255,255,255,0.18),
       0 3px 12px rgba(17,96,140,0.34);
-    filter: drop-shadow(0 8px 14px rgba(0,0,0,0.72));
   }
   @media (min-width: 430px) {
-    #ascii-title {
+    .ascii-title-line {
       font-size: 0.64rem;
     }
   }
@@ -348,11 +362,17 @@
 <a id="setup-link" href="./setup">setup</a>
 <div id="version">v0.1 <span class="alpha">ALPHA</span></div>
 <main>
-  <pre id="ascii-title" aria-label="Switchboard">____          _ _       _     _                         _
-/ ___|_      _(_) |_ ___| |__ | |__   ___   __ _ _ __ __| |
+  <div id="ascii-title" aria-label="Mara's Switchboard">
+    <pre class="ascii-title-line ascii-title-mara"> __  __                 _
+|  \/  | __ _ _ __ __ _( )___
+| |\/| |/ _` | '__/ _` |// __|
+| |  | | (_| | | | (_| | \__ \
+|_|  |_|\__,_|_|  \__,_| |___/</pre>
+    <pre class="ascii-title-line ascii-title-switchboard"> ___|_      _(_) |_ ___| |__ | |__   ___   __ _ _ __ __| |
 \___ \ \ /\ / / | __/ __| '_ \| '_ \ / _ \ / _` | '__/ _` |
  ___) \ V  V /| | || (__| | | | |_) | (_) | (_| | | | (_| |
 |____/ \_/\_/ |_|\__\___|_| |_|_.__/ \___/ \__,_|_|  \__,_|</pre>
+  </div>
   <div id="top-bar">
     <button id="pause-btn" class="control-btn" type="button">paused</button>
     <div id="status-hint" class="hidden"></div>
@@ -512,10 +532,10 @@ let settings = {
   min_speech_ms: 500,
 };
 
-const TUNING_STORAGE_KEY = 'agentic-switchboard.voice.tuning.v1';
-const TUNING_PANEL_STORAGE_KEY = 'agentic-switchboard.voice.tuning-panel.v1';
-const INTERRUPT_MODE_STORAGE_KEY = 'agentic-switchboard.voice.interrupt-mode.v1';
-const PUSH_TO_TALK_STORAGE_KEY = 'agentic-switchboard.voice.push-to-talk.v1';
+const TUNING_STORAGE_KEY = 'maras-switchboard.voice.tuning.v1';
+const TUNING_PANEL_STORAGE_KEY = 'maras-switchboard.voice.tuning-panel.v1';
+const INTERRUPT_MODE_STORAGE_KEY = 'maras-switchboard.voice.interrupt-mode.v1';
+const PUSH_TO_TALK_STORAGE_KEY = 'maras-switchboard.voice.push-to-talk.v1';
 const DEFAULT_TUNING = {
   inputThresholdDb: -41,
   waitAfterSpeakMs: 1700,
@@ -3316,10 +3336,10 @@ document.getElementById('push-to-talk-btn').addEventListener('click', () => {
   setPushToTalkEnabled(!pushToTalkEnabled);
 });
 
-window.__agenticSwitchboardManualInterrupt = manualInterrupt;
-window.__agenticSwitchboardPushToTalkStart = beginPushToTalk;
-window.__agenticSwitchboardPushToTalkEnd = endPushToTalk;
-window.__agenticSwitchboardToggleVoiceInterrupt = () => setInterruptMode(
+window.__marasSwitchboardManualInterrupt = manualInterrupt;
+window.__marasSwitchboardPushToTalkStart = beginPushToTalk;
+window.__marasSwitchboardPushToTalkEnd = endPushToTalk;
+window.__marasSwitchboardToggleVoiceInterrupt = () => setInterruptMode(
   interruptMode === 'barge-in' ? 'off' : 'barge-in'
 );
 startShellStatusHeartbeat();

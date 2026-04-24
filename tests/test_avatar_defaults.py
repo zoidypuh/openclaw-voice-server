@@ -1,11 +1,11 @@
-from agentic_switchboard.app import _default_avatar_preset
+from maras_switchboard.app import _default_avatar_preset
 
 
 def test_default_avatar_preset_prefers_girl_for_hermes_backend():
     assert _default_avatar_preset(
         {
             "agent": {"backend": "hermes"},
-            "gateway": {"model": "agentic-switchboard:main"},
+            "gateway": {"model": "maras-switchboard:main"},
         }
     ) == "girl"
 
@@ -14,7 +14,7 @@ def test_default_avatar_preset_prefers_lobster_for_claw_gateway_models():
     assert _default_avatar_preset(
         {
             "agent": {"backend": "gateway"},
-            "gateway": {"model": "agentic-switchboard:main"},
+            "gateway": {"model": "maras-switchboard:main"},
         }
     ) == "lobster"
 

@@ -1,4 +1,4 @@
-from agentic_switchboard.app import _static_dir
+from maras_switchboard.app import _static_dir
 
 
 def test_setup_html_has_stt_target_switch_presets():
@@ -7,7 +7,7 @@ def test_setup_html_has_stt_target_switch_presets():
     assert 'id="stt-target-remote"' in setup_html
     assert 'id="stt-target-local-gpu"' in setup_html
     assert 'id="stt-target-note"' in setup_html
-    assert "const REMOTE_STT_MEMORY_KEY = 'agentic-switchboard.voice.remote-stt.v1';" in setup_html
+    assert "const REMOTE_STT_MEMORY_KEY = 'maras-switchboard.voice.remote-stt.v1';" in setup_html
     assert "function resolveSttTarget() {" in setup_html
     assert "function renderSttTargetControls() {" in setup_html
     assert "function applySttTarget(target) {" in setup_html

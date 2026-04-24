@@ -7,9 +7,9 @@ import pickle
 
 import numpy as np
 
-from agentic_switchboard.errors import ValidationError
-from agentic_switchboard.installer import ensure_python_package
-from agentic_switchboard.tts.base import BaseSynthesizer
+from maras_switchboard.errors import ValidationError
+from maras_switchboard.installer import ensure_python_package
+from maras_switchboard.tts.base import BaseSynthesizer
 
 from .catalog import (
     CHATTERBOX_DEFAULT_DEVICE,
@@ -154,7 +154,7 @@ def _load_chatterbox_model(*, model: str, device: str):
         from chatterbox import ChatterboxTTS
 
         loaded = ChatterboxTTS.from_pretrained(device=device)
-    loaded._agentic_switchboard_default_conds = copy.deepcopy(getattr(loaded, "conds", None))
+    loaded._maras_switchboard_default_conds = copy.deepcopy(getattr(loaded, "conds", None))
     _CHATTERBOX_MODEL_CACHE[cache_key] = loaded
     return loaded
 
@@ -192,7 +192,7 @@ def _run_chatterbox(text: str, *, model: str, device: str, language: str, voice:
     if voice_path:
         loaded.conds = _load_saved_conditionals(voice_path=voice_path, model=model, device=device)
     else:
-        loaded.conds = copy.deepcopy(getattr(loaded, "_agentic_switchboard_default_conds", None))
+        loaded.conds = copy.deepcopy(getattr(loaded, "_maras_switchboard_default_conds", None))
     if model == "multilingual":
         wav_tensor = loaded.generate(text, language_id=language)
     else:

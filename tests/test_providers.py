@@ -2,12 +2,12 @@ import asyncio
 import sys
 import types
 
-from agentic_switchboard.stt import backends as stt_module
-from agentic_switchboard.tts import backends as tts_module
-from agentic_switchboard.tts import edge as edge_module
-from agentic_switchboard.tts import elevenlabs as elevenlabs_module
-from agentic_switchboard.tts import supertonic as supertonic_module
-from agentic_switchboard.tts.backends import (
+from maras_switchboard.stt import backends as stt_module
+from maras_switchboard.tts import backends as tts_module
+from maras_switchboard.tts import edge as edge_module
+from maras_switchboard.tts import elevenlabs as elevenlabs_module
+from maras_switchboard.tts import supertonic as supertonic_module
+from maras_switchboard.tts.backends import (
     ElevenLabsSynthesizer,
     list_elevenlabs_voices,
     normalize_elevenlabs_preset,
@@ -125,7 +125,7 @@ def test_validate_supertonic_voice_uses_external_python_and_returns_audio(monkey
 
     assert calls == [
         {
-            "text": "Agentic Switchboard setup validation.",
+            "text": "Mara's Switchboard setup validation.",
             "python_path": str(python_path.resolve()),
             "voice": "M4",
             "language": "en",

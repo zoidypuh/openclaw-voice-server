@@ -53,6 +53,14 @@ from .tts import (
 )
 
 
+def _first_env(*keys: str, default: str = "") -> str:
+    for key in keys:
+        value = os.environ.get(key)
+        if value not in (None, ""):
+            return str(value)
+    return default
+
+
 class SetupService:
     def __init__(self, store: ConfigStore):
         self.store = store
@@ -94,19 +102,29 @@ class SetupService:
 
     def _default_remote_whisper_hint(self, settings: dict[str, Any]) -> dict[str, str]:
         env_url = str(
-            os.environ.get("AGENTIC_SWITCHBOARD_REMOTE_WHISPER_ENDPOINT_URL")
-            or os.environ.get("AGENTIC_SWITCHBOARD_MAC_WHISPER_ENDPOINT_URL")
-            or ""
+            _first_env(
+                "MARAS_SWITCHBOARD_REMOTE_WHISPER_ENDPOINT_URL",
+                "AGENTIC_SWITCHBOARD_REMOTE_WHISPER_ENDPOINT_URL",
+                "MARAS_SWITCHBOARD_MAC_WHISPER_ENDPOINT_URL",
+                "AGENTIC_SWITCHBOARD_MAC_WHISPER_ENDPOINT_URL",
+            )
         ).strip()
         env_model = str(
-            os.environ.get("AGENTIC_SWITCHBOARD_REMOTE_WHISPER_ENDPOINT_MODEL")
-            or os.environ.get("AGENTIC_SWITCHBOARD_MAC_WHISPER_ENDPOINT_MODEL")
-            or ""
+            _first_env(
+                "MARAS_SWITCHBOARD_REMOTE_WHISPER_ENDPOINT_MODEL",
+                "AGENTIC_SWITCHBOARD_REMOTE_WHISPER_ENDPOINT_MODEL",
+                "MARAS_SWITCHBOARD_MAC_WHISPER_ENDPOINT_MODEL",
+                "AGENTIC_SWITCHBOARD_MAC_WHISPER_ENDPOINT_MODEL",
+            )
         ).strip()
         host_alias = str(
-            os.environ.get("AGENTIC_SWITCHBOARD_REMOTE_WHISPER_HOST_ALIAS")
-            or os.environ.get("AGENTIC_SWITCHBOARD_MAC_WHISPER_SSH_ALIAS")
-            or DEFAULT_REMOTE_WHISPER_HOST_ALIAS
+            _first_env(
+                "MARAS_SWITCHBOARD_REMOTE_WHISPER_HOST_ALIAS",
+                "AGENTIC_SWITCHBOARD_REMOTE_WHISPER_HOST_ALIAS",
+                "MARAS_SWITCHBOARD_MAC_WHISPER_SSH_ALIAS",
+                "AGENTIC_SWITCHBOARD_MAC_WHISPER_SSH_ALIAS",
+                default=DEFAULT_REMOTE_WHISPER_HOST_ALIAS,
+            )
         ).strip()
         resolved_host = self._resolve_ssh_hostname(host_alias) if host_alias else ""
         if resolved_host == host_alias and not self._host_is_resolvable(resolved_host):
@@ -593,7 +611,7 @@ class SetupService:
                 },
             }
         )
-        self.store.update_secrets({"AGENTIC_SWITCHBOARD_GATEWAY_TOKEN": token})
+        self.store.update_secrets({"MARAS_SWITCHBOARD_GATEWAY_TOKEN": token})
         return {"ok": True, "backend": "gateway", **summary}
 
     async def validate_gateway(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -702,7 +720,7 @@ class SetupService:
                 }
             }
         )
-        self.store.update_secrets({"AGENTIC_SWITCHBOARD_ELEVENLABS_API_KEY": api_key})
+        self.store.update_secrets({"MARAS_SWITCHBOARD_ELEVENLABS_API_KEY": api_key})
         return {**result, "voices": voices}
 
     async def elevenlabs_voices(self) -> dict[str, Any]:

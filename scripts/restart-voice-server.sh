@@ -33,7 +33,7 @@ stop_existing() {
   xargs -r kill -KILL <<<"$pids" 2>/dev/null || true
 }
 
-stop_existing 'python.*-m agentic_switchboard\.app'
+stop_existing 'python.*-m maras_switchboard\.app'
 stop_existing 'python.*-m agent_switchboard\.app'
 
-exec "$PYTHON_BIN" -m agentic_switchboard.app
+exec "$PYTHON_BIN" -m maras_switchboard.app

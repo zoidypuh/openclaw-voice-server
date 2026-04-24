@@ -54,7 +54,7 @@ def _default_avatar_preset(saved: dict[str, object]) -> str:
         return "girl"
 
     model = str((gateway or {}).get("model") or "").strip().lower() if isinstance(gateway, dict) else ""
-    if any(token in model for token in ("agentic-switchboard", "agentic", "switchboard", "lobster")):
+    if any(token in model for token in ("maras-switchboard", "maras", "switchboard", "lobster")):
         return "lobster"
     if any(token in model for token in ("hermes", "mara", "claude", "sonnet", "gpt")):
         return "girl"

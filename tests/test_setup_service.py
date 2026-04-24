@@ -2,9 +2,9 @@ import asyncio
 
 import pytest
 
-from agentic_switchboard.config_store import ConfigStore
-from agentic_switchboard.errors import ValidationError
-from agentic_switchboard.setup_service import SetupService
+from maras_switchboard.config_store import ConfigStore
+from maras_switchboard.errors import ValidationError
+from maras_switchboard.setup_service import SetupService
 
 
 def test_validate_stt_persists_validated_selection(tmp_path, monkeypatch):
@@ -12,7 +12,7 @@ def test_validate_stt_persists_validated_selection(tmp_path, monkeypatch):
     service = SetupService(store)
 
     monkeypatch.setattr(
-        "agentic_switchboard.setup_service.validate_stt_selection_step",
+        "maras_switchboard.setup_service.validate_stt_selection_step",
         lambda settings: {"ok": True, "results": [{"backend": "faster-whisper", "model": "large-v3"}]},
     )
 
@@ -57,9 +57,9 @@ def test_validate_elevenlabs_key_and_voice_save_to_split_storage(tmp_path, monke
         assert preset_name == "expressive"
         return {"ok": True, "voice_id": voice_id, "voice_name": "Resolved Voice"}
 
-    monkeypatch.setattr("agentic_switchboard.setup_service.validate_elevenlabs_api_key_step", fake_validate_key)
-    monkeypatch.setattr("agentic_switchboard.setup_service.list_elevenlabs_voices", fake_list_voices)
-    monkeypatch.setattr("agentic_switchboard.setup_service.validate_elevenlabs_voice_step", fake_validate_voice)
+    monkeypatch.setattr("maras_switchboard.setup_service.validate_elevenlabs_api_key_step", fake_validate_key)
+    monkeypatch.setattr("maras_switchboard.setup_service.list_elevenlabs_voices", fake_list_voices)
+    monkeypatch.setattr("maras_switchboard.setup_service.validate_elevenlabs_voice_step", fake_validate_voice)
 
     key_result = asyncio.run(service.validate_elevenlabs_key({"api_key": "sk-test"}))
     asyncio.run(
@@ -72,7 +72,7 @@ def test_validate_elevenlabs_key_and_voice_save_to_split_storage(tmp_path, monke
     saved = store.load_config()
 
     assert key_result["voices"] == [{"voice_id": "voice-123", "name": "Resolved Voice"}]
-    assert "AGENTIC_SWITCHBOARD_ELEVENLABS_API_KEY=sk-test" in env_text
+    assert "MARAS_SWITCHBOARD_ELEVENLABS_API_KEY=sk-test" in env_text
     assert saved["tts"]["elevenlabs_voice_id"] == "voice-123"
     assert saved["tts"]["elevenlabs_voice_name"] == "Resolved Voice"
     assert saved["tts"]["elevenlabs_model"] == "eleven-model"
@@ -84,13 +84,13 @@ def test_validate_elevenlabs_key_and_voice_save_to_split_storage(tmp_path, monke
 def test_elevenlabs_voices_uses_saved_secret(tmp_path, monkeypatch):
     store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
     service = SetupService(store)
-    store.update_secrets({"AGENTIC_SWITCHBOARD_ELEVENLABS_API_KEY": "sk-saved"})
+    store.update_secrets({"MARAS_SWITCHBOARD_ELEVENLABS_API_KEY": "sk-saved"})
 
     async def fake_list_voices(api_key):
         assert api_key == "sk-saved"
         return [{"voice_id": "voice-abc", "name": "Saved Voice"}]
 
-    monkeypatch.setattr("agentic_switchboard.setup_service.list_elevenlabs_voices", fake_list_voices)
+    monkeypatch.setattr("maras_switchboard.setup_service.list_elevenlabs_voices", fake_list_voices)
 
     result = asyncio.run(service.elevenlabs_voices())
 
@@ -116,7 +116,7 @@ def test_validate_supertonic_persists_resolved_settings(tmp_path, monkeypatch):
             "speed": speed,
         }
 
-    monkeypatch.setattr("agentic_switchboard.setup_service.validate_supertonic_voice_step", fake_validate_supertonic)
+    monkeypatch.setattr("maras_switchboard.setup_service.validate_supertonic_voice_step", fake_validate_supertonic)
 
     result = asyncio.run(
         service.validate_supertonic(
@@ -148,12 +148,12 @@ def test_validate_gateway_saves_secret_and_config(tmp_path, monkeypatch):
     async def fake_validate_gateway_connection(*, url, token, model, session_key):
         assert url == "https://gateway.test.ts.net/v1/chat/completions"
         assert token == "gw-secret"
-        assert model == "agentic-switchboard:test"
+        assert model == "maras-switchboard:test"
         assert session_key == "voice-main"
         return {"ok": True, "reply_preview": "OK"}
 
     monkeypatch.setattr(
-        "agentic_switchboard.setup_service.validate_gateway_connection",
+        "maras_switchboard.setup_service.validate_gateway_connection",
         fake_validate_gateway_connection,
     )
 
@@ -162,7 +162,7 @@ def test_validate_gateway_saves_secret_and_config(tmp_path, monkeypatch):
             {
                 "url": "gateway.test.ts.net",
                 "token": "gw-secret",
-                "model": "agentic-switchboard:test",
+                "model": "maras-switchboard:test",
                 "session_key": "voice-main",
             }
         )
@@ -174,7 +174,7 @@ def test_validate_gateway_saves_secret_and_config(tmp_path, monkeypatch):
     assert saved["agent"]["backend"] == "gateway"
     assert saved["gateway"]["url"] == "https://gateway.test.ts.net/v1/chat/completions"
     assert saved["gateway"]["session_key"] == "voice-main"
-    assert "AGENTIC_SWITCHBOARD_GATEWAY_TOKEN=gw-secret" in env_text
+    assert "MARAS_SWITCHBOARD_GATEWAY_TOKEN=gw-secret" in env_text
     assert saved["validation"]["gateway"]["config_hash"]
 
 
@@ -197,7 +197,7 @@ def test_validate_agent_saves_hermes_root_and_backend(tmp_path, monkeypatch):
         return {"ok": True, "project_root": resolved_root, "reply_preview": "OK"}
 
     monkeypatch.setattr(
-        "agentic_switchboard.setup_service.validate_hermes_connection",
+        "maras_switchboard.setup_service.validate_hermes_connection",
         fake_validate_hermes_connection,
     )
 
@@ -264,7 +264,7 @@ def test_setup_state_allows_remote_whisper_without_local_module(tmp_path, monkey
     )
 
     monkeypatch.setattr(
-        "agentic_switchboard.setup_service.module_available",
+        "maras_switchboard.setup_service.module_available",
         lambda import_name: False,
     )
 
@@ -325,7 +325,7 @@ def test_runtime_ready_uses_live_config_even_if_stt_validation_is_stale(tmp_path
             },
             "gateway": {
                 "url": "http://127.0.0.1:18789/v1/chat/completions",
-                "model": "agentic-switchboard:main",
+                "model": "maras-switchboard:main",
                 "session_key": "voice-main",
             },
             "validation": {
@@ -350,7 +350,7 @@ def test_runtime_ready_uses_live_config_even_if_stt_validation_is_stale(tmp_path
                     "config_hash": service._config_hash(
                         {
                             "url": "http://127.0.0.1:18789/v1/chat/completions",
-                            "model": "agentic-switchboard:main",
+                            "model": "maras-switchboard:main",
                             "session_key": "voice-main",
                         }
                     ),
@@ -361,12 +361,12 @@ def test_runtime_ready_uses_live_config_even_if_stt_validation_is_stale(tmp_path
     )
     store.update_secrets(
         {
-            "AGENTIC_SWITCHBOARD_ELEVENLABS_API_KEY": "sk-test",
-            "AGENTIC_SWITCHBOARD_GATEWAY_TOKEN": "gw-secret",
+            "MARAS_SWITCHBOARD_ELEVENLABS_API_KEY": "sk-test",
+            "MARAS_SWITCHBOARD_GATEWAY_TOKEN": "gw-secret",
         }
     )
 
-    monkeypatch.setattr("agentic_switchboard.setup_service.module_available", lambda import_name: False)
+    monkeypatch.setattr("maras_switchboard.setup_service.module_available", lambda import_name: False)
 
     state = service.state()
 
@@ -392,13 +392,13 @@ def test_runtime_ready_requires_provider_specific_live_config(tmp_path, monkeypa
             },
             "gateway": {
                 "url": "http://127.0.0.1:18789/v1/chat/completions",
-                "model": "agentic-switchboard:main",
+                "model": "maras-switchboard:main",
             },
         }
     )
-    store.update_secrets({"AGENTIC_SWITCHBOARD_GATEWAY_TOKEN": "gw-secret"})
+    store.update_secrets({"MARAS_SWITCHBOARD_GATEWAY_TOKEN": "gw-secret"})
 
-    monkeypatch.setattr("agentic_switchboard.setup_service.module_available", lambda import_name: True)
+    monkeypatch.setattr("maras_switchboard.setup_service.module_available", lambda import_name: True)
 
     state = service.state()
 
@@ -427,7 +427,7 @@ def test_runtime_ready_accepts_supertonic_live_config(tmp_path, monkeypatch):
             },
             "gateway": {
                 "url": "http://127.0.0.1:18789/v1/chat/completions",
-                "model": "agentic-switchboard:main",
+                "model": "maras-switchboard:main",
                 "session_key": "voice-main",
             },
             "validation": {
@@ -451,7 +451,7 @@ def test_runtime_ready_accepts_supertonic_live_config(tmp_path, monkeypatch):
                     "config_hash": service._config_hash(
                         {
                             "url": "http://127.0.0.1:18789/v1/chat/completions",
-                            "model": "agentic-switchboard:main",
+                            "model": "maras-switchboard:main",
                             "session_key": "voice-main",
                         }
                     ),
@@ -460,9 +460,9 @@ def test_runtime_ready_accepts_supertonic_live_config(tmp_path, monkeypatch):
             },
         }
     )
-    store.update_secrets({"AGENTIC_SWITCHBOARD_GATEWAY_TOKEN": "gw-secret"})
+    store.update_secrets({"MARAS_SWITCHBOARD_GATEWAY_TOKEN": "gw-secret"})
 
-    monkeypatch.setattr("agentic_switchboard.setup_service.module_available", lambda import_name: import_name is None)
+    monkeypatch.setattr("maras_switchboard.setup_service.module_available", lambda import_name: import_name is None)
 
     state = service.state()
 
@@ -486,7 +486,7 @@ def test_runtime_ready_accepts_disabled_tts_mode(tmp_path, monkeypatch):
             },
             "gateway": {
                 "url": "http://127.0.0.1:18789/v1/chat/completions",
-                "model": "agentic-switchboard:main",
+                "model": "maras-switchboard:main",
                 "session_key": "voice-main",
             },
             "validation": {
@@ -499,7 +499,7 @@ def test_runtime_ready_accepts_disabled_tts_mode(tmp_path, monkeypatch):
                     "config_hash": service._config_hash(
                         {
                             "url": "http://127.0.0.1:18789/v1/chat/completions",
-                            "model": "agentic-switchboard:main",
+                            "model": "maras-switchboard:main",
                             "session_key": "voice-main",
                         }
                     ),
@@ -508,9 +508,9 @@ def test_runtime_ready_accepts_disabled_tts_mode(tmp_path, monkeypatch):
             },
         }
     )
-    store.update_secrets({"AGENTIC_SWITCHBOARD_GATEWAY_TOKEN": "gw-secret"})
+    store.update_secrets({"MARAS_SWITCHBOARD_GATEWAY_TOKEN": "gw-secret"})
 
-    monkeypatch.setattr("agentic_switchboard.setup_service.module_available", lambda import_name: True)
+    monkeypatch.setattr("maras_switchboard.setup_service.module_available", lambda import_name: True)
 
     state = service.state()
 
@@ -561,7 +561,7 @@ def test_runtime_ready_accepts_hermes_live_config(tmp_path, monkeypatch):
         }
     )
 
-    monkeypatch.setattr("agentic_switchboard.setup_service.module_available", lambda import_name: True)
+    monkeypatch.setattr("maras_switchboard.setup_service.module_available", lambda import_name: True)
 
     state = service.state()
 

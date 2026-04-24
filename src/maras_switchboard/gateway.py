@@ -63,10 +63,10 @@ class DirectGatewayClient:
         headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
-            "X-Agentic-Switchboard-Scopes": GATEWAY_OPERATOR_SCOPES,
+            "X-Maras-Switchboard-Scopes": GATEWAY_OPERATOR_SCOPES,
         }
         if include_session and self.session_key:
-            headers["X-Agentic-Switchboard-Session-Key"] = self.session_key
+            headers["X-Maras-Switchboard-Session-Key"] = self.session_key
         return headers
 
     def _payload(self, text: str, *, stream: bool) -> dict[str, Any]:
@@ -202,10 +202,10 @@ async def validate_gateway_connection(*, url: str, token: str, model: str, sessi
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
-        "X-Agentic-Switchboard-Scopes": GATEWAY_OPERATOR_SCOPES,
+        "X-Maras-Switchboard-Scopes": GATEWAY_OPERATOR_SCOPES,
     }
     if session_key.strip():
-        headers["X-Agentic-Switchboard-Session-Key"] = session_key.strip()
+        headers["X-Maras-Switchboard-Session-Key"] = session_key.strip()
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(

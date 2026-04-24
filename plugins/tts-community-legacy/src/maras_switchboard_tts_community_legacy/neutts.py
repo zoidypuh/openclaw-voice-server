@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from agentic_switchboard.errors import ValidationError
-from agentic_switchboard.installer import ensure_python_package
-from agentic_switchboard.tts.base import BaseSynthesizer
+from maras_switchboard.errors import ValidationError
+from maras_switchboard.installer import ensure_python_package
+from maras_switchboard.tts.base import BaseSynthesizer
 
 from .catalog import SUPPORTED_TTS_PROVIDERS
 from .vibevoice import _pcm16le_to_wav

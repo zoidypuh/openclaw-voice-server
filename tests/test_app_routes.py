@@ -2,7 +2,7 @@ import asyncio
 
 from aiohttp.test_utils import TestClient, TestServer
 
-from agentic_switchboard.app import create_app
+from maras_switchboard.app import create_app
 
 
 async def _fetch(path: str):

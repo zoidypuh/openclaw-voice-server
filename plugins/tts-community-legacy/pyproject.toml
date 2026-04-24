@@ -3,13 +3,13 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [project]
-name = "agentic-switchboard-tts-community-legacy"
+name = "maras-switchboard-tts-community-legacy"
 version = "0.0.1"
-description = "Unmaintained legacy TTS providers for Agentic Switchboard."
+description = "Unmaintained legacy TTS providers for Mara's Switchboard."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-  "agentic-switchboard",
+  "maras-switchboard",
   "aiohttp>=3.11.0",
   "httpx>=0.28.0",
   "numpy>=1.24.0",
@@ -46,4 +46,4 @@ all = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/agentic_switchboard_tts_community_legacy"]
+packages = ["src/maras_switchboard_tts_community_legacy"]

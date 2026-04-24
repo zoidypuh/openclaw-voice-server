@@ -2,7 +2,7 @@ import asyncio
 import sys
 import types
 
-from agentic_switchboard.agents import hermes as hermes_module
+from maras_switchboard.agents import hermes as hermes_module
 
 
 def test_reply_sanity_system_prompt_handles_random_subtitles_and_invented_people():

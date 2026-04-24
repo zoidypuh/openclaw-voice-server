@@ -1,4 +1,4 @@
-DEFAULT_SAMPLE_TEXT = "Agentic Switchboard setup validation."
+DEFAULT_SAMPLE_TEXT = "Mara's Switchboard setup validation."
 
 CHATTERBOX_DEFAULT_MODEL = "multilingual"
 CHATTERBOX_DEFAULT_DEVICE = "auto"
