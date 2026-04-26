@@ -242,9 +242,9 @@ def pop_sentence_chunk(buf: str) -> tuple[str | None, str]:
 
 def pop_early_chunk(
     buf: str,
-    min_chars: int = 24,
-    min_words: int = 3,
-    max_chars: int = 48,
+    min_chars: int = 14,
+    min_words: int = 2,
+    max_chars: int = 36,
 ) -> tuple[str | None, str]:
     text = buf.strip()
     if not text:

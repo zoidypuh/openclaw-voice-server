@@ -45,6 +45,29 @@ def test_config_store_reads_voice_id_from_env(tmp_path):
     assert settings["tts"]["elevenlabs_voice_id"] == "voice-from-env"
 
 
+def test_config_store_reads_chatterbox_turbo_paths_from_env(tmp_path):
+    config_path = tmp_path / "config.json"
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        "\n".join(
+            [
+                "MARAS_SWITCHBOARD_CHATTERBOX_TURBO_PYTHON_PATH=/envs/chatterbox/bin/python",
+                "MARAS_SWITCHBOARD_CHATTERBOX_TURBO_VOICE_PROMPT_PATH=/voices/mara.wav",
+                "MARAS_SWITCHBOARD_CHATTERBOX_TURBO_DEVICE=cpu",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    store = ConfigStore(config_path=config_path, env_path=env_path)
+    settings = store.load_runtime_settings()
+
+    assert settings["tts"]["chatterbox_python_path"] == "/envs/chatterbox/bin/python"
+    assert settings["tts"]["chatterbox_voice_prompt_path"] == "/voices/mara.wav"
+    assert settings["tts"]["chatterbox_device"] == "cpu"
+
+
 def test_config_store_reads_whisper_endpoint_from_env(tmp_path):
     config_path = tmp_path / "config.json"
     env_path = tmp_path / ".env"
@@ -57,6 +80,22 @@ def test_config_store_reads_whisper_endpoint_from_env(tmp_path):
     settings = store.load_runtime_settings()
 
     assert settings["stt"]["whisper_endpoint_url"] == "http://127.0.0.1:18000/v1/audio/transcriptions"
+
+
+def test_config_store_reads_xai_api_key_from_env(tmp_path, monkeypatch):
+    monkeypatch.delenv("XAI_API_KEY", raising=False)
+    monkeypatch.delenv("MARAS_SWITCHBOARD_XAI_API_KEY", raising=False)
+    monkeypatch.delenv("AGENTIC_SWITCHBOARD_XAI_API_KEY", raising=False)
+    config_path = tmp_path / "config.json"
+    env_path = tmp_path / ".env"
+    env_path.write_text("XAI_API_KEY=xai-test\n", encoding="utf-8")
+
+    store = ConfigStore(config_path=config_path, env_path=env_path)
+    settings = store.load_runtime_settings()
+    public = store.public_setup_state()
+
+    assert settings["secrets"]["xai_api_key"] == "xai-test"
+    assert public["stt"]["xai_api_key_present"] is True
 
 
 def test_config_store_reads_hermes_root_from_env(tmp_path):
@@ -86,6 +125,22 @@ def test_config_store_accepts_agentic_env_aliases(tmp_path):
     assert settings["secrets"]["gateway_token"] == "legacy-gw"
     assert settings["secrets"]["elevenlabs_api_key"] == "legacy-sk"
     assert settings["stt"]["whisper_endpoint_url"] == "http://127.0.0.1:18000/v1/audio/transcriptions"
+
+
+def test_config_store_accepts_old_agent_switchboard_secret_aliases(tmp_path):
+    config_path = tmp_path / "config.json"
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        "AGENT_SWITCHBOARD_GATEWAY_TOKEN=old-gw\n"
+        "OPENCLAW_VOICE_ELEVENLABS_API_KEY=old-sk\n",
+        encoding="utf-8",
+    )
+
+    store = ConfigStore(config_path=config_path, env_path=env_path)
+    settings = store.load_runtime_settings()
+
+    assert settings["secrets"]["gateway_token"] == "old-gw"
+    assert settings["secrets"]["elevenlabs_api_key"] == "old-sk"
 
 
 def test_config_store_prefers_explicit_config_over_env(tmp_path):

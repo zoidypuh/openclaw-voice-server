@@ -28,6 +28,7 @@ const VOICE_URL: &str = "http://127.0.0.1:8765/voice";
 const STATUS_URL: &str = "http://127.0.0.1:8765/api/windows-client/status";
 const STATUS_POLL_INTERVAL: Duration = Duration::from_millis(1200);
 const HOLD_TO_TALK_SHORTCUT: &str = "CONTROL+ALT+SHIFT+KeyA";
+const APP_WINDOW_TITLE: &str = "Mara's Switchboard";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum TrayState {
@@ -108,7 +109,7 @@ fn open_in_browser(url: &Url) {
 }
 
 fn tray_tooltip(state: TrayState) -> String {
-    format!("Mara's Switchboard: {}", state.label())
+    format!("{APP_WINDOW_TITLE}: {}", state.label())
 }
 
 fn set_pixel(rgba: &mut [u8], x: i32, y: i32, color: [u8; 4]) {
@@ -271,7 +272,7 @@ fn build_main_window<R: tauri::Runtime>(
         MAIN_WINDOW_LABEL,
         WebviewUrl::External(voice_url.clone()),
     )
-    .title("Mara's Switchboard")
+    .title(APP_WINDOW_TITLE)
     .inner_size(460.0, 620.0)
     .min_inner_size(360.0, 520.0)
     .resizable(true)

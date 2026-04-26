@@ -189,13 +189,14 @@
     <div class="section-header">
       <div class="section-title">
         <h2>1. STT</h2>
-        <p>Choose one Whisper-family backend, model, and device. This step must validate and save before the rest of setup appears.</p>
+        <p>Choose one STT backend. This step must validate and save before the rest of setup appears.</p>
       </div>
       <div class="badge" id="stt-badge">Not checked</div>
     </div>
     <div class="option-group">
       <span>Target</span>
       <div class="button-row">
+        <button type="button" id="stt-target-xai">xAI STT</button>
         <button type="button" id="stt-target-remote">Remote Whisper</button>
         <button type="button" id="stt-target-local-gpu">Local GPU Whisper</button>
       </div>
@@ -346,10 +347,10 @@
         <select id="supertonic-language"></select>
       </label>
       <label>Total steps
-        <input id="supertonic-total-steps" type="number" min="1" step="1" placeholder="3">
+        <input id="supertonic-total-steps" type="number" min="1" step="1" placeholder="1">
       </label>
       <label>Speed
-        <input id="supertonic-speed" type="number" min="0.1" step="0.05" placeholder="1.05">
+        <input id="supertonic-speed" type="number" min="0.1" step="0.05" placeholder="1.2">
       </label>
     </div>
     <div class="note" id="supertonic-note"></div>
@@ -360,10 +361,52 @@
     <div class="result" id="supertonic-result"></div>
   </section>
 
+  <section class="section hidden" id="chatterbox-section">
+    <div class="section-header">
+      <div class="section-title">
+        <h2>6. Chatterbox Turbo</h2>
+        <p>Run Chatterbox Turbo through a dedicated Python environment and a reference voice prompt, then validate one synthesis pass before saving.</p>
+      </div>
+      <div class="badge" id="chatterbox-badge">Not checked</div>
+    </div>
+    <div class="grid">
+      <label>Python executable
+        <input id="chatterbox-python-path" type="text" placeholder="/path/to/python">
+      </label>
+      <label>Voice prompt audio
+        <input id="chatterbox-voice-prompt-path" type="text" placeholder="/path/to/reference.wav">
+      </label>
+      <label>Device
+        <select id="chatterbox-device"></select>
+      </label>
+      <label>Exaggeration
+        <input id="chatterbox-exaggeration" type="number" min="0" max="2" step="0.05" placeholder="0.5">
+      </label>
+      <label>Temperature
+        <input id="chatterbox-temperature" type="number" min="0.01" max="5" step="0.05" placeholder="0.8">
+      </label>
+      <label>Top-p
+        <input id="chatterbox-top-p" type="number" min="0.01" max="1" step="0.01" placeholder="0.95">
+      </label>
+      <label>Top-k
+        <input id="chatterbox-top-k" type="number" min="1" step="1" placeholder="1000">
+      </label>
+      <label>Repetition penalty
+        <input id="chatterbox-repetition-penalty" type="number" min="0.01" max="10" step="0.05" placeholder="1.2">
+      </label>
+    </div>
+    <div class="note" id="chatterbox-note"></div>
+    <div class="actions">
+      <button class="primary" id="validate-chatterbox">Validate Chatterbox Turbo And Save</button>
+      <button id="continue-chatterbox">Continue With Validated Chatterbox Turbo</button>
+    </div>
+    <div class="result" id="chatterbox-result"></div>
+  </section>
+
   <section class="section hidden" id="gateway-section">
     <div class="section-header">
       <div class="section-title">
-        <h2>6. Conversation Backend</h2>
+        <h2>7. Conversation Backend</h2>
         <p>Select the chat agent and validate its backend before launch.</p>
       </div>
       <div class="badge" id="gateway-badge">Not checked</div>
@@ -463,6 +506,9 @@ function ttsProviderSectionId(provider) {
   }
   if (provider === 'supertonic') {
     return 'supertonic-section';
+  }
+  if (provider === 'chatterbox-turbo') {
+    return 'chatterbox-section';
   }
   return 'tts-section';
 }
@@ -585,6 +631,9 @@ function resolveSttTarget() {
   const backend = currentSttBackend();
   const device = document.getElementById('stt-device').value;
   const endpointUrl = document.getElementById('whisper-endpoint-url').value.trim();
+  if (backend === 'xai') {
+    return 'xai';
+  }
   if (backend === 'whisper' && endpointUrl) {
     return 'remote';
   }
@@ -596,9 +645,14 @@ function resolveSttTarget() {
 
 function renderSttTargetControls() {
   const resolved = resolveSttTarget();
+  document.getElementById('stt-target-xai').classList.toggle('active', resolved === 'xai');
   document.getElementById('stt-target-remote').classList.toggle('active', resolved === 'remote');
   document.getElementById('stt-target-local-gpu').classList.toggle('active', resolved === 'local-gpu');
   const note = document.getElementById('stt-target-note');
+  if (resolved === 'xai') {
+    note.textContent = 'xAI STT sends captured audio to the xAI transcription service using XAI_API_KEY from the server environment. Device and compute type are ignored for this remote service.';
+    return;
+  }
   if (resolved === 'remote') {
     const defaultEndpoint = defaultRemoteWhisperEndpointUrl();
     const activeEndpoint = defaultEndpoint || rememberedRemoteStt.url;
@@ -632,7 +686,17 @@ function applyRecommendedComputeType() {
 
 function applySttTarget(target) {
   setResult('stt-result', '');
-  if (target === 'remote') {
+  if (target === 'xai') {
+    syncRememberedRemoteSttFromInputs();
+    document.getElementById('stt-default').value = 'xai';
+    if (document.getElementById('stt-language').value === 'auto') {
+      document.getElementById('stt-language').value = 'en';
+    }
+    document.getElementById('stt-device').value = 'cpu';
+    document.getElementById('stt-compute-type').value = 'int8';
+    document.getElementById('whisper-endpoint-url').value = '';
+    document.getElementById('whisper-endpoint-model').value = '';
+  } else if (target === 'remote') {
     const endpointUrl = defaultRemoteWhisperEndpointUrl()
       || rememberedRemoteStt.url
       || document.getElementById('whisper-endpoint-url').value.trim();
@@ -664,6 +728,19 @@ function applySttTarget(target) {
   updateBackendSpecificFields();
   updateDeviceNotes();
   updateFlowVisibility();
+}
+
+function sttModelMatchesSaved(currentBackend, sttSaved) {
+  if (currentBackend === 'faster-whisper') {
+    return document.getElementById('model-faster-whisper').value === sttSaved.backend_models['faster-whisper'];
+  }
+  if (currentBackend === 'whisper') {
+    return document.getElementById('model-whisper').value === sttSaved.backend_models.whisper;
+  }
+  if (currentBackend === 'xai') {
+    return (sttSaved.backend_models?.xai || 'xai-stt') === 'xai-stt';
+  }
+  return false;
 }
 
 function renderElevenVoiceOptions(voices) {
@@ -717,6 +794,7 @@ function getEffectiveStatus() {
       edge_ready: false,
       eleven_ready: false,
       supertonic_ready: false,
+      chatterbox_ready: false,
       gateway_ready: false,
       hermes_ready: false,
       conversation_ready: false,
@@ -734,11 +812,7 @@ function getEffectiveStatus() {
     && document.getElementById('stt-compute-type').value === sttSaved.compute_type
     && document.getElementById('whisper-endpoint-url').value.trim() === (sttSaved.whisper_endpoint_url || '')
     && document.getElementById('whisper-endpoint-model').value.trim() === (sttSaved.whisper_endpoint_model || '')
-    && (
-      currentBackend === 'faster-whisper'
-        ? document.getElementById('model-faster-whisper').value === sttSaved.backend_models['faster-whisper']
-        : document.getElementById('model-whisper').value === sttSaved.backend_models.whisper
-    )
+    && sttModelMatchesSaved(currentBackend, sttSaved)
   );
 
   const ttsSaved = saved.tts || {};
@@ -779,8 +853,22 @@ function getEffectiveStatus() {
     && document.getElementById('supertonic-python-path').value.trim() === (ttsSaved.supertonic_python_path || '')
     && document.getElementById('supertonic-voice').value === (ttsSaved.supertonic_voice || 'M4')
     && document.getElementById('supertonic-language').value === (ttsSaved.supertonic_language || 'en')
-    && Number(document.getElementById('supertonic-total-steps').value || 3) === Number(ttsSaved.supertonic_total_steps || 3)
-    && Number(document.getElementById('supertonic-speed').value || 1.05) === Number(ttsSaved.supertonic_speed || 1.05)
+    && Number(document.getElementById('supertonic-total-steps').value || 1) === Number(ttsSaved.supertonic_total_steps || 1)
+    && Number(document.getElementById('supertonic-speed').value || 1.2) === Number(ttsSaved.supertonic_speed || 1.2)
+  );
+
+  const chatterboxReady = Boolean(
+    ttsReady
+    && currentProvider === 'chatterbox-turbo'
+    && status.chatterbox_ready
+    && document.getElementById('chatterbox-python-path').value.trim() === (ttsSaved.chatterbox_python_path || '')
+    && document.getElementById('chatterbox-voice-prompt-path').value.trim() === (ttsSaved.chatterbox_voice_prompt_path || '')
+    && document.getElementById('chatterbox-device').value === (ttsSaved.chatterbox_device || 'auto')
+    && Number(document.getElementById('chatterbox-exaggeration').value || 0.5) === Number(ttsSaved.chatterbox_exaggeration ?? 0.5)
+    && Number(document.getElementById('chatterbox-temperature').value || 0.8) === Number(ttsSaved.chatterbox_temperature ?? 0.8)
+    && Number(document.getElementById('chatterbox-top-p').value || 0.95) === Number(ttsSaved.chatterbox_top_p ?? 0.95)
+    && Number(document.getElementById('chatterbox-top-k').value || 1000) === Number(ttsSaved.chatterbox_top_k ?? 1000)
+    && Number(document.getElementById('chatterbox-repetition-penalty').value || 1.2) === Number(ttsSaved.chatterbox_repetition_penalty ?? 1.2)
   );
 
   const gatewaySaved = saved.gateway || {};
@@ -788,7 +876,7 @@ function getEffectiveStatus() {
   const currentAgentBackendVal = currentAgentBackend();
   const savedSessionKey = gatewaySaved.session_key || (setupState?.hints?.default_voice_session_key || '');
   const gatewayReady = Boolean(
-    (ttsDisabled || edgeReady || elevenReady || supertonicReady)
+    (ttsDisabled || edgeReady || elevenReady || supertonicReady || chatterboxReady)
     && currentAgentBackendVal === 'gateway'
     && (agentSaved.backend || 'gateway') === 'gateway'
     && status.gateway_ready
@@ -799,7 +887,7 @@ function getEffectiveStatus() {
   );
   const savedHermesRoot = (agentSaved.hermes_root || (setupState?.hints?.default_hermes_root || '')).trim();
   const hermesReady = Boolean(
-    (ttsDisabled || edgeReady || elevenReady || supertonicReady)
+    (ttsDisabled || edgeReady || elevenReady || supertonicReady || chatterboxReady)
     && currentAgentBackendVal === 'hermes'
     && (agentSaved.backend || 'gateway') === 'hermes'
     && status.hermes_ready
@@ -813,6 +901,7 @@ function getEffectiveStatus() {
     edge_ready: edgeReady,
     eleven_ready: elevenReady,
     supertonic_ready: supertonicReady,
+    chatterbox_ready: chatterboxReady,
     gateway_ready: gatewayReady,
     hermes_ready: hermesReady,
     conversation_ready: conversationReady,
@@ -827,6 +916,7 @@ function updateFlowVisibility() {
   const showEdge = showTts && effective.tts_ready && currentProvider === 'edge';
   const showEleven = showTts && effective.tts_ready && currentProvider === 'elevenlabs';
   const showSupertonic = showTts && effective.tts_ready && currentProvider === 'supertonic';
+  const showChatterbox = showTts && effective.tts_ready && currentProvider === 'chatterbox-turbo';
   const showDisabled = showTts && effective.tts_ready && currentProvider === 'disabled';
   const providerReady = showEdge
     ? effective.edge_ready
@@ -834,9 +924,11 @@ function updateFlowVisibility() {
       ? effective.eleven_ready
       : showSupertonic
         ? effective.supertonic_ready
-        : showDisabled
-          ? true
-        : false;
+        : showChatterbox
+          ? effective.chatterbox_ready
+          : showDisabled
+            ? true
+            : false;
   const showGateway = showTts && effective.tts_ready && providerReady;
   const showLaunch = showGateway && effective.runtime_ready;
 
@@ -844,6 +936,7 @@ function updateFlowVisibility() {
   document.getElementById('edge-section').classList.toggle('hidden', !showEdge);
   document.getElementById('eleven-section').classList.toggle('hidden', !showEleven);
   document.getElementById('supertonic-section').classList.toggle('hidden', !showSupertonic);
+  document.getElementById('chatterbox-section').classList.toggle('hidden', !showChatterbox);
   document.getElementById('gateway-section').classList.toggle('hidden', !showGateway);
   document.getElementById('launch-section').classList.toggle('hidden', !showLaunch);
 
@@ -852,6 +945,7 @@ function updateFlowVisibility() {
   setBadge('edge-badge', effective.edge_ready ? 'Validated' : 'Needs validation', effective.edge_ready);
   setBadge('eleven-badge', effective.eleven_ready ? 'Validated' : 'Needs validation', effective.eleven_ready);
   setBadge('supertonic-badge', effective.supertonic_ready ? 'Validated' : 'Needs validation', effective.supertonic_ready);
+  setBadge('chatterbox-badge', effective.chatterbox_ready ? 'Validated' : 'Needs validation', effective.chatterbox_ready);
   setBadge(
     'gateway-badge',
     effective.conversation_ready ? 'Validated' : 'Needs validation',
@@ -863,6 +957,7 @@ function updateFlowVisibility() {
   document.getElementById('continue-edge').disabled = !effective.edge_ready;
   document.getElementById('continue-eleven').disabled = !effective.eleven_ready;
   document.getElementById('continue-supertonic').disabled = !effective.supertonic_ready;
+  document.getElementById('continue-chatterbox').disabled = !effective.chatterbox_ready;
   document.getElementById('continue-gateway').disabled = !effective.conversation_ready;
   document.getElementById('launch-link').style.pointerEvents = effective.runtime_ready ? 'auto' : 'none';
   document.getElementById('launch-link').style.opacity = effective.runtime_ready ? '1' : '0.45';
@@ -949,6 +1044,7 @@ function populateFromState(state) {
   const ttsLabels = Object.fromEntries(state.catalog.tts_providers.map((item) => [item.id, item.label]));
   const supertonicVoiceLabels = Object.fromEntries((state.catalog.supertonic_voices || []).map((item) => [item.id, item.label]));
   const supertonicLanguageLabels = Object.fromEntries((state.catalog.supertonic_languages || []).map((item) => [item.id, item.label]));
+  const chatterboxDeviceLabels = Object.fromEntries((state.catalog.chatterbox_devices || []).map((item) => [item.id, item.label]));
   const presetLabels = Object.fromEntries((state.catalog.elevenlabs_presets || []).map((item) => [item.id, item.label]));
   updateSelectOptions(
     document.getElementById('tts-default'),
@@ -966,6 +1062,11 @@ function populateFromState(state) {
     supertonicLanguageLabels,
   );
   updateSelectOptions(
+    document.getElementById('chatterbox-device'),
+    (state.catalog.chatterbox_devices || []).map((item) => item.id),
+    chatterboxDeviceLabels,
+  );
+  updateSelectOptions(
     document.getElementById('eleven-preset'),
     (state.catalog.elevenlabs_presets || []).map((item) => item.id),
     presetLabels,
@@ -979,9 +1080,18 @@ function populateFromState(state) {
   document.getElementById('supertonic-python-path').value = tts.supertonic_python_path || state.hints.default_supertonic_python_path || '';
   document.getElementById('supertonic-voice').value = tts.supertonic_voice || state.hints.default_supertonic_voice || 'M4';
   document.getElementById('supertonic-language').value = tts.supertonic_language || state.hints.default_supertonic_language || 'en';
-  document.getElementById('supertonic-total-steps').value = String(tts.supertonic_total_steps ?? state.hints.default_supertonic_total_steps ?? 3);
-  document.getElementById('supertonic-speed').value = String(tts.supertonic_speed ?? state.hints.default_supertonic_speed ?? 1.05);
+  document.getElementById('supertonic-total-steps').value = String(tts.supertonic_total_steps ?? state.hints.default_supertonic_total_steps ?? 1);
+  document.getElementById('supertonic-speed').value = String(tts.supertonic_speed ?? state.hints.default_supertonic_speed ?? 1.2);
   document.getElementById('supertonic-note').textContent = state.hints.supertonic_note || '';
+  document.getElementById('chatterbox-python-path').value = tts.chatterbox_python_path || state.hints.default_chatterbox_python_path || '';
+  document.getElementById('chatterbox-voice-prompt-path').value = tts.chatterbox_voice_prompt_path || state.hints.default_chatterbox_voice_prompt_path || '';
+  document.getElementById('chatterbox-device').value = tts.chatterbox_device || state.hints.default_chatterbox_device || 'auto';
+  document.getElementById('chatterbox-exaggeration').value = String(tts.chatterbox_exaggeration ?? state.hints.default_chatterbox_exaggeration ?? 0.5);
+  document.getElementById('chatterbox-temperature').value = String(tts.chatterbox_temperature ?? state.hints.default_chatterbox_temperature ?? 0.8);
+  document.getElementById('chatterbox-top-p').value = String(tts.chatterbox_top_p ?? state.hints.default_chatterbox_top_p ?? 0.95);
+  document.getElementById('chatterbox-top-k').value = String(tts.chatterbox_top_k ?? state.hints.default_chatterbox_top_k ?? 1000);
+  document.getElementById('chatterbox-repetition-penalty').value = String(tts.chatterbox_repetition_penalty ?? state.hints.default_chatterbox_repetition_penalty ?? 1.2);
+  document.getElementById('chatterbox-note').textContent = state.hints.chatterbox_note || '';
   syncElevenVoiceSelectionFromId();
 
   const agent = state.saved.agent || {};
@@ -1066,6 +1176,9 @@ document.getElementById('whisper-endpoint-model').addEventListener('input', () =
   renderSttTargetControls();
   updateFlowVisibility();
 });
+document.getElementById('stt-target-xai').addEventListener('click', () => {
+  applySttTarget('xai');
+});
 document.getElementById('stt-target-remote').addEventListener('click', () => {
   applySttTarget('remote');
 });
@@ -1080,6 +1193,14 @@ document.getElementById('supertonic-voice').addEventListener('change', updateFlo
 document.getElementById('supertonic-language').addEventListener('change', updateFlowVisibility);
 document.getElementById('supertonic-total-steps').addEventListener('input', updateFlowVisibility);
 document.getElementById('supertonic-speed').addEventListener('input', updateFlowVisibility);
+document.getElementById('chatterbox-python-path').addEventListener('input', updateFlowVisibility);
+document.getElementById('chatterbox-voice-prompt-path').addEventListener('input', updateFlowVisibility);
+document.getElementById('chatterbox-device').addEventListener('change', updateFlowVisibility);
+document.getElementById('chatterbox-exaggeration').addEventListener('input', updateFlowVisibility);
+document.getElementById('chatterbox-temperature').addEventListener('input', updateFlowVisibility);
+document.getElementById('chatterbox-top-p').addEventListener('input', updateFlowVisibility);
+document.getElementById('chatterbox-top-k').addEventListener('input', updateFlowVisibility);
+document.getElementById('chatterbox-repetition-penalty').addEventListener('input', updateFlowVisibility);
 document.getElementById('eleven-api-key').addEventListener('input', updateFlowVisibility);
 document.getElementById('eleven-model').addEventListener('input', updateFlowVisibility);
 document.getElementById('eleven-preset').addEventListener('change', updateFlowVisibility);
@@ -1119,6 +1240,7 @@ document.getElementById('validate-stt').addEventListener('click', async () => {
         backend_models: {
           'faster-whisper': document.getElementById('model-faster-whisper').value,
           whisper: document.getElementById('model-whisper').value,
+          xai: 'xai-stt',
         },
       }),
     });
@@ -1194,6 +1316,38 @@ document.getElementById('validate-supertonic').addEventListener('click', async (
     scrollToSection('gateway-section');
   } catch (error) {
     setResult('supertonic-result', error.message, false);
+  }
+});
+
+document.getElementById('validate-chatterbox').addEventListener('click', async () => {
+  try {
+    setResult('chatterbox-result', 'Testing Chatterbox Turbo (first run may download and warm model files)...');
+    const payload = await fetchJson(appUrl('api/setup/validate-chatterbox-turbo'), {
+      method: 'POST',
+      body: JSON.stringify({
+        python_path: document.getElementById('chatterbox-python-path').value,
+        voice_prompt_path: document.getElementById('chatterbox-voice-prompt-path').value,
+        device: document.getElementById('chatterbox-device').value,
+        exaggeration: document.getElementById('chatterbox-exaggeration').value,
+        temperature: document.getElementById('chatterbox-temperature').value,
+        top_p: document.getElementById('chatterbox-top-p').value,
+        top_k: document.getElementById('chatterbox-top-k').value,
+        repetition_penalty: document.getElementById('chatterbox-repetition-penalty').value,
+      }),
+    });
+    document.getElementById('chatterbox-python-path').value = payload.python_path;
+    document.getElementById('chatterbox-voice-prompt-path').value = payload.voice_prompt_path;
+    document.getElementById('chatterbox-device').value = payload.device;
+    document.getElementById('chatterbox-exaggeration').value = String(payload.exaggeration);
+    document.getElementById('chatterbox-temperature').value = String(payload.temperature);
+    document.getElementById('chatterbox-top-p').value = String(payload.top_p);
+    document.getElementById('chatterbox-top-k').value = String(payload.top_k);
+    document.getElementById('chatterbox-repetition-penalty').value = String(payload.repetition_penalty);
+    setResult('chatterbox-result', `Validated Chatterbox Turbo on ${payload.device}.`, true);
+    await refreshState();
+    scrollToSection('gateway-section');
+  } catch (error) {
+    setResult('chatterbox-result', error.message, false);
   }
 });
 
@@ -1288,6 +1442,7 @@ document.getElementById('continue-tts').addEventListener('click', () => {
 document.getElementById('continue-edge').addEventListener('click', () => scrollToSection('gateway-section'));
 document.getElementById('continue-eleven').addEventListener('click', () => scrollToSection('gateway-section'));
 document.getElementById('continue-supertonic').addEventListener('click', () => scrollToSection('gateway-section'));
+document.getElementById('continue-chatterbox').addEventListener('click', () => scrollToSection('gateway-section'));
 document.getElementById('continue-gateway').addEventListener('click', () => scrollToSection('launch-summary'));
 
 refreshState()

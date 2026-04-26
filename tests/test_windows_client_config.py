@@ -11,7 +11,9 @@ def test_windows_client_uses_maras_switchboard_window_title():
     setup_html = (ROOT / "src/maras_switchboard/static/setup.html").read_text(encoding="utf-8")
 
     assert config["productName"] == "Mara's Switchboard"
-    assert """.title("Mara's Switchboard")""" in lib_rs
+    assert """const APP_WINDOW_TITLE: &str = "Mara's Switchboard";""" in lib_rs
+    assert """.title(APP_WINDOW_TITLE)""" in lib_rs
+    assert 'format!("{APP_WINDOW_TITLE}: {}", state.label())' in lib_rs
     assert "<title>Mara's Switchboard</title>" in setup_html
 
 

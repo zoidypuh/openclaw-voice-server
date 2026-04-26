@@ -205,6 +205,11 @@ def create_app() -> web.Application:
         result = await setup_service.validate_supertonic(payload)
         return web.json_response(result)
 
+    async def validate_chatterbox_turbo(request: web.Request) -> web.Response:
+        payload = await parse_json(request)
+        result = await setup_service.validate_chatterbox_turbo(payload)
+        return web.json_response(result)
+
     async def eleven_voices(request: web.Request) -> web.Response:
         result = await setup_service.elevenlabs_voices()
         return web.json_response(result)
@@ -243,6 +248,7 @@ def create_app() -> web.Application:
     add_route("POST", "/api/setup/validate-edge", validate_edge)
     add_route("POST", "/api/setup/validate-eleven-key", validate_eleven_key)
     add_route("POST", "/api/setup/validate-supertonic", validate_supertonic)
+    add_route("POST", "/api/setup/validate-chatterbox-turbo", validate_chatterbox_turbo)
     add_route("GET", "/api/setup/eleven-voices", eleven_voices)
     add_route("POST", "/api/setup/validate-eleven-voice", validate_eleven_voice)
     add_route("GET", "/ws/voice", runtime.handle_ws)

@@ -6,6 +6,7 @@ def test_setup_html_has_stt_target_switch_presets():
 
     assert 'id="stt-target-remote"' in setup_html
     assert 'id="stt-target-local-gpu"' in setup_html
+    assert 'id="stt-target-xai"' in setup_html
     assert 'id="stt-target-note"' in setup_html
     assert "const REMOTE_STT_MEMORY_KEY = 'maras-switchboard.voice.remote-stt.v1';" in setup_html
     assert "function resolveSttTarget() {" in setup_html
@@ -18,12 +19,13 @@ def test_setup_html_has_stt_target_switch_presets():
     assert "default_remote_whisper_endpoint_model" in setup_html
     assert "applySttTarget('remote');" in setup_html
     assert "applySttTarget('local-gpu');" in setup_html
+    assert "applySttTarget('xai');" in setup_html
 
 
 def test_setup_html_does_not_expose_legacy_tts_provider_controls():
     setup_html = (_static_dir() / "setup.html").read_text(encoding="utf-8")
 
-    for legacy_provider in ("piper", "chatterbox", "pockettts", "vibevoice", "neutts"):
+    for legacy_provider in ("piper", "pockettts", "vibevoice", "neutts"):
         assert legacy_provider not in setup_html.lower()
 
 
@@ -36,6 +38,12 @@ def test_setup_html_supports_core_tts_provider_state_tracking():
     assert 'id="supertonic-python-path"' in setup_html
     assert 'id="validate-supertonic"' in setup_html
     assert "api/setup/validate-supertonic" in setup_html
+    assert "provider === 'chatterbox-turbo'" in setup_html
+    assert 'id="chatterbox-section"' in setup_html
+    assert 'id="chatterbox-python-path"' in setup_html
+    assert 'id="chatterbox-voice-prompt-path"' in setup_html
+    assert 'id="validate-chatterbox"' in setup_html
+    assert "api/setup/validate-chatterbox-turbo" in setup_html
     assert "return 'gateway-section';" in setup_html
 
 

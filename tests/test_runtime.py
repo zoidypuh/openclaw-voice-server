@@ -147,6 +147,45 @@ def test_tts_settings_for_speaker_applies_supertonic_override():
     assert resolved["supertonic_speed"] == 1.2
 
 
+def test_tts_settings_for_speaker_applies_chatterbox_turbo_override():
+    settings = {
+        "tts": {
+            "default_provider": "supertonic",
+            "chatterbox_python_path": "/envs/chatterbox/bin/python",
+            "chatterbox_voice_prompt_path": "/voices/default.wav",
+            "chatterbox_device": "auto",
+            "chatterbox_exaggeration": 0.5,
+            "chatterbox_temperature": 0.8,
+            "chatterbox_top_p": 0.95,
+            "chatterbox_top_k": 1000,
+            "chatterbox_repetition_penalty": 1.2,
+            "speaker_overrides": {
+                "speaker-b": {
+                    "provider": "chatterbox-turbo",
+                    "voice_prompt_path": "/voices/speaker-b.wav",
+                    "device": "cpu",
+                    "exaggeration": 0.6,
+                    "temperature": 0.7,
+                    "top_p": 0.9,
+                    "top_k": 900,
+                    "repetition_penalty": 1.1,
+                }
+            },
+        }
+    }
+
+    resolved = VoiceRuntime._tts_settings_for_speaker(settings, "Speaker B")
+
+    assert resolved["default_provider"] == "chatterbox-turbo"
+    assert resolved["chatterbox_voice_prompt_path"] == "/voices/speaker-b.wav"
+    assert resolved["chatterbox_device"] == "cpu"
+    assert resolved["chatterbox_exaggeration"] == 0.6
+    assert resolved["chatterbox_temperature"] == 0.7
+    assert resolved["chatterbox_top_p"] == 0.9
+    assert resolved["chatterbox_top_k"] == 900
+    assert resolved["chatterbox_repetition_penalty"] == 1.1
+
+
 def test_handle_ws_interrupts_active_stream_and_rejects_overlap(monkeypatch):
     FakeWebSocketResponse.created.clear()
     transcribe_calls = 0
@@ -257,7 +296,12 @@ def test_handle_ws_applies_reply_style_directive_once(monkeypatch):
         ("First sentence.", "expressive"),
         ("Second sentence.", "expressive"),
     ]
-    assert {"status": "speaking"} in ws.json_messages
+    assert any(
+        message.get("status") == "speaking"
+        and message.get("source") == "voice_reply"
+        and message.get("request_id")
+        for message in ws.json_messages
+    )
 
 
 def test_handle_ws_keeps_short_real_speech_for_gateway(monkeypatch):
@@ -816,14 +860,16 @@ def test_handle_ws_uses_hermes_agent_when_selected(monkeypatch):
             use_context_files=True,
             use_memory=True,
             enabled_toolsets=None,
+            reply_sanity_check=True,
         ):
             assert project_root == "/tmp/hermes-agent"
-            assert gateway_url == "http://127.0.0.1:18789/v1/chat/completions"
-            assert gateway_token == "token"
-            assert gateway_model == "maras-switchboard:test"
+            assert gateway_url is None
+            assert gateway_token is None
+            assert gateway_model is None
             assert use_context_files is True
             assert use_memory is True
-            assert enabled_toolsets is None
+            assert enabled_toolsets == []
+            assert reply_sanity_check is True
 
         async def stream_reply(self, text, abort_event):
             hermes_calls.append(text)

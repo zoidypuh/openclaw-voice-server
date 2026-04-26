@@ -8,6 +8,13 @@ from typing import Any
 from .catalog import ALL_SECRET_ENV_KEYS, CONFIG_ENV_TO_CONFIG, default_config, normalize_agent_backend
 
 
+COMPAT_SECRET_ENV_KEYS = {
+    "AGENT_SWITCHBOARD_GATEWAY_TOKEN",
+    "OPENCLAW_VOICE_GATEWAY_TOKEN",
+    "OPENCLAW_VOICE_ELEVENLABS_API_KEY",
+}
+
+
 def _parse_scalar(value: str) -> Any:
     text = value.strip()
     if not text:
@@ -110,7 +117,7 @@ class ConfigStore:
                     continue
                 key, value = parsed
                 values[key] = value
-        for key in ALL_SECRET_ENV_KEYS | set(CONFIG_ENV_TO_CONFIG):
+        for key in ALL_SECRET_ENV_KEYS | COMPAT_SECRET_ENV_KEYS | set(CONFIG_ENV_TO_CONFIG):
             env_value = os.environ.get(key)
             if env_value is not None:
                 values[key] = env_value
@@ -148,11 +155,20 @@ class ConfigStore:
                 env_values,
                 "MARAS_SWITCHBOARD_GATEWAY_TOKEN",
                 "AGENTIC_SWITCHBOARD_GATEWAY_TOKEN",
+                "AGENT_SWITCHBOARD_GATEWAY_TOKEN",
+                "OPENCLAW_VOICE_GATEWAY_TOKEN",
             ),
             "elevenlabs_api_key": _first_env_value(
                 env_values,
                 "MARAS_SWITCHBOARD_ELEVENLABS_API_KEY",
                 "AGENTIC_SWITCHBOARD_ELEVENLABS_API_KEY",
+                "OPENCLAW_VOICE_ELEVENLABS_API_KEY",
+            ),
+            "xai_api_key": _first_env_value(
+                env_values,
+                "XAI_API_KEY",
+                "MARAS_SWITCHBOARD_XAI_API_KEY",
+                "AGENTIC_SWITCHBOARD_XAI_API_KEY",
             ),
         }
         return config
@@ -216,7 +232,10 @@ class ConfigStore:
                 "token_present": bool(settings["secrets"]["gateway_token"]),
             },
             "agent": settings["agent"],
-            "stt": settings["stt"],
+            "stt": {
+                **settings["stt"],
+                "xai_api_key_present": bool(settings["secrets"]["xai_api_key"]),
+            },
             "tts": {
                 **settings["tts"],
                 "elevenlabs_api_key_present": bool(settings["secrets"]["elevenlabs_api_key"]),

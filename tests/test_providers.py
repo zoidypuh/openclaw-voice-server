@@ -1,17 +1,29 @@
 import asyncio
+import base64
+import builtins
+import json
 import sys
+import threading
 import types
 
+import numpy as np
+import pytest
+
 from maras_switchboard.stt import backends as stt_module
+from maras_switchboard.stt import silero_vad as silero_vad_module
+from maras_switchboard.stt import xai as xai_module
 from maras_switchboard.tts import backends as tts_module
+from maras_switchboard.tts import chatterbox_turbo as chatterbox_module
 from maras_switchboard.tts import edge as edge_module
 from maras_switchboard.tts import elevenlabs as elevenlabs_module
 from maras_switchboard.tts import supertonic as supertonic_module
 from maras_switchboard.tts.backends import (
     ElevenLabsSynthesizer,
     list_elevenlabs_voices,
+    normalize_chatterbox_turbo_device,
     normalize_elevenlabs_preset,
     normalize_supertonic_voice,
+    validate_chatterbox_turbo_voice,
     validate_elevenlabs_voice,
     validate_edge_voice,
     validate_supertonic_voice,
@@ -149,8 +161,167 @@ def test_normalize_supertonic_voice_uppercases_known_voice():
     assert normalize_supertonic_voice("m4") == "M4"
 
 
-def test_normalize_supertonic_total_steps_defaults_to_three():
-    assert supertonic_module.normalize_supertonic_total_steps(None) == 3
+def test_normalize_supertonic_total_steps_defaults_to_one():
+    assert supertonic_module.normalize_supertonic_total_steps(None) == 1
+
+
+def test_supertonic_synthesize_does_not_block_event_loop(monkeypatch, tmp_path):
+    python_path = tmp_path / "python"
+    python_path.write_text("#!/bin/sh\n", encoding="utf-8")
+    python_path.chmod(0o755)
+    started = threading.Event()
+    release = threading.Event()
+
+    def fake_run(text, *, python_path, voice, language, total_steps, speed):
+        started.set()
+        release.wait(timeout=0.2)
+        return b"RIFFdemo"
+
+    monkeypatch.setattr(supertonic_module, "_run_supertonic_synthesis", fake_run)
+
+    async def scenario():
+        synthesizer = supertonic_module.SupertonicSynthesizer(
+            python_path=str(python_path),
+            voice="M4",
+            language="en",
+            total_steps=1,
+            speed=1.2,
+        )
+        task = asyncio.create_task(synthesizer.synthesize("hello"))
+        deadline = asyncio.get_running_loop().time() + 0.1
+        while not started.is_set() and asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(0.005)
+        event_loop_remained_responsive = started.is_set() and not task.done()
+        release.set()
+        audio = await task
+        return event_loop_remained_responsive, audio
+
+    responsive, audio = asyncio.run(scenario())
+
+    assert responsive is True
+    assert audio == b"RIFFdemo"
+
+
+def test_validate_chatterbox_turbo_voice_uses_external_python_and_prompt(monkeypatch, tmp_path):
+    python_path = tmp_path / "python"
+    python_path.write_text("#!/bin/sh\n", encoding="utf-8")
+    python_path.chmod(0o755)
+    voice_prompt_path = tmp_path / "voice.wav"
+    voice_prompt_path.write_bytes(b"RIFFdemo")
+    calls = []
+
+    def fake_run(
+        text,
+        *,
+        python_path,
+        voice_prompt_path,
+        device,
+        exaggeration,
+        temperature,
+        top_p,
+        top_k,
+        repetition_penalty,
+    ):
+        calls.append(
+            {
+                "text": text,
+                "python_path": python_path,
+                "voice_prompt_path": voice_prompt_path,
+                "device": device,
+                "exaggeration": exaggeration,
+                "temperature": temperature,
+                "top_p": top_p,
+                "top_k": top_k,
+                "repetition_penalty": repetition_penalty,
+            }
+        )
+        return b"RIFFdemo"
+
+    monkeypatch.setattr(chatterbox_module, "_run_chatterbox_turbo_synthesis", fake_run)
+
+    result = asyncio.run(
+        validate_chatterbox_turbo_voice(
+            python_path=str(python_path),
+            voice_prompt_path=str(voice_prompt_path),
+            device="gpu",
+            exaggeration="0.6",
+            temperature="0.75",
+            top_p="0.9",
+            top_k="900",
+            repetition_penalty="1.1",
+        )
+    )
+
+    assert calls == [
+        {
+            "text": "Mara's Switchboard setup validation.",
+            "python_path": str(python_path.resolve()),
+            "voice_prompt_path": str(voice_prompt_path.resolve()),
+            "device": "cuda",
+            "exaggeration": 0.6,
+            "temperature": 0.75,
+            "top_p": 0.9,
+            "top_k": 900,
+            "repetition_penalty": 1.1,
+        }
+    ]
+    assert result == {
+        "ok": True,
+        "python_path": str(python_path.resolve()),
+        "voice_prompt_path": str(voice_prompt_path.resolve()),
+        "device": "cuda",
+        "exaggeration": 0.6,
+        "temperature": 0.75,
+        "top_p": 0.9,
+        "top_k": 900,
+        "repetition_penalty": 1.1,
+    }
+
+
+def test_normalize_chatterbox_turbo_device_accepts_gpu_alias():
+    assert normalize_chatterbox_turbo_device("gpu") == "cuda"
+
+
+def test_chatterbox_turbo_worker_client_skips_leaked_stdout(monkeypatch):
+    class FakeStdin:
+        def write(self, text):
+            self.text = text
+
+        def flush(self):
+            pass
+
+    class FakeStdout:
+        def __init__(self):
+            self.lines = [
+                "Loading Chatterbox model...\n",
+                json.dumps({"ok": True, "audio": base64.b64encode(b"RIFFdemo").decode("ascii")}) + "\n",
+            ]
+
+        def readline(self):
+            return self.lines.pop(0) if self.lines else ""
+
+    class FakeProcess:
+        stdin = FakeStdin()
+        stdout = FakeStdout()
+
+        def poll(self):
+            return None
+
+    client = chatterbox_module._ChatterboxTurboWorkerClient("/tmp/python")
+    monkeypatch.setattr(client, "_start", lambda: setattr(client, "_process", FakeProcess()))
+
+    audio = client.synthesize(
+        text="hello",
+        voice_prompt_path="/tmp/voice.wav",
+        device="cpu",
+        exaggeration=0.5,
+        temperature=0.8,
+        top_p=0.95,
+        top_k=1000,
+        repetition_penalty=1.2,
+    )
+
+    assert audio == b"RIFFdemo"
 
 
 def test_validate_stt_selection_normalizes_gpu_to_cuda(monkeypatch):
@@ -265,6 +436,77 @@ def test_validate_stt_selection_sends_remote_whisper_override_model(monkeypatch)
     )
 
     assert result["results"][0]["whisper_endpoint_model"] == "mlx-community/whisper-large-v3-mlx"
+
+
+def test_validate_stt_selection_uses_xai_service(monkeypatch):
+    install_calls = []
+
+    class FakeClient:
+        def post(self, url, headers, data, files):
+            assert url == "https://api.x.ai/v1/stt"
+            assert headers["Authorization"] == "Bearer xai-test"
+            assert data == {"format": "true", "language": "en"}
+            assert files["file"][0] == "audio.wav"
+            assert files["file"][2] == "audio/wav"
+            return types.SimpleNamespace(
+                raise_for_status=lambda: None,
+                json=lambda: {"text": "ok"},
+            )
+
+    monkeypatch.setattr(
+        stt_module,
+        "ensure_python_package",
+        lambda requirement, import_name: install_calls.append((requirement, import_name)) or {"installed": False},
+    )
+    monkeypatch.setattr(xai_module.httpx, "Client", lambda timeout: FakeClient())
+
+    result = stt_module.validate_stt_selection(
+        {
+            "enabled_backends": ["xai"],
+            "default_backend": "xai",
+            "language": "en",
+            "device": "cpu",
+            "compute_type": "int8",
+            "xai_api_key": "xai-test",
+            "backend_models": {},
+        }
+    )
+
+    assert install_calls == []
+    assert result["results"][0]["backend"] == "xai"
+    assert result["results"][0]["model"] == "xai-stt"
+
+
+def test_xai_transcriber_requires_api_key(monkeypatch):
+    monkeypatch.delenv("XAI_API_KEY", raising=False)
+    monkeypatch.delenv("MARAS_SWITCHBOARD_XAI_API_KEY", raising=False)
+    transcriber = xai_module.XAITranscriber(
+        model="xai-stt",
+        language="en",
+        device="cpu",
+        compute_type="int8",
+    )
+
+    with pytest.raises(stt_module.ValidationError, match="Set XAI_API_KEY"):
+        transcriber.load()
+
+
+def test_audio_contains_speech_falls_back_when_faster_whisper_is_missing(monkeypatch):
+    real_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "faster_whisper.vad" or name.startswith("faster_whisper."):
+            raise ModuleNotFoundError("No module named 'faster_whisper'", name="faster_whisper")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    t = np.arange(3200, dtype=np.float32) / 16000
+    speech = np.sin(2 * np.pi * 220 * t) * 0.08
+    silence = np.zeros(3200, dtype=np.float32)
+
+    assert silero_vad_module.audio_contains_speech((speech * 32767).astype(np.int16).tobytes()) is True
+    assert silero_vad_module.audio_contains_speech(silence.astype(np.int16).tobytes()) is False
 
 
 def test_build_transcriber_uses_local_whisper_when_endpoint_is_blank(monkeypatch):

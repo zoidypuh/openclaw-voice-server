@@ -24,6 +24,11 @@ def test_reply_looks_like_backend_error_detects_retry_error_text():
     assert not hermes_module._reply_looks_like_backend_error("Okay, got it.")
 
 
+def test_empty_enabled_toolsets_stays_empty_for_low_latency_voice_chat():
+    assert hermes_module._normalize_enabled_toolsets([]) == []
+    assert hermes_module._normalize_enabled_toolsets(None) == []
+
+
 def test_format_recent_voice_turns_keeps_only_last_three():
     formatted = hermes_module._format_recent_voice_turns(
         [
@@ -101,7 +106,7 @@ def test_hermes_conversation_agent_replaces_incoherent_reply_with_huh(monkeypatc
     assert len(instances) == 2
     main_session, sanity_session = instances
     assert main_session.replace_calls == ["Huh?"]
-    assert main_session.prompts == ["that would help"]
+    assert main_session.prompts[0].endswith("User request: that would help")
     assert "Current user: that would help" in sanity_session.prompts[0]
     assert "Candidate reply: <voice> You want it? You got it!" in sanity_session.prompts[0]
 
@@ -208,7 +213,7 @@ def test_hermes_conversation_agent_skips_sanity_check_for_backend_error_reply(mo
     assert len(instances) == 2
     main_session, sanity_session = instances
     assert main_session.replace_calls == []
-    assert main_session.prompts == ["hello?"]
+    assert main_session.prompts[0].endswith("User request: hello?")
     assert sanity_session.prompts == []
 
 
@@ -274,6 +279,41 @@ def test_hermes_conversation_agent_sanity_prompt_uses_sliding_last_three_turns(m
     assert "Turn 3 user: u4" in last_prompt
     assert "Current user: u5" in last_prompt
     assert "Candidate reply: a5" in last_prompt
+
+
+def test_voice_context_blob_includes_fresh_digest(tmp_path):
+    digest_path = tmp_path / "digest.txt"
+    digest_path.write_text(
+        "stable preference\ncurrent thread\ncurrent thread\nimportant decision\n",
+        encoding="utf-8",
+    )
+
+    blob = hermes_module._build_voice_context_blob("hello mara", digest_path=digest_path)
+
+    assert "Voice context digest (last 24h):" in blob
+    assert blob.count("current thread") == 1
+    assert "stable preference" in blob
+    assert "Current user message: hello mara" in blob
+
+
+def test_write_voice_digest_deduplicates_and_persists(tmp_path):
+    digest_path = tmp_path / "digest.txt"
+    digest_path.write_text("alpha\n", encoding="utf-8")
+
+    written = hermes_module._write_voice_digest(
+        {
+            "user": "alpha",
+            "assistant": "beta",
+            "thread": "alpha",
+            "decision": "ASK",
+            "note": "beta",
+        },
+        path=digest_path,
+    )
+
+    assert written == digest_path
+    text = digest_path.read_text(encoding="utf-8")
+    assert text.splitlines() == ["alpha", "beta", "ASK"]
 
 
 def test_hermes_session_keeps_nested_local_proxy_as_custom_openai(monkeypatch, tmp_path):

@@ -1,9 +1,8 @@
 from maras_switchboard.agents import build_conversation_agent
 
 
-def test_build_conversation_agent_passes_gateway_settings_to_hermes_backend():
+def test_build_conversation_agent_lets_hermes_use_its_configured_model():
     captured = {}
-    gateway_token = "unit-test-gateway-token"
 
     class FakeHermesAgent:
         def __init__(self, **kwargs):
@@ -16,6 +15,7 @@ def test_build_conversation_agent_passes_gateway_settings_to_hermes_backend():
             "use_context_files": False,
             "use_memory": True,
             "toolsets": ["browser", "file"],
+            "reply_sanity_check": False,
         },
         "gateway": {
             "url": "http://127.0.0.1:8317/v1",
@@ -23,7 +23,7 @@ def test_build_conversation_agent_passes_gateway_settings_to_hermes_backend():
             "session_key": "voice-main",
         },
         "secrets": {
-            "gateway_token": gateway_token,
+            "gateway_token": "unit-test-gateway-token",
         },
     }
 
@@ -31,10 +31,37 @@ def test_build_conversation_agent_passes_gateway_settings_to_hermes_backend():
 
     assert captured == {
         "project_root": "/tmp/hermes-agent",
-        "gateway_url": "http://127.0.0.1:8317/v1",
-        "gateway_token": gateway_token,
-        "gateway_model": "gpt-5.4",
         "use_context_files": False,
         "use_memory": True,
         "enabled_toolsets": ["browser", "file"],
+        "reply_sanity_check": False,
     }
+
+
+def test_build_conversation_agent_restores_hermes_context_without_tools_by_default():
+    captured = {}
+
+    class FakeHermesAgent:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    settings = {
+        "agent": {
+            "backend": "hermes",
+            "hermes_root": "/tmp/hermes-agent",
+        },
+        "gateway": {
+            "url": "http://127.0.0.1:8317/v1",
+            "model": "gpt-5.4",
+            "session_key": "voice-main",
+        },
+        "secrets": {
+            "gateway_token": "unit-test-gateway-token",
+        },
+    }
+
+    build_conversation_agent(settings, hermes_agent_cls=FakeHermesAgent)
+
+    assert captured["use_context_files"] is True
+    assert captured["use_memory"] is True
+    assert captured["enabled_toolsets"] == []

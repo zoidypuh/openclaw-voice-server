@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import contextlib
 import json
@@ -36,8 +37,8 @@ SUPERTONIC_SUPPORTED_LANGUAGES = {
 }
 SUPERTONIC_DEFAULT_VOICE = "M4"
 SUPERTONIC_DEFAULT_LANGUAGE = "en"
-SUPERTONIC_DEFAULT_TOTAL_STEPS = 3
-SUPERTONIC_DEFAULT_SPEED = 1.05
+SUPERTONIC_DEFAULT_TOTAL_STEPS = 1
+SUPERTONIC_DEFAULT_SPEED = 1.2
 _WORKER_CACHE: dict[str, "_SupertonicWorkerClient"] = {}
 _WORKER_CACHE_LOCK = threading.Lock()
 
@@ -322,7 +323,8 @@ class SupertonicSynthesizer(BaseSynthesizer):
     ) -> bytes:
         if not text.strip():
             return b""
-        return _run_supertonic_synthesis(
+        return await asyncio.to_thread(
+            _run_supertonic_synthesis,
             text,
             python_path=self.python_path,
             voice=self.voice,

@@ -305,13 +305,10 @@
     display: block;
   }
   #state-visual-overlay {
-    position: absolute;
-    inset: auto 0 0 0;
+    width: 100%;
     display: grid;
     gap: 0.55rem;
-    padding: 1rem 1rem 0.95rem;
-    background: linear-gradient(180deg, rgba(7,11,15,0) 0%, rgba(7,11,15,0.72) 26%, rgba(7,11,15,0.92) 100%);
-    pointer-events: none;
+    padding: 0;
   }
   .visual-caption {
     display: grid;
@@ -320,7 +317,7 @@
     padding: 0.45rem 0.65rem 0.5rem;
     border: 1px solid rgba(255,255,255,0.09);
     border-radius: 14px;
-    background: rgba(0,0,0,0.22);
+    background: rgba(6,11,15,0.82);
     backdrop-filter: blur(6px);
   }
   .visual-caption-label {
@@ -333,7 +330,7 @@
     color: #d9dde2;
     font-size: 0.9rem;
     line-height: 1.32;
-    max-height: 11.8rem;
+    max-height: min(28vh, 13rem);
     overflow-y: auto;
     scrollbar-width: thin;
     scrollbar-color: rgba(255,255,255,0.18) transparent;
@@ -376,7 +373,7 @@
 <a id="setup-link" href="./setup">setup</a>
 <div id="version">v0.1 <span class="alpha">ALPHA</span></div>
 <main>
-  <div id="shortcut-command">ctrl+alt+shift+a hold to talk</div>
+  <div id="shortcut-command">space / ctrl+alt+shift+a hold to talk</div>
   <div id="ascii-title" aria-label="Mara's Switchboard">
     <pre class="ascii-title-line ascii-title-mara"> __  __                 _
 |  \/  | __ _ _ __ __ _( )___
@@ -408,7 +405,7 @@
         <span>wait after speak</span>
         <span id="wait-after-speak-value" class="tuning-value"></span>
       </span>
-      <input id="wait-after-speak" class="tuning-slider" type="range" min="1500" max="4000" step="50">
+      <input id="wait-after-speak" class="tuning-slider" type="range" min="300" max="2500" step="25">
     </label>
     <label class="tuning-row" for="turn-end-threshold">
       <span class="tuning-label">
@@ -421,11 +418,11 @@
   <div id="thinking-timer" class="hidden"></div>
   <div id="state-visual-shell" aria-label="voice state display">
     <canvas id="state-visual" width="520" height="312"></canvas>
-    <div id="state-visual-overlay">
-      <div id="transcript-caption" class="visual-caption empty">
-        <div class="visual-caption-label">conversation</div>
-        <div id="transcript-log" class="visual-caption-log"></div>
-      </div>
+  </div>
+  <div id="state-visual-overlay">
+    <div id="transcript-caption" class="visual-caption empty">
+      <div class="visual-caption-label">conversation</div>
+      <div id="transcript-log" class="visual-caption-log"></div>
     </div>
   </div>
 </main>
@@ -514,10 +511,14 @@ let bargeInGraceUntil = 0;
 let pendingBargeInAudio = null;
 let pendingBargeInCommitMeta = null;
 let holdToTalkActive = false;
+let browserHoldToTalkShortcutActive = false;
+let browserHoldToTalkShortcutCode = '';
 let runtimeStatePromise = null;
 let playbackUnlocked = false;
 let webAudioUnlocked = false;
 let pendingServerSpeakRequestId = '';
+let pendingPlaybackRequestId = '';
+let pendingPlaybackSource = '';
 let pendingAudioMimeType = 'audio/mpeg';
 let currentAudioSourceNode = null;
 let pendingManualPlaybackItem = null;
@@ -532,9 +533,9 @@ let transcriptLogEntries = [];
 let activeReplyEntryId = '';
 let transcriptEntryCounter = 0;
 let settings = {
-  silence_ms: 1700,
+  silence_ms: 500,
   silence_threshold: 0.015,
-  min_speech_ms: 500,
+  min_speech_ms: 350,
 };
 
 const TUNING_STORAGE_KEY = 'maras-switchboard.voice.tuning.v1';
@@ -542,15 +543,15 @@ const TUNING_PANEL_STORAGE_KEY = 'maras-switchboard.voice.tuning-panel.v1';
 const INTERRUPT_MODE_STORAGE_KEY = 'maras-switchboard.voice.interrupt-mode.v1';
 const DEFAULT_TUNING = {
   inputThresholdDb: -41,
-  waitAfterSpeakMs: 1700,
+  waitAfterSpeakMs: 500,
 };
 const WAIT_AFTER_SPEAK_STORAGE_LOCK_KEY = 'waitAfterSpeakMsLocked';
-const TURN_COMMIT_MIN_SPEECH_MS = 650;
+const TURN_COMMIT_MIN_SPEECH_MS = 350;
 const LEVEL_DB_FLOOR = -60;
 const LEVEL_DB_CEILING = 0;
 const LEVEL_PEAK_HOLD_MS = 5000;
-const WAIT_AFTER_SPEAK_MIN_MS = 1500;
-const WAIT_AFTER_SPEAK_MAX_MS = 4000;
+const WAIT_AFTER_SPEAK_MIN_MS = 300;
+const WAIT_AFTER_SPEAK_MAX_MS = 2500;
 const MAX_BUFFERED_TURN_MS = 12000;
 const TARGET_CAPTURE_SAMPLE_RATE = 16000;
 const SPEECH_ZCR_MIN = 0.008;
@@ -562,14 +563,14 @@ const INTERRUPT_ZCR_MAX = 0.34;
 const INTERRUPT_CREST_MAX = 14.0;
 const SPEECH_GATE_HOLD_MS = 220;
 const INTERRUPT_COOLDOWN_MS = 300;
-const PLAYBACK_NO_BARGE_IN_MS = 800;
-const BARGE_IN_MIN_SPEECH_MS = 450;
-const BARGE_IN_SILENCE_MS = 220;
+const PLAYBACK_NO_BARGE_IN_MS = 450;
+const BARGE_IN_MIN_SPEECH_MS = 320;
+const BARGE_IN_SILENCE_MS = 160;
 const BARGE_IN_MAX_MS = 1600;
 const BARGE_IN_ARM_CONFIDENCE = 0.32;
 const BARGE_IN_READY_CONFIDENCE = 0.78;
 const BARGE_IN_CONFIDENCE_MAX = 1.25;
-const APPLE_PLAYBACK_NO_BARGE_IN_MS = 1800;
+const APPLE_PLAYBACK_NO_BARGE_IN_MS = 1000;
 const APPLE_BARGE_IN_MIN_SPEECH_MS = 220;
 const APPLE_BARGE_IN_SILENCE_MS = 220;
 const APPLE_BARGE_IN_MAX_MS = 1200;
@@ -1129,6 +1130,11 @@ function configureTuningControls() {
   });
 
   document.getElementById('interrupt-btn').addEventListener('click', () => {
+    if (isInterruptibleAudioState() || currentState === 'thinking' || busy) {
+      setInterruptMode('barge-in');
+      manualInterrupt();
+      return;
+    }
     setInterruptMode(interruptMode === 'barge-in' ? 'off' : 'barge-in');
   });
 }
@@ -1159,8 +1165,9 @@ function applyMicMuteState() {
   if (!stream) {
     return;
   }
+  const micEnabled = !muted || shouldListenForBargeInWhileMuted();
   for (const track of stream.getAudioTracks()) {
-    track.enabled = !muted;
+    track.enabled = micEnabled;
   }
 }
 
@@ -1203,8 +1210,116 @@ function setInterruptMode(nextMode) {
   if (!playbackSoftPaused) {
     resetBargeInCapture();
   }
+  applyMicMuteState();
   updateControlStates();
   return interruptMode;
+}
+
+function eventTargetAcceptsTextInput(event) {
+  const target = event?.target;
+  if (!target || target === document.body || target === document.documentElement) {
+    return false;
+  }
+  if (target.isContentEditable) {
+    return true;
+  }
+  const tagName = String(target.tagName || '').toUpperCase();
+  return tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT' || tagName === 'BUTTON';
+}
+
+function keyboardEventHasPlainModifierState(event) {
+  return !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
+}
+
+function keyboardEventIsHoldToTalkShortcut(event) {
+  if (event.code === 'Space' && keyboardEventHasPlainModifierState(event)) {
+    return true;
+  }
+  return event.code === 'KeyA' && event.ctrlKey && event.altKey && event.shiftKey && !event.metaKey;
+}
+
+function holdToTalkShortcutShouldEnd(event) {
+  if (!browserHoldToTalkShortcutActive) {
+    return false;
+  }
+  if (event.code === browserHoldToTalkShortcutCode) {
+    return true;
+  }
+  return browserHoldToTalkShortcutCode === 'KeyA'
+    && ['ControlLeft', 'ControlRight', 'AltLeft', 'AltRight', 'ShiftLeft', 'ShiftRight'].includes(event.code);
+}
+
+function endBrowserHoldToTalkShortcut() {
+  if (!browserHoldToTalkShortcutActive) {
+    return;
+  }
+  browserHoldToTalkShortcutActive = false;
+  browserHoldToTalkShortcutCode = '';
+  endHoldToTalk();
+}
+
+function handleBrowserShortcutKeyDown(event) {
+  if (eventTargetAcceptsTextInput(event)) {
+    return;
+  }
+  if (keyboardEventIsHoldToTalkShortcut(event)) {
+    event.preventDefault();
+    if (event.repeat || browserHoldToTalkShortcutActive) {
+      return;
+    }
+    browserHoldToTalkShortcutActive = true;
+    browserHoldToTalkShortcutCode = event.code;
+    void beginHoldToTalk();
+    return;
+  }
+  if (!keyboardEventHasPlainModifierState(event) || event.repeat) {
+    return;
+  }
+  if (event.code === 'KeyP') {
+    event.preventDefault();
+    void setPausedState(!paused);
+    return;
+  }
+  if (event.code === 'KeyM') {
+    event.preventDefault();
+    const nextMuted = !muted;
+    setMutedState(nextMuted);
+    if (!nextMuted && paused) {
+      void setPausedState(false);
+    }
+    return;
+  }
+  if (event.code === 'Escape' || event.code === 'KeyI') {
+    event.preventDefault();
+    manualInterrupt();
+    return;
+  }
+  if (event.code === 'KeyB') {
+    event.preventDefault();
+    setInterruptMode(interruptMode === 'barge-in' ? 'off' : 'barge-in');
+  }
+}
+
+function handleBrowserShortcutKeyUp(event) {
+  if (holdToTalkShortcutShouldEnd(event)) {
+    event.preventDefault();
+    endBrowserHoldToTalkShortcut();
+    return;
+  }
+  if (eventTargetAcceptsTextInput(event)) {
+    return;
+  }
+}
+
+function bindBrowserKeyboardShortcuts() {
+  document.addEventListener('keydown', handleBrowserShortcutKeyDown);
+  document.addEventListener('keyup', handleBrowserShortcutKeyUp);
+  window.addEventListener('blur', endBrowserHoldToTalkShortcut);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      endBrowserHoldToTalkShortcut();
+    }
+  });
 }
 
 function resolveShellState() {
@@ -2265,6 +2380,7 @@ function rearmVoiceInterrupt() {
 
 function setReplyActive(active) {
   replyActive = active;
+  applyMicMuteState();
 }
 
 function isInterruptibleAudioState() {
@@ -2287,6 +2403,10 @@ function isBargeInState() {
     && !isHoldToTalkActive()
     && (replyActive || currentAudio || audioQueue.length > 0),
   );
+}
+
+function shouldListenForBargeInWhileMuted() {
+  return muted && isBargeInState();
 }
 
 function flattenInt16Chunks(chunks) {
@@ -2382,7 +2502,7 @@ function resumePlaybackAfterBargeIn() {
 function promoteBargeIn(bufferedAudio) {
   playbackSoftPaused = false;
   pendingBargeInAudio = bufferedAudio;
-  requestInterrupt({ keepPaused: false });
+  requestInterrupt({ keepPaused: false, preservePendingInput: true });
 }
 
 function maybeCaptureBargeInProbe(pcm, displayedLevel, speechLike, frameMs, now) {
@@ -2659,19 +2779,23 @@ async function connect() {
   };
   ws.onmessage = async (event) => {
     if (event.data instanceof ArrayBuffer) {
+      const playbackRequestId = pendingPlaybackRequestId || pendingServerSpeakRequestId;
+      const playbackSource = pendingPlaybackSource;
       const serverSpeakRequestId = pendingServerSpeakRequestId;
+      pendingPlaybackRequestId = '';
+      pendingPlaybackSource = '';
       pendingServerSpeakRequestId = '';
       if (paused || interruptPending) {
-        if (serverSpeakRequestId) {
-          sendPlaybackRejection(serverSpeakRequestId, paused ? 'The voice client is paused.' : 'Playback was interrupted before it could start.');
+        if (playbackRequestId) {
+          sendPlaybackRejection(playbackRequestId, paused ? 'The voice client is paused.' : 'Playback was interrupted before it could start.');
         }
         return;
       }
       try {
         await ensurePlaybackReady();
       } catch (error) {
-        if (serverSpeakRequestId) {
-          sendPlaybackRejection(serverSpeakRequestId, error?.message || error);
+        if (playbackRequestId) {
+          sendPlaybackRejection(playbackRequestId, error?.message || error);
         }
         return;
       }
@@ -2679,7 +2803,8 @@ async function connect() {
       audioQueue.push({
         buffer: event.data,
         mimeType: pendingAudioMimeType || 'audio/mpeg',
-        requestId: serverSpeakRequestId,
+        requestId: playbackRequestId,
+        source: playbackSource,
       });
       if (!playbackSoftPaused) {
         setState('speaking');
@@ -2719,12 +2844,20 @@ async function connect() {
       }
       return;
     }
+    if (data.status === 'speaking' && data.request_id) {
+      pendingPlaybackRequestId = String(data.request_id || '');
+      pendingPlaybackSource = String(data.source || '');
+    }
     if (data.source === 'server_speak') {
       if (data.status === 'speaking') {
         pendingServerSpeakRequestId = String(data.request_id || '');
         pendingAudioMimeType = String(data.audio_mime_type || pendingAudioMimeType || 'audio/mpeg');
       } else if (data.status === 'idle') {
         pendingServerSpeakRequestId = '';
+        if (String(data.request_id || '') === pendingPlaybackRequestId) {
+          pendingPlaybackRequestId = '';
+          pendingPlaybackSource = '';
+        }
       }
     }
     if (data.status === 'thinking') {
@@ -2820,7 +2953,7 @@ async function ensureAudio() {
   applyMicMuteState();
   analyser = audioCtx.createAnalyser();
   analyser.fftSize = 2048;
-  processor = audioCtx.createScriptProcessor(4096, 1, 1);
+  processor = audioCtx.createScriptProcessor(2048, 1, 1);
   const processorSink = audioCtx.createGain();
   processorSink.gain.value = 0;
   source.connect(analyser);
@@ -2853,7 +2986,8 @@ function onAudioProcess(event) {
     resetInterruptSpeechDetection();
     return;
   }
-  if (muted) {
+  const mutedBargeIn = shouldListenForBargeInWhileMuted();
+  if (muted && !mutedBargeIn) {
     resetCaptureBuffer();
     resetInterruptSpeechDetection();
     resetBargeInCapture();
@@ -2912,6 +3046,10 @@ function onAudioProcess(event) {
   setLevelDb(displayedLevel);
   const frameMs = (pcm.length / TARGET_CAPTURE_SAMPLE_RATE) * 1000;
   if (maybeCaptureBargeInProbe(pcm, displayedLevel, interruptSpeechLike, frameMs, now)) {
+    return;
+  }
+  if (muted) {
+    resetCaptureBuffer();
     return;
   }
   if (paused) {
@@ -3068,6 +3206,7 @@ setState('paused');
 resizeStateVisual();
 configureSetupLink();
 configureTuningControls();
+bindBrowserKeyboardShortcuts();
 updateControlStates();
 
 window.__marasSwitchboardManualInterrupt = manualInterrupt;

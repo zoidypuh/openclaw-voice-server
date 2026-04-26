@@ -23,15 +23,12 @@ def build_conversation_agent(
     backend = normalize_agent_backend((settings.get("agent") or {}).get("backend"))
     if backend == "hermes":
         agent_settings = settings.get("agent") or {}
-        gateway_settings = _gateway_agent_settings(settings)
         return hermes_agent_cls(
             project_root=str(agent_settings.get("hermes_root") or "").strip() or None,
-            gateway_url=gateway_settings["url"],
-            gateway_token=gateway_settings["token"],
-            gateway_model=gateway_settings["model"],
             use_context_files=bool(agent_settings.get("use_context_files", True)),
             use_memory=bool(agent_settings.get("use_memory", True)),
-            enabled_toolsets=agent_settings.get("toolsets"),
+            enabled_toolsets=agent_settings.get("toolsets", []),
+            reply_sanity_check=bool(agent_settings.get("reply_sanity_check", True)),
         )
     return direct_agent_cls(**_gateway_agent_settings(settings))
 

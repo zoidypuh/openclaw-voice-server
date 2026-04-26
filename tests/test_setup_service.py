@@ -141,6 +141,72 @@ def test_validate_supertonic_persists_resolved_settings(tmp_path, monkeypatch):
     assert saved["validation"]["supertonic"]["config_hash"]
 
 
+def test_validate_chatterbox_turbo_persists_resolved_settings(tmp_path, monkeypatch):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+    python_path = tmp_path / "python"
+    python_path.write_text("#!/bin/sh\n", encoding="utf-8")
+    python_path.chmod(0o755)
+    voice_prompt_path = tmp_path / "voice.wav"
+    voice_prompt_path.write_bytes(b"RIFFdemo")
+
+    async def fake_validate_chatterbox(
+        *,
+        python_path,
+        voice_prompt_path,
+        device,
+        exaggeration,
+        temperature,
+        top_p,
+        top_k,
+        repetition_penalty,
+    ):
+        return {
+            "ok": True,
+            "python_path": python_path,
+            "voice_prompt_path": voice_prompt_path,
+            "device": device,
+            "exaggeration": exaggeration,
+            "temperature": temperature,
+            "top_p": top_p,
+            "top_k": top_k,
+            "repetition_penalty": repetition_penalty,
+        }
+
+    monkeypatch.setattr(
+        "maras_switchboard.setup_service.validate_chatterbox_turbo_voice_step",
+        fake_validate_chatterbox,
+    )
+
+    result = asyncio.run(
+        service.validate_chatterbox_turbo(
+            {
+                "python_path": str(python_path),
+                "voice_prompt_path": str(voice_prompt_path),
+                "device": "cpu",
+                "exaggeration": "0.6",
+                "temperature": "0.7",
+                "top_p": "0.9",
+                "top_k": "900",
+                "repetition_penalty": "1.1",
+            }
+        )
+    )
+
+    saved = store.load_config()
+
+    assert result["device"] == "cpu"
+    assert saved["tts"]["chatterbox_python_path"] == str(python_path.resolve())
+    assert saved["tts"]["chatterbox_voice_prompt_path"] == str(voice_prompt_path.resolve())
+    assert saved["tts"]["chatterbox_device"] == "cpu"
+    assert saved["tts"]["chatterbox_exaggeration"] == 0.6
+    assert saved["tts"]["chatterbox_temperature"] == 0.7
+    assert saved["tts"]["chatterbox_top_p"] == 0.9
+    assert saved["tts"]["chatterbox_top_k"] == 900
+    assert saved["tts"]["chatterbox_repetition_penalty"] == 1.1
+    assert saved["validation"]["chatterbox_turbo"]["config_hash"]
+
+
 def test_validate_gateway_saves_secret_and_config(tmp_path, monkeypatch):
     store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
     service = SetupService(store)
@@ -273,6 +339,74 @@ def test_setup_state_allows_remote_whisper_without_local_module(tmp_path, monkey
     assert state["status"]["stt_ready"] is True
 
 
+def test_setup_state_allows_xai_stt_with_api_key(tmp_path, monkeypatch):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+    stt_config = {
+        "enabled_backends": ["xai"],
+        "default_backend": "xai",
+        "language": "en",
+        "device": "cpu",
+        "compute_type": "int8",
+        "whisper_endpoint_url": "",
+        "whisper_endpoint_model": "",
+        "backend_models": {"faster-whisper": "large-v3", "whisper": "large", "xai": "xai-stt"},
+    }
+    store.update_config(
+        {
+            "stt": stt_config,
+            "validation": {
+                "stt": {
+                    "config_hash": service._config_hash(stt_config),
+                }
+            },
+        }
+    )
+    store.update_secrets({"XAI_API_KEY": "xai-test"})
+
+    monkeypatch.setattr("maras_switchboard.setup_service.module_available", lambda import_name: False)
+
+    state = service.state()
+
+    assert state["status"]["stt_ready"] is True
+    assert state["saved"]["stt"]["xai_api_key_present"] is True
+
+
+def test_setup_state_requires_xai_api_key_for_xai_stt(tmp_path, monkeypatch):
+    monkeypatch.delenv("XAI_API_KEY", raising=False)
+    monkeypatch.delenv("MARAS_SWITCHBOARD_XAI_API_KEY", raising=False)
+    monkeypatch.delenv("AGENTIC_SWITCHBOARD_XAI_API_KEY", raising=False)
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+    stt_config = {
+        "enabled_backends": ["xai"],
+        "default_backend": "xai",
+        "language": "en",
+        "device": "cpu",
+        "compute_type": "int8",
+        "whisper_endpoint_url": "",
+        "whisper_endpoint_model": "",
+        "backend_models": {"faster-whisper": "large-v3", "whisper": "large", "xai": "xai-stt"},
+    }
+    store.update_config(
+        {
+            "stt": stt_config,
+            "validation": {
+                "stt": {
+                    "config_hash": service._config_hash(stt_config),
+                }
+            },
+        }
+    )
+
+    monkeypatch.setattr("maras_switchboard.setup_service.module_available", lambda import_name: True)
+
+    state = service.state()
+
+    assert state["status"]["stt_ready"] is False
+    assert state["status"]["runtime_ready"] is False
+
+
 def test_setup_state_includes_default_remote_whisper_hint(tmp_path, monkeypatch):
     store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
     service = SetupService(store)
@@ -286,7 +420,7 @@ def test_setup_state_includes_default_remote_whisper_hint(tmp_path, monkeypatch)
     state = service.state()
 
     assert state["hints"]["default_remote_whisper_endpoint_url"] == "http://192.168.50.60:18000/v1/audio/transcriptions"
-    assert state["hints"]["default_remote_whisper_endpoint_model"] == ""
+    assert state["hints"]["default_remote_whisper_endpoint_model"] == "distil-large-v3"
     assert state["hints"]["remote_whisper_host_alias"] == "remote-whisper"
 
 
@@ -467,6 +601,77 @@ def test_runtime_ready_accepts_supertonic_live_config(tmp_path, monkeypatch):
     state = service.state()
 
     assert state["status"]["supertonic_ready"] is True
+    assert state["status"]["runtime_ready"] is True
+
+
+def test_runtime_ready_accepts_chatterbox_turbo_live_config(tmp_path, monkeypatch):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+    store.update_config(
+        {
+            "stt": {
+                "enabled_backends": ["whisper"],
+                "default_backend": "whisper",
+                "language": "en",
+                "whisper_endpoint_url": "http://127.0.0.1:18000/v1/audio/transcriptions",
+            },
+            "tts": {
+                "enabled_providers": ["chatterbox-turbo"],
+                "default_provider": "chatterbox-turbo",
+                "chatterbox_python_path": "/tmp/chatterbox-python",
+                "chatterbox_voice_prompt_path": "/tmp/voice.wav",
+                "chatterbox_device": "cpu",
+                "chatterbox_exaggeration": 0.5,
+                "chatterbox_temperature": 0.8,
+                "chatterbox_top_p": 0.95,
+                "chatterbox_top_k": 1000,
+                "chatterbox_repetition_penalty": 1.2,
+            },
+            "gateway": {
+                "url": "http://127.0.0.1:18789/v1/chat/completions",
+                "model": "maras-switchboard:main",
+                "session_key": "voice-main",
+            },
+            "validation": {
+                "tts": {
+                    "config_hash": service._config_hash(
+                        {"enabled_providers": ["chatterbox-turbo"], "default_provider": "chatterbox-turbo"}
+                    )
+                },
+                "chatterbox_turbo": {
+                    "config_hash": service._config_hash(
+                        {
+                            "python_path": "/tmp/chatterbox-python",
+                            "voice_prompt_path": "/tmp/voice.wav",
+                            "device": "cpu",
+                            "exaggeration": 0.5,
+                            "temperature": 0.8,
+                            "top_p": 0.95,
+                            "top_k": 1000,
+                            "repetition_penalty": 1.2,
+                        }
+                    )
+                },
+                "gateway": {
+                    "config_hash": service._config_hash(
+                        {
+                            "url": "http://127.0.0.1:18789/v1/chat/completions",
+                            "model": "maras-switchboard:main",
+                            "session_key": "voice-main",
+                        }
+                    ),
+                    "token_fingerprint": service._fingerprint_secret("gw-secret"),
+                },
+            },
+        }
+    )
+    store.update_secrets({"MARAS_SWITCHBOARD_GATEWAY_TOKEN": "gw-secret"})
+
+    monkeypatch.setattr("maras_switchboard.setup_service.module_available", lambda import_name: import_name is None)
+
+    state = service.state()
+
+    assert state["status"]["chatterbox_ready"] is True
     assert state["status"]["runtime_ready"] is True
 
 

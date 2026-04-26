@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import os
 import wave
 
 import httpx
@@ -9,20 +10,40 @@ from ..errors import ValidationError
 from .base import BaseTranscriber, TranscriptionResult
 
 
-def normalize_whisper_endpoint_url(endpoint_url: str) -> str:
-    return str(endpoint_url or "").strip()
+DEFAULT_XAI_STT_ENDPOINT_URL = "https://api.x.ai/v1/stt"
 
 
-class RemoteWhisperAPITranscriber(BaseTranscriber):
-    def __init__(self, *, endpoint_url: str, endpoint_model: str = "", **kwargs):
+def _extract_error_detail(payload: object) -> str:
+    if isinstance(payload, dict):
+        error = payload.get("error")
+        if isinstance(error, dict):
+            return str(error.get("message") or error.get("detail") or error).strip()
+        return str(payload.get("detail") or error or payload.get("message") or "").strip()
+    return ""
+
+
+class XAITranscriber(BaseTranscriber):
+    def __init__(
+        self,
+        *,
+        api_key: str = "",
+        endpoint_url: str = DEFAULT_XAI_STT_ENDPOINT_URL,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
-        self.endpoint_url = normalize_whisper_endpoint_url(endpoint_url)
-        self.endpoint_model = str(endpoint_model or "").strip()
+        self.api_key = str(api_key or "").strip()
+        self.endpoint_url = str(endpoint_url or DEFAULT_XAI_STT_ENDPOINT_URL).strip()
         self._client: httpx.Client | None = None
 
     def load(self) -> None:
-        if not self.endpoint_url:
-            raise ValidationError("Enter a Whisper endpoint URL or leave it blank to use the local Whisper install.")
+        if not self.api_key:
+            self.api_key = (
+                os.environ.get("XAI_API_KEY")
+                or os.environ.get("MARAS_SWITCHBOARD_XAI_API_KEY")
+                or ""
+            ).strip()
+        if not self.api_key:
+            raise ValidationError("Set XAI_API_KEY to use xAI STT.")
         if self._client is None:
             self._client = httpx.Client(timeout=120)
 
@@ -53,32 +74,34 @@ class RemoteWhisperAPITranscriber(BaseTranscriber):
         files = {
             "file": ("audio.wav", self._pcm16_to_wav(audio_bytes), "audio/wav"),
         }
-        data = {}
-        if self.endpoint_model:
-            data["model"] = self.endpoint_model
-        if self.language:
-            data["language"] = self.language
+        data = {"format": "true"}
+        data["language"] = self.language or "en"
+
         try:
             assert self._client is not None
-            response = self._client.post(self.endpoint_url, data=data, files=files)
+            response = self._client.post(
+                self.endpoint_url,
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                data=data,
+                files=files,
+            )
             response.raise_for_status()
         except httpx.HTTPError as exc:
             detail = ""
             response = getattr(exc, "response", None)
             if response is not None:
                 try:
-                    payload = response.json()
-                    detail = str(payload.get("detail") or payload.get("error") or "").strip()
+                    detail = _extract_error_detail(response.json())
                 except ValueError:
                     detail = response.text.strip()
             if detail:
-                raise ValidationError(f"Whisper endpoint request failed: {detail}") from exc
-            raise ValidationError(f"Whisper endpoint request failed: {exc}") from exc
+                raise ValidationError(f"xAI STT request failed: {detail}") from exc
+            raise ValidationError(f"xAI STT request failed: {exc}") from exc
 
         try:
             payload = response.json()
         except ValueError as exc:
-            raise ValidationError("Whisper endpoint returned invalid JSON.") from exc
+            raise ValidationError("xAI STT returned invalid JSON.") from exc
 
-        text = str(payload.get("text") or "").strip()
+        text = str(payload.get("text") or "").strip() if isinstance(payload, dict) else ""
         return TranscriptionResult(text=text, duration_seconds=duration)

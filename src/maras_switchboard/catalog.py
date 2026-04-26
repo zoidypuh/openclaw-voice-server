@@ -12,7 +12,7 @@ DEFAULT_HERMES_ROOT = str((Path.home() / ".hermes" / "hermes-agent").resolve())
 DEFAULT_REMOTE_WHISPER_HOST_ALIAS = "remote-whisper"
 DEFAULT_REMOTE_WHISPER_PORT = 18000
 DEFAULT_REMOTE_WHISPER_ENDPOINT_PATH = "/v1/audio/transcriptions"
-DEFAULT_REMOTE_WHISPER_MODEL = ""
+DEFAULT_REMOTE_WHISPER_MODEL = "distil-large-v3"
 HOLD_TO_TALK_SHORTCUT_LABEL = "Ctrl+Alt+Shift+A"
 ELEVENLABS_DEFAULT_PRESET = "natural"
 ELEVENLABS_PRESETS = {
@@ -90,6 +90,16 @@ SUPPORTED_STT_BACKENDS = {
             "turbo",
         ],
     },
+    "xai": {
+        "id": "xai",
+        "label": "xAI STT",
+        "package": None,
+        "import_name": None,
+        "default_model": "xai-stt",
+        "models": [
+            "xai-stt",
+        ],
+    },
 }
 
 SUPPORTED_TTS_PROVIDERS = {
@@ -108,6 +118,12 @@ SUPPORTED_TTS_PROVIDERS = {
     "supertonic": {
         "id": "supertonic",
         "label": "Supertonic",
+        "package": None,
+        "import_name": None,
+    },
+    "chatterbox-turbo": {
+        "id": "chatterbox-turbo",
+        "label": "Chatterbox Turbo",
         "package": None,
         "import_name": None,
     },
@@ -133,6 +149,8 @@ SUPPORTED_AGENT_BACKENDS = {
 SECRET_ENV_KEYS = {
     "MARAS_SWITCHBOARD_GATEWAY_TOKEN",
     "MARAS_SWITCHBOARD_ELEVENLABS_API_KEY",
+    "MARAS_SWITCHBOARD_XAI_API_KEY",
+    "XAI_API_KEY",
 }
 
 LEGACY_SECRET_ENV_KEYS = {
@@ -155,6 +173,12 @@ ENV_TO_CONFIG = {
     "MARAS_SWITCHBOARD_WHISPER_LANG": ("stt", "language"),
     "MARAS_SWITCHBOARD_ELEVENLABS_VOICE_ID": ("tts", "elevenlabs_voice_id"),
     "MARAS_SWITCHBOARD_ELEVENLABS_MODEL": ("tts", "elevenlabs_model"),
+    "MARAS_SWITCHBOARD_CHATTERBOX_PYTHON_PATH": ("tts", "chatterbox_python_path"),
+    "MARAS_SWITCHBOARD_CHATTERBOX_TURBO_PYTHON_PATH": ("tts", "chatterbox_python_path"),
+    "MARAS_SWITCHBOARD_CHATTERBOX_VOICE_PROMPT_PATH": ("tts", "chatterbox_voice_prompt_path"),
+    "MARAS_SWITCHBOARD_CHATTERBOX_TURBO_VOICE_PROMPT_PATH": ("tts", "chatterbox_voice_prompt_path"),
+    "MARAS_SWITCHBOARD_CHATTERBOX_DEVICE": ("tts", "chatterbox_device"),
+    "MARAS_SWITCHBOARD_CHATTERBOX_TURBO_DEVICE": ("tts", "chatterbox_device"),
 }
 
 LEGACY_ENV_TO_CONFIG = {
@@ -192,7 +216,8 @@ DEFAULT_CONFIG = {
         "hermes_root": DEFAULT_HERMES_ROOT,
         "use_context_files": True,
         "use_memory": True,
-        "toolsets": ["browser", "file", "web"],
+        "reply_sanity_check": True,
+        "toolsets": [],
     },
     "stt": {
         "enabled_backends": ["faster-whisper"],
@@ -205,6 +230,7 @@ DEFAULT_CONFIG = {
         "backend_models": {
             "faster-whisper": "large-v3",
             "whisper": "large",
+            "xai": "xai-stt",
         },
     },
     "tts": {
@@ -219,16 +245,24 @@ DEFAULT_CONFIG = {
         "supertonic_python_path": "",
         "supertonic_voice": "M4",
         "supertonic_language": "en",
-        "supertonic_total_steps": 3,
-        "supertonic_speed": 1.05,
+        "supertonic_total_steps": 1,
+        "supertonic_speed": 1.2,
+        "chatterbox_python_path": "",
+        "chatterbox_voice_prompt_path": "",
+        "chatterbox_device": "auto",
+        "chatterbox_exaggeration": 0.5,
+        "chatterbox_temperature": 0.8,
+        "chatterbox_top_p": 0.95,
+        "chatterbox_top_k": 1000,
+        "chatterbox_repetition_penalty": 1.2,
         "speaker_voice_ids": {},
         "speaker_overrides": {},
         "news_speakers": [],
     },
     "audio": {
         "silence_threshold": 0.015,
-        "silence_ms": 2000,
-        "min_speech_ms": 500,
+        "silence_ms": 500,
+        "min_speech_ms": 350,
     },
     "windows_client": {},
     "validation": {
@@ -249,6 +283,9 @@ DEFAULT_CONFIG = {
             "api_key_fingerprint": "",
         },
         "supertonic": {
+            "config_hash": "",
+        },
+        "chatterbox_turbo": {
             "config_hash": "",
         },
         "gateway": {

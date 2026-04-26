@@ -81,6 +81,7 @@ class VoiceRuntime:
         self._active_ws_supports_playback_accept = False
         self._turn_lock = asyncio.Lock()
         self._pending_playback_accepts: dict[str, asyncio.Future[None]] = {}
+        self._playback_request_labels: dict[str, str] = {}
         self._pending_playback_accepts_lock = asyncio.Lock()
 
     @staticmethod
@@ -208,6 +209,48 @@ class VoiceRuntime:
                     "speed",
                     override.get("supertonic_speed"),
                 )
+        elif provider == "chatterbox-turbo":
+            python_path = str(
+                override.get("python_path") or override.get("chatterbox_python_path") or ""
+            ).strip()
+            if python_path:
+                base_tts_settings["chatterbox_python_path"] = python_path
+            voice_prompt_path = str(
+                override.get("voice_prompt_path")
+                or override.get("audio_prompt_path")
+                or override.get("chatterbox_voice_prompt_path")
+                or ""
+            ).strip()
+            if voice_prompt_path:
+                base_tts_settings["chatterbox_voice_prompt_path"] = voice_prompt_path
+            device = str(override.get("device") or override.get("chatterbox_device") or "").strip()
+            if device:
+                base_tts_settings["chatterbox_device"] = device
+            if "exaggeration" in override or "chatterbox_exaggeration" in override:
+                base_tts_settings["chatterbox_exaggeration"] = override.get(
+                    "exaggeration",
+                    override.get("chatterbox_exaggeration"),
+                )
+            if "temperature" in override or "chatterbox_temperature" in override:
+                base_tts_settings["chatterbox_temperature"] = override.get(
+                    "temperature",
+                    override.get("chatterbox_temperature"),
+                )
+            if "top_p" in override or "chatterbox_top_p" in override:
+                base_tts_settings["chatterbox_top_p"] = override.get(
+                    "top_p",
+                    override.get("chatterbox_top_p"),
+                )
+            if "top_k" in override or "chatterbox_top_k" in override:
+                base_tts_settings["chatterbox_top_k"] = override.get(
+                    "top_k",
+                    override.get("chatterbox_top_k"),
+                )
+            if "repetition_penalty" in override or "chatterbox_repetition_penalty" in override:
+                base_tts_settings["chatterbox_repetition_penalty"] = override.get(
+                    "repetition_penalty",
+                    override.get("chatterbox_repetition_penalty"),
+                )
 
         return base_tts_settings
 
@@ -303,21 +346,34 @@ class VoiceRuntime:
             self._pending_playback_accepts[request_id] = future
         return future
 
+    async def _remember_playback_request(self, request_id: str, label: str) -> None:
+        if not request_id:
+            return
+        async with self._pending_playback_accepts_lock:
+            self._playback_request_labels[request_id] = _summarize_text(label)
+
     async def _resolve_playback_accept(self, request_id: str) -> None:
         async with self._pending_playback_accepts_lock:
             future = self._pending_playback_accepts.pop(request_id, None)
+            label = self._playback_request_labels.pop(request_id, "")
         if future is not None and not future.done():
             future.set_result(None)
+        if label:
+            LOGGER.info("[client] playback accepted: %s", label)
 
     async def _reject_playback_accept(self, request_id: str, message: str) -> None:
         async with self._pending_playback_accepts_lock:
             future = self._pending_playback_accepts.pop(request_id, None)
+            label = self._playback_request_labels.pop(request_id, "")
         if future is not None and not future.done():
             future.set_exception(ValidationError(message))
+        if label:
+            LOGGER.warning("[client] playback rejected: %s (%s)", label, message)
 
     async def _clear_playback_accept(self, request_id: str) -> None:
         async with self._pending_playback_accepts_lock:
             future = self._pending_playback_accepts.pop(request_id, None)
+            self._playback_request_labels.pop(request_id, None)
         if future is not None and not future.done():
             future.cancel()
 
@@ -325,6 +381,7 @@ class VoiceRuntime:
         async with self._pending_playback_accepts_lock:
             futures = list(self._pending_playback_accepts.values())
             self._pending_playback_accepts.clear()
+            self._playback_request_labels.clear()
         for future in futures:
             if not future.done():
                 future.set_exception(ValidationError(message))
@@ -354,6 +411,7 @@ class VoiceRuntime:
         speaking_sent = False
         if wait_for_playback_accept:
             accept_future = await self._register_playback_accept(request_id)
+        await self._remember_playback_request(request_id, f"server_speak: {len(audio)} bytes")
         try:
             speaking_payload = {
                 "status": "speaking",
@@ -507,6 +565,11 @@ class VoiceRuntime:
     async def handle_ws(self, request: web.Request) -> web.WebSocketResponse:
         settings = self.store.load_runtime_settings()
         turn_stt_settings = self._turn_stt_settings(settings["stt"])
+        if turn_stt_settings.get("default_backend") == "xai":
+            turn_stt_settings = {
+                **turn_stt_settings,
+                "xai_api_key": str(settings["secrets"].get("xai_api_key") or "").strip(),
+            }
         ws = web.WebSocketResponse(max_msg_size=10_000_000)
         await ws.prepare(request)
         await self._set_active_ws(ws)
@@ -565,7 +628,7 @@ class VoiceRuntime:
                 await ws.send_json({"status": "idle"})
                 return
             audio_settings = settings.get("audio", {})
-            min_duration = max(float(audio_settings.get("min_speech_ms", 500) or 500) / 1000.0, 0.0)
+            min_duration = max(float(audio_settings.get("min_speech_ms", 350) or 350) / 1000.0, 0.0)
             if should_drop_voice_transcript(text, duration, min_duration=min_duration):
                 LOGGER.debug(
                     "[dim]dropped: %s (%s)[/dim]",
@@ -651,7 +714,11 @@ class VoiceRuntime:
                     turn.first_tts_seconds = tts_elapsed
                 if not speaking_started:
                     speaking_started = True
+                    request_id = uuid.uuid4().hex
+                    await self._remember_playback_request(request_id, chunk_text)
                     speaking_payload = {"status": "speaking"}
+                    speaking_payload["source"] = "voice_reply"
+                    speaking_payload["request_id"] = request_id
                     if current_audio_mime_type != "audio/mpeg":
                         speaking_payload["audio_mime_type"] = current_audio_mime_type
                     await ws.send_json(speaking_payload)
@@ -715,7 +782,11 @@ class VoiceRuntime:
                         turn.first_tts_seconds = tts_elapsed
                     if not speaking_started:
                         speaking_started = True
+                        request_id = uuid.uuid4().hex
+                        await self._remember_playback_request(request_id, buffered_reply_text)
                         speaking_payload = {"status": "speaking"}
+                        speaking_payload["source"] = "voice_reply"
+                        speaking_payload["request_id"] = request_id
                         if current_audio_mime_type != "audio/mpeg":
                             speaking_payload["audio_mime_type"] = current_audio_mime_type
                         await ws.send_json(speaking_payload)

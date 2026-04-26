@@ -2,7 +2,7 @@
 
 ![Mara's Switchboard voice runtime screenshot](readme-voice-ui.png)
 
-`maras-switchboard` is a local voice frontend for text agents. It gives you a browser setup page at `/setup`, a voice UI at `/voice`, local or remote Whisper-family STT, multiple TTS backends, and an optional Windows tray client.
+`maras-switchboard` is a local voice frontend for text agents. It gives you a browser setup page at `/setup`, a voice UI at `/voice`, local or remote STT, multiple TTS backends, and an optional Windows tray client.
 
 Current version: `0.1`. This repo is still alpha. The main path works, but rough edges still exist.
 
@@ -89,6 +89,19 @@ If you use ElevenLabs, also set:
 
 ```dotenv
 MARAS_SWITCHBOARD_ELEVENLABS_API_KEY=replace-me
+```
+
+If you use xAI STT, set:
+
+```dotenv
+XAI_API_KEY=replace-me
+```
+
+If you use Chatterbox Turbo TTS, point the setup page at a Python environment that already has `chatterbox-tts` installed and at a clear reference audio prompt longer than five seconds:
+
+```dotenv
+MARAS_SWITCHBOARD_CHATTERBOX_TURBO_PYTHON_PATH=/home/gismar/coding/chatterbox-tts/.venv/bin/python
+MARAS_SWITCHBOARD_CHATTERBOX_TURBO_VOICE_PROMPT_PATH=/path/to/reference-audio.wav
 ```
 
 6. Start the server from the repo root.
@@ -211,6 +224,7 @@ pip install -e .[dev,stt-faster-whisper,stt-whisper,tts-edge]
 Notes:
 
 - the setup page can install some missing Python packages while validating providers
+- Chatterbox Turbo is run through a dedicated Python worker; Python 3.12 is the safest current environment for that package
 - legacy community TTS providers live under `plugins/tts-community-legacy` and are not maintained by core
 
 ## STT Backends
@@ -220,11 +234,13 @@ Currently supported:
 - Faster Whisper local STT, including CUDA when the local machine has a working NVIDIA/CUDA setup
 - OpenAI Whisper local STT when `openai-whisper` is installed and no endpoint URL is configured
 - OpenAI-compatible remote Whisper endpoint via `POST /v1/audio/transcriptions`
+- xAI STT via `POST https://api.x.ai/v1/stt` using `XAI_API_KEY`
 
 The setup page has presets for the common STT paths:
 
 - `Local GPU Whisper` selects in-process `faster-whisper` on CUDA and does not use a remote endpoint.
 - `Remote Whisper` selects the Whisper-compatible HTTP transcription endpoint and sends recorded audio to that server.
+- `xAI STT` selects the xAI transcription service and sends recorded audio to that server.
 
 The OpenAI-compatible endpoint support is for STT only. Core TTS does not currently include a generic OpenAI-compatible TTS endpoint provider.
 
@@ -235,7 +251,16 @@ Currently supported:
 - Edge TTS
 - ElevenLabs
 - Supertonic
+- Chatterbox Turbo from a dedicated Python environment with `chatterbox-tts` installed
 - `Disabled (text only)`
+
+Chatterbox Turbo setup notes:
+
+- create or reuse a Python environment that can import `chatterbox`
+- set `MARAS_SWITCHBOARD_CHATTERBOX_TURBO_PYTHON_PATH` to that environment's Python executable, or enter it in `/setup`
+- set `MARAS_SWITCHBOARD_CHATTERBOX_TURBO_VOICE_PROMPT_PATH` to a clear reference audio file, or enter it in `/setup`
+- use a reference prompt longer than five seconds for better voice consistency
+- `auto` device will avoid CUDA when the installed PyTorch build cannot use the detected GPU
 
 ## Remote Access
 

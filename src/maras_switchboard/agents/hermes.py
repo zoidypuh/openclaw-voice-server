@@ -4,9 +4,11 @@ import asyncio
 import json
 import logging
 import os
+from datetime import datetime, timedelta
 from pathlib import Path
 import subprocess
 import sys
+import time
 import uuid
 
 from ..errors import ValidationError
@@ -34,7 +36,7 @@ _DEFAULT_REPLY_SANITY_HISTORY_TURNS = 3
 _DEFAULT_REPLY_SANITY_HUH_FALLBACK = "Huh?"
 _DEFAULT_REPLY_SANITY_FALLBACK = _DEFAULT_REPLY_SANITY_HUH_FALLBACK
 _DEFAULT_REPLY_SANITY_CLARIFY_FALLBACK = "Wait, what? Who are you talking about?"
-_DEFAULT_HERMES_VOICE_TOOLSETS = ("browser", "file", "web")
+_DEFAULT_HERMES_VOICE_TOOLSETS: tuple[str, ...] = ()
 _REPLY_SANITY_SYSTEM_PROMPT = (
     "You are a voice-chat coherence checker. "
     "Decide whether a candidate spoken reply fits the immediately recent conversation. "
@@ -125,6 +127,83 @@ def _build_reply_sanity_prompt(
     )
 
 
+def _normalize_digest_line(text: str) -> str:
+    return " ".join(str(text or "").split()).strip()
+
+
+def _digest_items(lines: list[str], *, limit: int) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for line in lines:
+        item = _normalize_digest_line(line)
+        if not item:
+            continue
+        key = item.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(item)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _default_voice_digest_path() -> Path:
+    return Path.home() / ".hermes" / "voice-hindsight" / "digest.txt"
+
+
+def _load_hindsight_digest(path: Path | None = None, *, max_age_hours: int = 24, limit: int = 10) -> str:
+    candidate = path or _default_voice_digest_path()
+    try:
+        stat = candidate.stat()
+    except OSError:
+        return "No 24h hindsight digest available."
+    if max(time.time() - stat.st_mtime, 0.0) > max_age_hours * 3600:
+        return "No fresh 24h hindsight digest available."
+    try:
+        text = candidate.read_text(encoding="utf-8")
+    except OSError:
+        return "No 24h hindsight digest available."
+    items = _digest_items(text.splitlines(), limit=limit)
+    if not items:
+        return "No 24h hindsight digest available."
+    return "\n".join(f"- {item}" for item in items)
+
+
+def _build_voice_context_blob(user_text: str, *, digest_path: Path | None = None) -> str:
+    digest = _load_hindsight_digest(digest_path)
+    if digest.startswith("No "):
+        return ""
+    current = _normalize_digest_line(user_text) or "[empty]"
+    return (
+        "Voice context digest (last 24h):\n"
+        f"{digest}\n\n"
+        f"Current user message: {current}\n"
+        "Keep this compact. Prefer current user context over stale memory."
+    )
+
+
+def _write_voice_digest(payload: dict[str, object], *, path: Path | None = None) -> Path:
+    digest_path = path or _default_voice_digest_path()
+    digest_path.parent.mkdir(parents=True, exist_ok=True)
+    digest_lines = [
+        str(payload.get("user") or "").strip(),
+        str(payload.get("assistant") or "").strip(),
+        str(payload.get("thread") or "").strip(),
+        str(payload.get("decision") or "").strip(),
+        str(payload.get("note") or "").strip(),
+    ]
+    existing: list[str] = []
+    if digest_path.exists():
+        try:
+            existing = digest_path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            existing = []
+    merged = _digest_items(existing + digest_lines, limit=30)
+    digest_path.write_text("\n".join(merged) + ("\n" if merged else ""), encoding="utf-8")
+    return digest_path
+
+
 def _reply_looks_like_backend_error(reply: str) -> bool:
     normalized = " ".join(str(reply or "").strip().lower().split())
     if not normalized:
@@ -151,6 +230,8 @@ def _normalize_enabled_toolsets(value: object) -> list[str]:
         raw_items = [value]
     elif isinstance(value, (list, tuple, set)):
         raw_items = list(value)
+        if not raw_items:
+            return []
     else:
         raw_items = [value]
 
@@ -163,7 +244,7 @@ def _normalize_enabled_toolsets(value: object) -> list[str]:
         seen.add(toolset)
         normalized.append(toolset)
 
-    return normalized or list(_DEFAULT_HERMES_VOICE_TOOLSETS)
+    return normalized
 
 
 class _HermesAgentSession:
@@ -402,6 +483,10 @@ else:
         provider = ""
         api_mode = ""
 
+enabled_toolsets = payload.get("enabled_toolsets")
+if enabled_toolsets is None:
+    enabled_toolsets = []
+
 agent = AIAgent(
     model=model,
     api_key=api_key or None,
@@ -409,7 +494,7 @@ agent = AIAgent(
     provider=provider or None,
     api_mode=api_mode or None,
     max_iterations=6,
-    enabled_toolsets=payload.get("enabled_toolsets") or ["browser", "file", "web"],
+    enabled_toolsets=enabled_toolsets,
     quiet_mode=True,
     verbose_logging=False,
     ephemeral_system_prompt=payload["system_prompt"],
@@ -603,7 +688,9 @@ class HermesConversationAgent(BaseConversationAgent):
     async def stream_reply(self, text: str, abort_event: asyncio.Event):
         if abort_event.is_set():
             return
-        reply = await self._session.ask(text)
+        voice_context = _build_voice_context_blob(text)
+        prompt = f"{voice_context}\n\nUser request: {text}" if voice_context else text
+        reply = await self._session.ask(prompt)
         if abort_event.is_set() or not reply:
             return
         spoken_reply = reply
@@ -617,6 +704,15 @@ class HermesConversationAgent(BaseConversationAgent):
         if abort_event.is_set() or not spoken_reply:
             return
         self._remember_turn(text, spoken_reply)
+        _write_voice_digest(
+            {
+                "user": text,
+                "assistant": spoken_reply,
+                "thread": "voice",
+                "decision": sanity_action,
+                "note": _normalize_digest_line(spoken_reply)[:180],
+            }
+        )
         yield spoken_reply
 
 

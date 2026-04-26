@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+
 import httpx
 import numpy as np
 
@@ -10,11 +12,13 @@ from .base import BaseTranscriber, Transcriber, TranscriptionResult
 from .faster_whisper import FasterWhisperTranscriber
 from .openai_whisper import OpenAIWhisperTranscriber
 from .remote_whisper import RemoteWhisperAPITranscriber, normalize_whisper_endpoint_url
+from .xai import XAITranscriber
 
 
 BACKEND_CLASSES = {
     "faster-whisper": FasterWhisperTranscriber,
     "whisper": OpenAIWhisperTranscriber,
+    "xai": XAITranscriber,
 }
 
 
@@ -54,7 +58,10 @@ def _uses_remote_whisper_endpoint(settings: dict) -> bool:
 def _build_transcriber(backend_id: str, settings: dict) -> BaseTranscriber:
     if backend_id == "whisper" and _uses_remote_whisper_endpoint(settings):
         return RemoteWhisperAPITranscriber(
-            model=settings["backend_models"][backend_id],
+            model=settings.get("backend_models", {}).get(
+                backend_id,
+                SUPPORTED_STT_BACKENDS[backend_id]["default_model"],
+            ),
             language=settings["language"],
             device=normalize_stt_device(settings["device"]),
             compute_type=settings["compute_type"],
@@ -66,7 +73,10 @@ def _build_transcriber(backend_id: str, settings: dict) -> BaseTranscriber:
     if transcriber_cls is None:
         raise ValidationError(f"Unsupported STT backend: {backend_id}")
     kwargs = {
-        "model": settings["backend_models"][backend_id],
+        "model": settings.get("backend_models", {}).get(
+            backend_id,
+            SUPPORTED_STT_BACKENDS[backend_id]["default_model"],
+        ),
         "language": settings["language"],
         "device": normalize_stt_device(settings["device"]),
         "compute_type": settings["compute_type"],
@@ -75,6 +85,8 @@ def _build_transcriber(backend_id: str, settings: dict) -> BaseTranscriber:
         kwargs["vad_filter"] = bool(settings.get("vad_filter", True))
         kwargs["vad_min_silence_duration_ms"] = int(settings.get("vad_min_silence_duration_ms", 500) or 0)
         kwargs["speech_precheck"] = bool(settings.get("speech_precheck", True))
+    if backend_id == "xai":
+        kwargs["api_key"] = str(settings.get("xai_api_key") or "").strip()
     return transcriber_cls(**kwargs)
 
 
@@ -90,6 +102,7 @@ def validate_stt_selection(settings: dict) -> dict:
     settings["whisper_endpoint_model"] = str(settings.get("whisper_endpoint_model") or "").strip()
 
     backend_models = settings.get("backend_models") or {}
+    settings["backend_models"] = backend_models
     results = []
     for backend_id in enabled_backends:
         descriptor = SUPPORTED_STT_BACKENDS.get(backend_id)
@@ -98,14 +111,23 @@ def validate_stt_selection(settings: dict) -> dict:
         model_name = str(backend_models.get(backend_id) or descriptor["default_model"])
         settings["backend_models"][backend_id] = model_name
         install_result = {"installed": False}
-        if not (backend_id == "whisper" and _uses_remote_whisper_endpoint(settings)):
+        if (
+            (descriptor["package"] or descriptor["import_name"])
+            and not (backend_id == "whisper" and _uses_remote_whisper_endpoint(settings))
+        ):
             install_result = ensure_python_package(descriptor["package"], descriptor["import_name"])
         if settings["device"].startswith("cuda") and not (backend_id == "whisper" and _uses_remote_whisper_endpoint(settings)):
             _ensure_gpu_runtime(backend_id)
         transcriber = _build_transcriber(backend_id, settings)
-        transcriber.load()
-        sample_audio = (np.random.randn(16000).astype(np.float32) * 0.01 * 32767.0).astype(np.int16).tobytes()
-        transcriber.transcribe(sample_audio)
+        try:
+            transcriber.load()
+            sample_audio = (np.random.randn(16000).astype(np.float32) * 0.01 * 32767.0).astype(np.int16).tobytes()
+            transcriber.transcribe(sample_audio)
+        finally:
+            close = getattr(transcriber, "close", None)
+            if callable(close):
+                with contextlib.suppress(Exception):
+                    close()
         results.append(
             {
                 "backend": backend_id,

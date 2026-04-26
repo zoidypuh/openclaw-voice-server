@@ -31,21 +31,38 @@ from .gateway import normalize_gateway_url, validate_gateway_connection
 from .installer import module_available
 from .stt import normalize_stt_device, validate_stt_selection as validate_stt_selection_step
 from .tts import (
+    CHATTERBOX_TURBO_DEFAULT_DEVICE,
+    CHATTERBOX_TURBO_DEFAULT_EXAGGERATION,
+    CHATTERBOX_TURBO_DEFAULT_REPETITION_PENALTY,
+    CHATTERBOX_TURBO_DEFAULT_TEMPERATURE,
+    CHATTERBOX_TURBO_DEFAULT_TOP_K,
+    CHATTERBOX_TURBO_DEFAULT_TOP_P,
     SUPERTONIC_DEFAULT_LANGUAGE,
     SUPERTONIC_DEFAULT_SPEED,
     SUPERTONIC_DEFAULT_TOTAL_STEPS,
     SUPERTONIC_DEFAULT_VOICE,
     SUPERTONIC_SUPPORTED_LANGUAGES,
     SUPERTONIC_SUPPORTED_VOICES,
+    detect_chatterbox_turbo_python_path,
+    detect_chatterbox_turbo_voice_prompt_path,
     detect_supertonic_python_path,
     list_edge_voices,
     list_elevenlabs_voices,
+    normalize_chatterbox_turbo_device,
+    normalize_chatterbox_turbo_exaggeration,
+    normalize_chatterbox_turbo_repetition_penalty,
+    normalize_chatterbox_turbo_temperature,
+    normalize_chatterbox_turbo_top_k,
+    normalize_chatterbox_turbo_top_p,
     normalize_elevenlabs_preset,
     normalize_supertonic_language,
     normalize_supertonic_speed,
     normalize_supertonic_total_steps,
     normalize_supertonic_voice,
+    resolve_chatterbox_turbo_python_path,
+    resolve_chatterbox_turbo_voice_prompt_path,
     resolve_supertonic_python_path,
+    validate_chatterbox_turbo_voice as validate_chatterbox_turbo_voice_step,
     validate_edge_voice,
     validate_elevenlabs_api_key as validate_elevenlabs_api_key_step,
     validate_elevenlabs_voice as validate_elevenlabs_voice_step,
@@ -142,6 +159,17 @@ class SetupService:
             "host_alias": host_alias,
         }
 
+    def _default_chatterbox_prompt_hint(self, settings: dict[str, Any]) -> str:
+        tts = settings.get("tts") or {}
+        mara_override = (tts.get("speaker_overrides") or {}).get("mara") or {}
+        preferred_voice_id = str(
+            mara_override.get("voice_id")
+            or mara_override.get("elevenlabs_voice_id")
+            or tts.get("elevenlabs_voice_id")
+            or ""
+        ).strip()
+        return detect_chatterbox_turbo_voice_prompt_path(preferred_voice_id)
+
     @staticmethod
     def _fingerprint_secret(value: str) -> str:
         text = value.strip()
@@ -191,6 +219,8 @@ class SetupService:
             return False
         if backend_id == "whisper" and str(stt.get("whisper_endpoint_url") or "").strip():
             return True
+        if backend_id == "xai":
+            return bool(str(settings["secrets"].get("xai_api_key") or "").strip())
         return module_available(backend["import_name"])
 
     def _tts_runtime_ready(self, settings: dict[str, Any]) -> bool:
@@ -219,6 +249,11 @@ class SetupService:
                 str(tts.get("supertonic_python_path") or "").strip()
                 and str(tts.get("supertonic_voice") or "").strip()
                 and str(tts.get("supertonic_language") or "").strip()
+            )
+        if provider_id == "chatterbox-turbo":
+            return bool(
+                str(tts.get("chatterbox_python_path") or "").strip()
+                and str(tts.get("chatterbox_voice_prompt_path") or "").strip()
             )
         return False
 
@@ -263,7 +298,13 @@ class SetupService:
             (
                 backend_id == "whisper" and bool(str(settings["stt"].get("whisper_endpoint_url") or "").strip())
             )
-            or module_available(SUPPORTED_STT_BACKENDS[backend_id]["import_name"])
+            or (
+                backend_id == "xai" and bool(str(settings["secrets"].get("xai_api_key") or "").strip())
+            )
+            or (
+                backend_id != "xai"
+                and module_available(SUPPORTED_STT_BACKENDS[backend_id]["import_name"])
+            )
             for backend_id in settings["stt"]["enabled_backends"]
             if backend_id in SUPPORTED_STT_BACKENDS
         )
@@ -277,11 +318,22 @@ class SetupService:
             "whisper_endpoint_model": settings["stt"].get("whisper_endpoint_model", ""),
             "backend_models": settings["stt"]["backend_models"],
         }
+        stt_config_matches = self._validated_config_matches(stt_snapshot, validation["stt"])
+        if not stt_config_matches and "xai" in stt_snapshot["backend_models"]:
+            legacy_stt_snapshot = {
+                **stt_snapshot,
+                "backend_models": {
+                    key: value
+                    for key, value in stt_snapshot["backend_models"].items()
+                    if key != "xai"
+                },
+            }
+            stt_config_matches = self._validated_config_matches(legacy_stt_snapshot, validation["stt"])
         stt_ready = bool(
             settings["stt"]["enabled_backends"]
             and settings["stt"]["default_backend"] in settings["stt"]["enabled_backends"]
             and stt_modules_ready
-            and self._validated_config_matches(stt_snapshot, validation["stt"])
+            and stt_config_matches
         )
         tts_modules_ready = all(
             module_available(SUPPORTED_TTS_PROVIDERS[provider_id]["import_name"])
@@ -333,6 +385,32 @@ class SetupService:
             supertonic_snapshot,
             validation.get("supertonic", {}),
         )
+        chatterbox_snapshot = {
+            "python_path": settings["tts"].get("chatterbox_python_path", ""),
+            "voice_prompt_path": settings["tts"].get("chatterbox_voice_prompt_path", ""),
+            "device": settings["tts"].get("chatterbox_device", CHATTERBOX_TURBO_DEFAULT_DEVICE),
+            "exaggeration": settings["tts"].get(
+                "chatterbox_exaggeration",
+                CHATTERBOX_TURBO_DEFAULT_EXAGGERATION,
+            ),
+            "temperature": settings["tts"].get(
+                "chatterbox_temperature",
+                CHATTERBOX_TURBO_DEFAULT_TEMPERATURE,
+            ),
+            "top_p": settings["tts"].get("chatterbox_top_p", CHATTERBOX_TURBO_DEFAULT_TOP_P),
+            "top_k": settings["tts"].get("chatterbox_top_k", CHATTERBOX_TURBO_DEFAULT_TOP_K),
+            "repetition_penalty": settings["tts"].get(
+                "chatterbox_repetition_penalty",
+                CHATTERBOX_TURBO_DEFAULT_REPETITION_PENALTY,
+            ),
+        }
+        chatterbox_ready = (
+            "chatterbox-turbo" not in settings["tts"]["enabled_providers"]
+            or self._validated_config_matches(
+                chatterbox_snapshot,
+                validation.get("chatterbox_turbo", {}),
+            )
+        )
 
         gateway_token_fingerprint = self._fingerprint_secret(settings["secrets"]["gateway_token"])
         gateway_snapshot = {
@@ -370,12 +448,14 @@ class SetupService:
             "eleven_key_ready": eleven_key_ready,
             "eleven_voice_ready": eleven_voice_ready,
             "supertonic_ready": supertonic_ready,
+            "chatterbox_ready": chatterbox_ready,
             "runtime_ready": runtime_ready,
         }
 
     def state(self) -> dict[str, Any]:
         settings = self.store.load_runtime_settings()
         remote_whisper_hint = self._default_remote_whisper_hint(settings)
+        default_chatterbox_prompt_path = self._default_chatterbox_prompt_hint(settings)
         return {
             "version_label": APP_VERSION_LABEL,
             "message": (
@@ -400,6 +480,12 @@ class SetupService:
                 "elevenlabs_presets": [
                     {"id": preset_id, "label": preset["label"]}
                     for preset_id, preset in ELEVENLABS_PRESETS.items()
+                ],
+                "chatterbox_devices": [
+                    {"id": "auto", "label": "Auto"},
+                    {"id": "cuda", "label": "CUDA"},
+                    {"id": "cpu", "label": "CPU"},
+                    {"id": "mps", "label": "Apple MPS"},
                 ],
             },
             "hints": {
@@ -431,10 +517,23 @@ class SetupService:
                 "default_supertonic_language": SUPERTONIC_DEFAULT_LANGUAGE,
                 "default_supertonic_total_steps": SUPERTONIC_DEFAULT_TOTAL_STEPS,
                 "default_supertonic_speed": SUPERTONIC_DEFAULT_SPEED,
+                "default_chatterbox_python_path": detect_chatterbox_turbo_python_path(),
+                "default_chatterbox_voice_prompt_path": default_chatterbox_prompt_path,
+                "default_chatterbox_device": CHATTERBOX_TURBO_DEFAULT_DEVICE,
+                "default_chatterbox_exaggeration": CHATTERBOX_TURBO_DEFAULT_EXAGGERATION,
+                "default_chatterbox_temperature": CHATTERBOX_TURBO_DEFAULT_TEMPERATURE,
+                "default_chatterbox_top_p": CHATTERBOX_TURBO_DEFAULT_TOP_P,
+                "default_chatterbox_top_k": CHATTERBOX_TURBO_DEFAULT_TOP_K,
+                "default_chatterbox_repetition_penalty": CHATTERBOX_TURBO_DEFAULT_REPETITION_PENALTY,
                 "supertonic_note": (
                     "Supertonic is a very fast local TTS engine, but it currently works best from a dedicated Python 3.12/3.13 environment. "
                     "Point Python Executable at a venv that already has the supertonic package installed. "
-                    "Lower Total Steps reduces latency further; 3 is the current realtime default here."
+                    "Lower Total Steps reduces latency further; 1 is the current low-latency default here."
+                ),
+                "chatterbox_note": (
+                    "Chatterbox Turbo runs from a dedicated Python environment with chatterbox-tts installed. "
+                    "Use a clear reference audio prompt longer than five seconds; first validation may download model files. "
+                    "Auto device skips CUDA when the installed PyTorch build does not support the detected GPU."
                 ),
             },
         }
@@ -507,7 +606,8 @@ class SetupService:
         return await self.validate_agent(gateway_payload)
 
     def validate_stt(self, payload: dict[str, Any]) -> dict[str, Any]:
-        current = self.store.load_config()["stt"]
+        runtime_settings = self.store.load_runtime_settings()
+        current = runtime_settings["stt"]
         enabled_backends = [str(item) for item in payload.get("enabled_backends") or []]
         backend_models = dict(current.get("backend_models") or {})
         backend_models.update({str(key): str(value) for key, value in (payload.get("backend_models") or {}).items()})
@@ -529,7 +629,12 @@ class SetupService:
             ).strip(),
             "backend_models": backend_models,
         }
-        result = validate_stt_selection_step(settings)
+        validation_settings = {
+            **settings,
+            "xai_api_key": str(runtime_settings["secrets"].get("xai_api_key") or "").strip(),
+        }
+        result = validate_stt_selection_step(validation_settings)
+        settings["backend_models"] = validation_settings["backend_models"]
         self.store.update_config(
             {
                 "stt": settings,
@@ -675,6 +780,101 @@ class SetupService:
                                 "language": saved_tts["supertonic_language"],
                                 "total_steps": saved_tts["supertonic_total_steps"],
                                 "speed": saved_tts["supertonic_speed"],
+                            }
+                        ),
+                    }
+                },
+            }
+        )
+        return result
+
+    async def validate_chatterbox_turbo(self, payload: dict[str, Any]) -> dict[str, Any]:
+        settings = self.store.load_runtime_settings()
+        current_tts = settings["tts"]
+        python_path = resolve_chatterbox_turbo_python_path(
+            str(
+                payload.get("python_path")
+                if "python_path" in payload
+                else current_tts.get("chatterbox_python_path") or ""
+            ).strip()
+        )
+        voice_prompt_path = resolve_chatterbox_turbo_voice_prompt_path(
+            str(
+                payload.get("voice_prompt_path")
+                if "voice_prompt_path" in payload
+                else current_tts.get("chatterbox_voice_prompt_path") or ""
+            ).strip()
+        )
+        device = normalize_chatterbox_turbo_device(
+            str(
+                payload.get("device")
+                if "device" in payload
+                else current_tts.get("chatterbox_device") or CHATTERBOX_TURBO_DEFAULT_DEVICE
+            ).strip()
+        )
+        exaggeration = normalize_chatterbox_turbo_exaggeration(
+            payload.get("exaggeration")
+            if "exaggeration" in payload
+            else current_tts.get("chatterbox_exaggeration", CHATTERBOX_TURBO_DEFAULT_EXAGGERATION)
+        )
+        temperature = normalize_chatterbox_turbo_temperature(
+            payload.get("temperature")
+            if "temperature" in payload
+            else current_tts.get("chatterbox_temperature", CHATTERBOX_TURBO_DEFAULT_TEMPERATURE)
+        )
+        top_p = normalize_chatterbox_turbo_top_p(
+            payload.get("top_p")
+            if "top_p" in payload
+            else current_tts.get("chatterbox_top_p", CHATTERBOX_TURBO_DEFAULT_TOP_P)
+        )
+        top_k = normalize_chatterbox_turbo_top_k(
+            payload.get("top_k")
+            if "top_k" in payload
+            else current_tts.get("chatterbox_top_k", CHATTERBOX_TURBO_DEFAULT_TOP_K)
+        )
+        repetition_penalty = normalize_chatterbox_turbo_repetition_penalty(
+            payload.get("repetition_penalty")
+            if "repetition_penalty" in payload
+            else current_tts.get(
+                "chatterbox_repetition_penalty",
+                CHATTERBOX_TURBO_DEFAULT_REPETITION_PENALTY,
+            )
+        )
+        result = await validate_chatterbox_turbo_voice_step(
+            python_path=python_path,
+            voice_prompt_path=voice_prompt_path,
+            device=device,
+            exaggeration=exaggeration,
+            temperature=temperature,
+            top_p=top_p,
+            top_k=top_k,
+            repetition_penalty=repetition_penalty,
+        )
+        saved_tts = {
+            "chatterbox_python_path": result["python_path"],
+            "chatterbox_voice_prompt_path": result["voice_prompt_path"],
+            "chatterbox_device": result["device"],
+            "chatterbox_exaggeration": result["exaggeration"],
+            "chatterbox_temperature": result["temperature"],
+            "chatterbox_top_p": result["top_p"],
+            "chatterbox_top_k": result["top_k"],
+            "chatterbox_repetition_penalty": result["repetition_penalty"],
+        }
+        self.store.update_config(
+            {
+                "tts": saved_tts,
+                "validation": {
+                    "chatterbox_turbo": {
+                        "config_hash": self._config_hash(
+                            {
+                                "python_path": saved_tts["chatterbox_python_path"],
+                                "voice_prompt_path": saved_tts["chatterbox_voice_prompt_path"],
+                                "device": saved_tts["chatterbox_device"],
+                                "exaggeration": saved_tts["chatterbox_exaggeration"],
+                                "temperature": saved_tts["chatterbox_temperature"],
+                                "top_p": saved_tts["chatterbox_top_p"],
+                                "top_k": saved_tts["chatterbox_top_k"],
+                                "repetition_penalty": saved_tts["chatterbox_repetition_penalty"],
                             }
                         ),
                     }
