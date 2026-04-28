@@ -12,6 +12,7 @@ config.json
 AGENTS.md
 config.pre-setup-reset.json
 .vscode/
+.claude/
 SESSION_HANDOFF_*.md
 *.Zone.Identifier
 *:Zone.Identifier
@@ -25,6 +26,7 @@ samples/
 image.png
 netsh
 .codex
+AGENTS.codex.md
 fish-speech/
 vibevoice-local
 vibevoice-local/

@@ -308,11 +308,11 @@ def test_voice_html_uses_db_threshold_and_wait_after_speak_slider():
     assert '<span>wait after speak</span>' in voice_html
     assert '<span>voice input threshold</span>' in voice_html
     assert 'id="wait-after-speak"' in voice_html
-    assert 'min="300" max="2500" step="25"' in voice_html
+    assert 'min="500" max="2500" step="25"' in voice_html
     assert 'id="turn-end-threshold"' in voice_html
     assert 'min="-60" max="0" step="1"' in voice_html
     assert "const LEVEL_DB_FLOOR = -60;" in voice_html
-    assert "const WAIT_AFTER_SPEAK_MIN_MS = 300;" in voice_html
+    assert "const WAIT_AFTER_SPEAK_MIN_MS = 500;" in voice_html
     assert "function formatDb(levelDb) {" in voice_html
     assert "function formatWaitAfterSpeak(ms) {" in voice_html
     assert "function setLevelDb(levelDb, { updatePeak = true } = {}) {" in voice_html
@@ -349,6 +349,7 @@ def test_voice_html_uses_db_threshold_and_wait_after_speak_slider():
     assert "[WAIT_AFTER_SPEAK_STORAGE_LOCK_KEY]: tuningStorageState.waitAfterSpeakMs" in voice_html
     assert "applyRuntimeAudioSettings(runtimeState.audio);" in voice_html
     assert "const turnEndSilenceMs = resolveWaitAfterSpeakMs();" in voice_html
+    assert "if (speechLike) {\n    if (audioChunks.length > 0) {\n      audioChunks.push(pcm);\n    }\n    silenceStart = null;\n    return;\n  }\n  if (!hasSpeech) return;" in voice_html
     assert "setLevelDb(LEVEL_DB_FLOOR);" in voice_html
     assert "live tuning" not in voice_html
     assert 'id="tuning-close"' not in voice_html

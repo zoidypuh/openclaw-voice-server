@@ -261,7 +261,7 @@ DEFAULT_CONFIG = {
     },
     "audio": {
         "silence_threshold": 0.015,
-        "silence_ms": 500,
+        "silence_ms": 900,
         "min_speech_ms": 350,
     },
     "windows_client": {},

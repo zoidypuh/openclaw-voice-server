@@ -405,7 +405,7 @@
         <span>wait after speak</span>
         <span id="wait-after-speak-value" class="tuning-value"></span>
       </span>
-      <input id="wait-after-speak" class="tuning-slider" type="range" min="300" max="2500" step="25">
+      <input id="wait-after-speak" class="tuning-slider" type="range" min="500" max="2500" step="25">
     </label>
     <label class="tuning-row" for="turn-end-threshold">
       <span class="tuning-label">
@@ -533,7 +533,7 @@ let transcriptLogEntries = [];
 let activeReplyEntryId = '';
 let transcriptEntryCounter = 0;
 let settings = {
-  silence_ms: 500,
+  silence_ms: 900,
   silence_threshold: 0.015,
   min_speech_ms: 350,
 };
@@ -543,14 +543,14 @@ const TUNING_PANEL_STORAGE_KEY = 'maras-switchboard.voice.tuning-panel.v1';
 const INTERRUPT_MODE_STORAGE_KEY = 'maras-switchboard.voice.interrupt-mode.v1';
 const DEFAULT_TUNING = {
   inputThresholdDb: -41,
-  waitAfterSpeakMs: 500,
+  waitAfterSpeakMs: 900,
 };
 const WAIT_AFTER_SPEAK_STORAGE_LOCK_KEY = 'waitAfterSpeakMsLocked';
 const TURN_COMMIT_MIN_SPEECH_MS = 350;
 const LEVEL_DB_FLOOR = -60;
 const LEVEL_DB_CEILING = 0;
 const LEVEL_PEAK_HOLD_MS = 5000;
-const WAIT_AFTER_SPEAK_MIN_MS = 300;
+const WAIT_AFTER_SPEAK_MIN_MS = 500;
 const WAIT_AFTER_SPEAK_MAX_MS = 2500;
 const MAX_BUFFERED_TURN_MS = 12000;
 const TARGET_CAPTURE_SAMPLE_RATE = 16000;
@@ -3085,6 +3085,13 @@ function onAudioProcess(event) {
       });
       resetCaptureBuffer();
     }
+    return;
+  }
+  if (speechLike) {
+    if (audioChunks.length > 0) {
+      audioChunks.push(pcm);
+    }
+    silenceStart = null;
     return;
   }
   if (!hasSpeech) return;

@@ -1,6 +1,6 @@
 # Mara's Switchboard
 
-![Mara's Switchboard voice runtime screenshot](readme-voice-ui.png)
+![Mara's Switchboard voice runtime screenshot](image.png)
 
 `maras-switchboard` is a local voice frontend for text agents. It gives you a browser setup page at `/setup`, a voice UI at `/voice`, local or remote STT, multiple TTS backends, and an optional Windows tray client.
 
@@ -71,60 +71,29 @@ python -m pip install --upgrade pip
 pip install -e .[dev]
 ```
 
-4. Create your local env file.
-
-```bash
-cp .env.example .env
-```
-
-5. Edit `.env`.
-
-At minimum, if you use the gateway backend, set:
-
-```dotenv
-MARAS_SWITCHBOARD_GATEWAY_TOKEN=replace-me
-```
-
-If you use ElevenLabs, also set:
-
-```dotenv
-MARAS_SWITCHBOARD_ELEVENLABS_API_KEY=replace-me
-```
-
-If you use xAI STT, set:
-
-```dotenv
-XAI_API_KEY=replace-me
-```
-
-If you use Chatterbox Turbo TTS, point the setup page at a Python environment that already has `chatterbox-tts` installed and at a clear reference audio prompt longer than five seconds:
-
-```dotenv
-MARAS_SWITCHBOARD_CHATTERBOX_TURBO_PYTHON_PATH=/home/gismar/coding/chatterbox-tts/.venv/bin/python
-MARAS_SWITCHBOARD_CHATTERBOX_TURBO_VOICE_PROMPT_PATH=/path/to/reference-audio.wav
-```
-
-6. Start the server from the repo root.
+4. Start the server from the repo root.
 
 ```bash
 source .venv/bin/activate
 maras-switchboard
 ```
 
-7. Open the setup page in a browser.
+5. Open the setup page in a browser.
 
 ```text
 http://127.0.0.1:8765/setup
 ```
 
-8. In the setup page, do these steps in order:
+6. In the setup page, do these steps in order:
 
 - validate one STT backend
 - validate one TTS backend, or choose `Disabled (text only)` for the simplest first run
 - validate the conversation backend
 - open the voice app
 
-9. Open the voice UI.
+The setup page saves the selected provider settings to `config.json` and writes required secrets to `.env` when you validate a step. You only need to create or edit `.env` manually for unusual headless setup or when you intentionally want to pre-seed values before opening `/setup`.
+
+7. Open the voice UI.
 
 ```text
 http://127.0.0.1:8765/voice
@@ -259,6 +228,8 @@ Chatterbox Turbo setup notes:
 - create or reuse a Python environment that can import `chatterbox`
 - set `MARAS_SWITCHBOARD_CHATTERBOX_TURBO_PYTHON_PATH` to that environment's Python executable, or enter it in `/setup`
 - set `MARAS_SWITCHBOARD_CHATTERBOX_TURBO_VOICE_PROMPT_PATH` to a clear reference audio file, or enter it in `/setup`
+- example Python executable: `<chatterbox-repo>/.venv/bin/python`
+- example voice prompt: `<path-to-reference-audio>.wav`
 - use a reference prompt longer than five seconds for better voice consistency
 - `auto` device will avoid CUDA when the installed PyTorch build cannot use the detected GPU
 

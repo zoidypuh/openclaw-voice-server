@@ -94,6 +94,7 @@ def test_hermes_conversation_agent_replaces_incoherent_reply_with_huh(monkeypatc
             self.replace_calls.append(text)
 
     monkeypatch.setattr(hermes_module, "_HermesAgentSession", FakeSession)
+    monkeypatch.setattr(hermes_module, "_build_voice_context_blob", lambda text: "")
 
     async def scenario():
         agent = hermes_module.HermesConversationAgent(project_root="/tmp/hermes-agent")
@@ -106,7 +107,7 @@ def test_hermes_conversation_agent_replaces_incoherent_reply_with_huh(monkeypatc
     assert len(instances) == 2
     main_session, sanity_session = instances
     assert main_session.replace_calls == ["Huh?"]
-    assert main_session.prompts[0].endswith("User request: that would help")
+    assert main_session.prompts[0] == "that would help"
     assert "Current user: that would help" in sanity_session.prompts[0]
     assert "Candidate reply: <voice> You want it? You got it!" in sanity_session.prompts[0]
 
@@ -149,6 +150,7 @@ def test_hermes_conversation_agent_asks_for_clarification_on_random_person_or_na
             self.replace_calls.append(text)
 
     monkeypatch.setattr(hermes_module, "_HermesAgentSession", FakeSession)
+    monkeypatch.setattr(hermes_module, "_build_voice_context_blob", lambda text: "")
 
     async def scenario():
         agent = hermes_module.HermesConversationAgent(project_root="/tmp/hermes-agent")
@@ -201,6 +203,7 @@ def test_hermes_conversation_agent_skips_sanity_check_for_backend_error_reply(mo
             self.replace_calls.append(text)
 
     monkeypatch.setattr(hermes_module, "_HermesAgentSession", FakeSession)
+    monkeypatch.setattr(hermes_module, "_build_voice_context_blob", lambda text: "")
 
     async def scenario():
         agent = hermes_module.HermesConversationAgent(project_root="/tmp/hermes-agent")
@@ -213,7 +216,7 @@ def test_hermes_conversation_agent_skips_sanity_check_for_backend_error_reply(mo
     assert len(instances) == 2
     main_session, sanity_session = instances
     assert main_session.replace_calls == []
-    assert main_session.prompts[0].endswith("User request: hello?")
+    assert main_session.prompts[0] == "hello?"
     assert sanity_session.prompts == []
 
 
