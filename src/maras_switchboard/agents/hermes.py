@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
-from datetime import datetime, timedelta
 from pathlib import Path
-import subprocess
-import sys
 import time
 import uuid
 
+import httpx
+
+from ..catalog import DEFAULT_HERMES_PROFILE
 from ..errors import ValidationError
 from ..gateway import normalize_gateway_url
 from .base import BaseConversationAgent
@@ -20,15 +19,10 @@ def _normalize_reply(parts: list[str]) -> str:
     return " ".join(part.strip() for part in parts if str(part or "").strip()).strip()
 
 
-def _gateway_base_url(url: str) -> str:
-    normalized = normalize_gateway_url(url)
-    suffix = "/chat/completions"
-    if normalized.endswith(suffix):
-        return normalized[: -len(suffix)]
-    return normalized
-
-
 LOGGER = logging.getLogger(__name__)
+DEFAULT_HERMES_API_URL = "http://127.0.0.1:8643/v1/chat/completions"
+DEFAULT_HERMES_API_KEY = "local-hermes-key"
+DEFAULT_HERMES_API_MODEL = "gpt-5.5"
 _REPLY_SANITY_VERDICT_OK = "OK"
 _REPLY_SANITY_VERDICT_HUH = "HUH"
 _REPLY_SANITY_VERDICT_ASK = "ASK"
@@ -47,56 +41,47 @@ _REPLY_SANITY_SYSTEM_PROMPT = (
 )
 
 
-def _load_env_file(path: Path) -> None:
-    try:
-        text = path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        text = path.read_text(encoding="latin-1")
-    except OSError:
-        return
-
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        if not key or os.environ.get(key):
-            continue
-        value = value.strip()
-        if len(value) >= 2 and value[:1] == value[-1:] and value[:1] in {'"', "'"}:
-            value = value[1:-1]
-        os.environ[key] = value
+def _normalize_hermes_profile(value: str | None) -> str:
+    normalized = str(value or "").strip()
+    return normalized or DEFAULT_HERMES_PROFILE
 
 
-def _load_hermes_env(project_root: Path) -> None:
-    candidates: list[Path] = []
-    hermes_home = str(os.environ.get("HERMES_HOME") or "").strip()
-    if hermes_home:
-        candidates.append(Path(hermes_home).expanduser() / ".env")
-    candidates.append(project_root.parent / ".hermes" / ".env")
-    candidates.append(Path.home() / ".hermes" / ".env")
-
-    seen: set[Path] = set()
-    for candidate in candidates:
-        resolved = candidate.expanduser().resolve()
-        if resolved in seen or not resolved.exists():
-            continue
-        seen.add(resolved)
-        _load_env_file(resolved)
+def _resolve_hermes_home(profile: str | None) -> Path:
+    normalized = _normalize_hermes_profile(profile)
+    if normalized == "default":
+        return (Path.home() / ".hermes").resolve()
+    candidate = Path(normalized).expanduser()
+    if candidate.is_absolute() or "/" in normalized:
+        return candidate.resolve()
+    return (Path.home() / ".hermes" / "profiles" / normalized).resolve()
 
 
-def _looks_like_nested_hermes_proxy(base_url: str, *, provider: str = "") -> bool:
-    normalized_url = str(base_url or "").strip().lower().rstrip("/")
-    normalized_provider = str(provider or "").strip().lower()
-    if not normalized_url:
-        return False
-    if normalized_provider and normalized_provider != "custom":
-        return False
-    return (
-        "127.0.0.1:8317" in normalized_url
-        or "localhost:8317" in normalized_url
-    )
+def _normalize_hermes_api_url(value: str | None) -> str:
+    configured = str(
+        value
+        or os.environ.get("MARAS_SWITCHBOARD_HERMES_API_URL")
+        or os.environ.get("HERMES_API_URL")
+        or DEFAULT_HERMES_API_URL
+    ).strip()
+    return normalize_gateway_url(configured)
+
+
+def _resolve_hermes_api_key(value: str | None) -> str:
+    return str(
+        value
+        or os.environ.get("MARAS_SWITCHBOARD_HERMES_API_KEY")
+        or os.environ.get("API_SERVER_KEY")
+        or DEFAULT_HERMES_API_KEY
+    ).strip()
+
+
+def _resolve_hermes_api_model(value: str | None) -> str:
+    return str(
+        value
+        or os.environ.get("MARAS_SWITCHBOARD_HERMES_API_MODEL")
+        or os.environ.get("API_SERVER_MODEL_NAME")
+        or DEFAULT_HERMES_API_MODEL
+    ).strip()
 
 
 def _format_recent_voice_turns(turns: list[tuple[str, str]], *, limit: int) -> str:
@@ -258,6 +243,10 @@ class _HermesAgentSession:
         gateway_url: str | None = None,
         gateway_token: str | None = None,
         gateway_model: str | None = None,
+        api_url: str | None = None,
+        api_key: str | None = None,
+        api_model: str | None = None,
+        profile: str | None = None,
         use_context_files: bool = True,
         use_memory: bool = True,
         enabled_toolsets: list[str] | None = None,
@@ -266,9 +255,11 @@ class _HermesAgentSession:
         self._system_prompt = system_prompt
         self._session_id = session_id
         self._empty_reply_error = empty_reply_error
-        self._gateway_url = str(gateway_url or "").strip()
-        self._gateway_token = str(gateway_token or "").strip()
-        self._gateway_model = str(gateway_model or "").strip()
+        self._api_url = _normalize_hermes_api_url(api_url or gateway_url)
+        self._api_key = _resolve_hermes_api_key(api_key or gateway_token)
+        self._api_model = _resolve_hermes_api_model(api_model or gateway_model)
+        self._profile = _normalize_hermes_profile(profile)
+        self.hermes_home = _resolve_hermes_home(self._profile)
         self._use_context_files = bool(use_context_files)
         self._use_memory = bool(use_memory)
         self._enabled_toolsets = _normalize_enabled_toolsets(enabled_toolsets)
@@ -278,13 +269,10 @@ class _HermesAgentSession:
                 f"Hermes Agent was not found at {self.project_root}. "
                 "Set MARAS_SWITCHBOARD_HERMES_ROOT if it is installed elsewhere."
             )
-        self._agent = None
-        self._subprocess_python = self._resolve_subprocess_python(self.project_root)
-        self._build_error: Exception | None = None
-        try:
-            self._agent = self._build_agent(self.project_root)
-        except Exception as exc:  # pragma: no cover - depends on local Hermes install
-            self._build_error = exc
+        if not self.hermes_home.exists():
+            raise ValidationError(
+                f"Hermes profile {self._profile!r} was not found at {self.hermes_home}."
+            )
 
     @staticmethod
     def _resolve_project_root(configured_root: str | None = None) -> Path:
@@ -298,291 +286,103 @@ class _HermesAgentSession:
             return Path(configured).expanduser().resolve()
         return (Path.home() / ".hermes" / "hermes-agent").resolve()
 
+    def _headers(self) -> dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
+        return headers
+
+    def _messages(self, prompt: str, history: list[dict]) -> list[dict[str, str]]:
+        messages: list[dict[str, str]] = []
+        if self._system_prompt.strip():
+            messages.append({"role": "system", "content": self._system_prompt.strip()})
+        for message in history:
+            role = str(message.get("role") or "").strip()
+            if role not in {"user", "assistant"}:
+                continue
+            content = str(message.get("content") or "").strip()
+            if not content:
+                continue
+            messages.append({"role": role, "content": content})
+        messages.append({"role": "user", "content": prompt})
+        return messages
+
     @staticmethod
-    def _resolve_subprocess_python(project_root: Path) -> Path:
-        candidates = [
-            project_root / "venv" / "bin" / "python",
-            project_root / "venv" / "bin" / "python3",
-            project_root.parent / ".hermes" / "venv" / "bin" / "python",
-            project_root.parent / ".hermes" / "venv" / "bin" / "python3",
-            Path.home() / ".hermes" / "venv" / "bin" / "python",
-            Path.home() / ".hermes" / "venv" / "bin" / "python3",
-        ]
-        for candidate in candidates:
-            if candidate.exists():
-                return candidate
-        raise ValidationError(
-            "Hermes Python interpreter was not found. "
-            f"Checked {project_root / 'venv' / 'bin'} and ~/.hermes/venv/bin."
-        )
+    def _extract_reply(payload: dict) -> str:
+        choices = payload.get("choices")
+        if isinstance(choices, list) and choices:
+            choice = choices[0] if isinstance(choices[0], dict) else {}
+            message = choice.get("message") if isinstance(choice, dict) else None
+            if isinstance(message, dict):
+                return str(message.get("content") or "").strip()
+            if isinstance(choice, dict):
+                return str(choice.get("text") or "").strip()
+        output_text = payload.get("output_text")
+        if isinstance(output_text, str):
+            return output_text.strip()
+        return ""
 
-    def _build_agent(self, project_root: Path):
-        project_root_str = str(project_root)
-        if project_root_str not in sys.path:
-            sys.path.insert(0, project_root_str)
-
+    @staticmethod
+    def _error_text(response: httpx.Response) -> str:
+        raw = response.text.strip()
+        if not raw:
+            return f"HTTP {response.status_code}"
         try:
-            from hermes_cli.config import load_config
-            from run_agent import AIAgent
-        except Exception as exc:  # pragma: no cover - depends on local Hermes install
-            raise ValidationError(f"Could not import Hermes Agent from {project_root}.") from exc
+            payload = response.json()
+        except ValueError:
+            return raw
+        error = payload.get("error")
+        if isinstance(error, dict):
+            return str(error.get("message") or raw).strip()
+        if isinstance(error, str):
+            return error.strip()
+        return str(payload.get("message") or raw).strip()
 
-        if self._gateway_url and self._gateway_token and self._gateway_model:
-            model = self._gateway_model
-            api_key = self._gateway_token
-            base_url = _gateway_base_url(self._gateway_url)
-            provider = "custom"
-            api_mode = "chat_completions"
-        else:
-            config = load_config()
-            model_config = config.get("model") or {}
-            if isinstance(model_config, dict):
-                model = str(model_config.get("default") or "").strip()
-                api_key = str(model_config.get("api_key") or "").strip()
-                base_url = str(model_config.get("base_url") or "").strip()
-                provider = str(model_config.get("provider") or "").strip()
-                api_mode = str(model_config.get("api_mode") or "").strip()
-            else:
-                model = str(model_config or "").strip()
-                api_key = ""
-                base_url = ""
-                provider = ""
-                api_mode = ""
-
-            if not model:
-                raise ValidationError("Hermes Agent does not have a model configured.")
-
-        return AIAgent(
-            model=model,
-            api_key=api_key or None,
-            base_url=base_url or None,
-            provider=provider or None,
-            api_mode=api_mode or None,
-            max_iterations=6,
-            enabled_toolsets=list(self._enabled_toolsets),
-            quiet_mode=True,
-            verbose_logging=False,
-            ephemeral_system_prompt=self._system_prompt,
-            session_id=self._session_id,
-            platform="cli",
-            skip_context_files=not self._use_context_files,
-            skip_memory=not self._use_memory,
-        )
-
-    def _subprocess_payload(self, *, prompt: str, history: list[dict] | None = None) -> dict:
-        return {
-            "project_root": str(self.project_root),
-            "system_prompt": self._system_prompt,
-            "session_id": self._session_id,
-            "prompt": prompt,
-            "history": list(self._history if history is None else history),
-            "gateway": {
-                "url": self._gateway_url,
-                "token": self._gateway_token,
-                "model": self._gateway_model,
-            },
-            "use_context_files": self._use_context_files,
-            "use_memory": self._use_memory,
-            "enabled_toolsets": list(self._enabled_toolsets),
-        }
-
-    def _reply_via_subprocess(self, *, prompt: str, history: list[dict] | None = None, commit: bool = True) -> str:
-        payload = self._subprocess_payload(prompt=prompt, history=history)
-        script = r"""
-import json
-import os
-import sys
-from pathlib import Path
-
-payload = json.loads(sys.stdin.read())
-project_root = Path(payload["project_root"]).expanduser()
-sys.path.insert(0, str(project_root))
-
-from hermes_cli.config import load_config
-from run_agent import AIAgent
-
-
-def load_env_file(path: Path) -> None:
-    try:
-        text = path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        text = path.read_text(encoding="latin-1")
-    except OSError:
-        return
-
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        if not key or os.environ.get(key):
-            continue
-        value = value.strip()
-        if len(value) >= 2 and value[:1] == value[-1:] and value[:1] in {'"', "'"}:
-            value = value[1:-1]
-        os.environ[key] = value
-
-
-def load_hermes_env(project_root: Path) -> None:
-    candidates = []
-    hermes_home = str(os.environ.get("HERMES_HOME") or "").strip()
-    if hermes_home:
-        candidates.append(Path(hermes_home).expanduser() / ".env")
-    candidates.append(project_root.parent / ".hermes" / ".env")
-    candidates.append(Path.home() / ".hermes" / ".env")
-
-    seen = set()
-    for candidate in candidates:
-        resolved = candidate.expanduser().resolve()
-        if resolved in seen or not resolved.exists():
-            continue
-        seen.add(resolved)
-        load_env_file(resolved)
-
-
-def looks_like_nested_hermes_proxy(base_url: str, provider: str = "") -> bool:
-    normalized_url = str(base_url or "").strip().lower().rstrip("/")
-    normalized_provider = str(provider or "").strip().lower()
-    if not normalized_url:
-        return False
-    if normalized_provider and normalized_provider != "custom":
-        return False
-    return (
-        "127.0.0.1:8317" in normalized_url
-        or "localhost:8317" in normalized_url
-    )
-
-
-gateway = payload.get("gateway") or {}
-gateway_url = str(gateway.get("url") or "").strip()
-gateway_token = str(gateway.get("token") or "").strip()
-gateway_model = str(gateway.get("model") or "").strip()
-
-if gateway_url and gateway_token and gateway_model:
-    base_url = gateway_url.rstrip("/")
-    if base_url.endswith("/chat/completions"):
-        base_url = base_url[:-len("/chat/completions")]
-    model = gateway_model
-    api_key = gateway_token
-    provider = "custom"
-    api_mode = "chat_completions"
-else:
-    config = load_config()
-    model_config = config.get("model") or {}
-    if isinstance(model_config, dict):
-        model = str(model_config.get("default") or "").strip()
-        api_key = str(model_config.get("api_key") or "").strip()
-        base_url = str(model_config.get("base_url") or "").strip()
-        provider = str(model_config.get("provider") or "").strip()
-        api_mode = str(model_config.get("api_mode") or "").strip()
-    else:
-        model = str(model_config or "").strip()
-        api_key = ""
-        base_url = ""
-        provider = ""
-        api_mode = ""
-
-enabled_toolsets = payload.get("enabled_toolsets")
-if enabled_toolsets is None:
-    enabled_toolsets = []
-
-agent = AIAgent(
-    model=model,
-    api_key=api_key or None,
-    base_url=base_url or None,
-    provider=provider or None,
-    api_mode=api_mode or None,
-    max_iterations=6,
-    enabled_toolsets=enabled_toolsets,
-    quiet_mode=True,
-    verbose_logging=False,
-    ephemeral_system_prompt=payload["system_prompt"],
-    session_id=payload["session_id"],
-    platform="cli",
-    skip_context_files=not bool(payload.get("use_context_files", True)),
-    skip_memory=not bool(payload.get("use_memory", True)),
-)
-result = agent.run_conversation(
-    payload["prompt"],
-    conversation_history=payload.get("history") or [],
-)
-print("JSON_RESULT=" + json.dumps({
-    "final_response": result.get("final_response") or "",
-    "messages": result.get("messages") or [],
-}))
-"""
-        completed = subprocess.run(
-            [str(self._subprocess_python), "-c", script],
-            input=json.dumps(payload),
-            capture_output=True,
-            text=True,
-            timeout=180,
-        )
-        if completed.returncode != 0:
-            stderr = (completed.stderr or "").strip()
-            stdout = (completed.stdout or "").strip()
-            detail = stderr or stdout or f"Hermes subprocess exited with status {completed.returncode}."
-            raise ValidationError(f"Hermes Agent failed: {detail}")
-
-        lines = [line.strip() for line in (completed.stdout or "").splitlines() if line.strip()]
-        result_line = next((line for line in reversed(lines) if line.startswith("JSON_RESULT=")), "")
-        if not result_line:
-            raise ValidationError("Hermes Agent subprocess returned no structured result.")
+    async def _request_reply(self, prompt: str, history: list[dict]) -> str:
         try:
-            result = json.loads(result_line[len("JSON_RESULT="):])
-        except json.JSONDecodeError as exc:
-            raise ValidationError("Hermes Agent subprocess returned invalid structured output.") from exc
-
-        if commit:
-            self._history = list(result.get("messages") or [])
-        reply = str(result.get("final_response") or "").strip()
+            async with httpx.AsyncClient(timeout=180) as client:
+                response = await client.post(
+                    self._api_url,
+                    headers=self._headers(),
+                    json={
+                        "model": self._api_model,
+                        "messages": self._messages(prompt, history),
+                        "stream": False,
+                    },
+                )
+        except httpx.HTTPError as exc:
+            raise ValidationError(f"Could not reach Hermes API at {self._api_url}: {exc}") from exc
+        if response.status_code >= 400:
+            raise ValidationError(f"Hermes API failed: {self._error_text(response)}")
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise ValidationError("Hermes API response was not valid JSON.") from exc
+        reply = self._extract_reply(payload)
         if not reply:
             raise ValidationError(self._empty_reply_error)
         return reply
 
     async def ask(self, prompt: str) -> str:
-        if self._agent is None:
-            loop = asyncio.get_running_loop()
-            return await loop.run_in_executor(
-                None,
-                lambda: self._reply_via_subprocess(prompt=prompt),
-            )
-
-        loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(
-            None,
-            lambda: self._agent.run_conversation(
-                prompt,
-                conversation_history=self._history,
-            ),
+        reply = await self._request_reply(prompt, list(self._history))
+        self._history.extend(
+            [
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": reply},
+            ]
         )
-        self._history = list(result.get("messages") or [])
-        reply = str(result.get("final_response") or "").strip()
-        if not reply:
-            raise ValidationError(self._empty_reply_error)
         return reply
 
     async def ask_once(self, prompt: str) -> str:
-        if self._agent is None:
-            loop = asyncio.get_running_loop()
-            return await loop.run_in_executor(
-                None,
-                lambda: self._reply_via_subprocess(prompt=prompt, history=[], commit=False),
-            )
+        return await self._request_reply(prompt, [])
 
-        loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(
-            None,
-            lambda: self._agent.run_conversation(
-                prompt,
-                conversation_history=[],
-            ),
-        )
-        reply = str(result.get("final_response") or "").strip()
-        if not reply:
-            raise ValidationError(self._empty_reply_error)
-        return reply
+    @property
+    def profile(self) -> str:
+        return self._profile
+
+    @property
+    def api_url(self) -> str:
+        return self._api_url
 
     def replace_last_assistant_reply(self, text: str) -> None:
         replacement = str(text or "").strip()
@@ -603,6 +403,10 @@ class HermesConversationAgent(BaseConversationAgent):
         gateway_url: str | None = None,
         gateway_token: str | None = None,
         gateway_model: str | None = None,
+        api_url: str | None = None,
+        api_key: str | None = None,
+        api_model: str | None = None,
+        profile: str | None = None,
         use_context_files: bool = True,
         use_memory: bool = True,
         enabled_toolsets: list[str] | None = None,
@@ -626,6 +430,10 @@ class HermesConversationAgent(BaseConversationAgent):
             gateway_url=gateway_url,
             gateway_token=gateway_token,
             gateway_model=gateway_model,
+            api_url=api_url,
+            api_key=api_key,
+            api_model=api_model,
+            profile=profile,
             use_context_files=use_context_files,
             use_memory=use_memory,
             enabled_toolsets=enabled_toolsets,
@@ -648,6 +456,10 @@ class HermesConversationAgent(BaseConversationAgent):
                 gateway_url=gateway_url,
                 gateway_token=gateway_token,
                 gateway_model=gateway_model,
+                api_url=api_url,
+                api_key=api_key,
+                api_model=api_model,
+                profile=profile,
                 use_context_files=False,
                 use_memory=False,
                 enabled_toolsets=[],
@@ -656,6 +468,18 @@ class HermesConversationAgent(BaseConversationAgent):
     @property
     def project_root(self) -> Path:
         return self._session.project_root
+
+    @property
+    def profile(self) -> str:
+        return self._session.profile
+
+    @property
+    def hermes_home(self) -> Path:
+        return self._session.hermes_home
+
+    @property
+    def api_url(self) -> str:
+        return self._session.api_url
 
     def _remember_turn(self, user_text: str, assistant_text: str) -> None:
         self._recent_turns.append((str(user_text or "").strip(), str(assistant_text or "").strip()))
@@ -722,12 +546,20 @@ async def validate_hermes_connection(
     gateway_url: str | None = None,
     gateway_token: str | None = None,
     gateway_model: str | None = None,
+    api_url: str | None = None,
+    api_key: str | None = None,
+    api_model: str | None = None,
+    profile: str | None = None,
 ) -> dict[str, object]:
     agent = HermesConversationAgent(
         project_root=project_root,
         gateway_url=gateway_url,
         gateway_token=gateway_token,
         gateway_model=gateway_model,
+        api_url=api_url,
+        api_key=api_key,
+        api_model=api_model,
+        profile=profile,
     )
     abort_event = asyncio.Event()
     parts: list[str] = []
@@ -739,5 +571,8 @@ async def validate_hermes_connection(
     return {
         "ok": True,
         "project_root": str(agent.project_root),
+        "profile": agent.profile,
+        "hermes_home": str(agent.hermes_home),
+        "api_url": agent.api_url,
         "reply_preview": reply[:80],
     }

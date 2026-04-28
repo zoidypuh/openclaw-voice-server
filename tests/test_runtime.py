@@ -857,6 +857,7 @@ def test_handle_ws_uses_hermes_agent_when_selected(monkeypatch):
             gateway_url=None,
             gateway_token=None,
             gateway_model=None,
+            profile=None,
             use_context_files=True,
             use_memory=True,
             enabled_toolsets=None,
@@ -866,6 +867,7 @@ def test_handle_ws_uses_hermes_agent_when_selected(monkeypatch):
             assert gateway_url is None
             assert gateway_token is None
             assert gateway_model is None
+            assert profile == "voice"
             assert use_context_files is True
             assert use_memory is True
             assert enabled_toolsets == []

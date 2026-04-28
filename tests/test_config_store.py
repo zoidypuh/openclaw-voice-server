@@ -101,12 +101,17 @@ def test_config_store_reads_xai_api_key_from_env(tmp_path, monkeypatch):
 def test_config_store_reads_hermes_root_from_env(tmp_path):
     config_path = tmp_path / "config.json"
     env_path = tmp_path / ".env"
-    env_path.write_text("MARAS_SWITCHBOARD_HERMES_ROOT=/tmp/hermes-agent\n", encoding="utf-8")
+    env_path.write_text(
+        "MARAS_SWITCHBOARD_HERMES_ROOT=/tmp/hermes-agent\n"
+        "MARAS_SWITCHBOARD_HERMES_PROFILE=voice\n",
+        encoding="utf-8",
+    )
 
     store = ConfigStore(config_path=config_path, env_path=env_path)
     settings = store.load_runtime_settings()
 
     assert settings["agent"]["hermes_root"] == "/tmp/hermes-agent"
+    assert settings["agent"]["hermes_profile"] == "voice"
 
 
 def test_config_store_accepts_agentic_env_aliases(tmp_path):

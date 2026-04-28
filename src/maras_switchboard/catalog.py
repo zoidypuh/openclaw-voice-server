@@ -9,6 +9,7 @@ DEFAULT_SAMPLE_TEXT = "Mara's Switchboard setup validation."
 DEFAULT_VOICE_SESSION_KEY = "agent:main:voice-chat-main"
 DEFAULT_LOCAL_GATEWAY_URL = "http://127.0.0.1:18789"
 DEFAULT_HERMES_ROOT = str((Path.home() / ".hermes" / "hermes-agent").resolve())
+DEFAULT_HERMES_PROFILE = "voice"
 DEFAULT_REMOTE_WHISPER_HOST_ALIAS = "remote-whisper"
 DEFAULT_REMOTE_WHISPER_PORT = 18000
 DEFAULT_REMOTE_WHISPER_ENDPOINT_PATH = "/v1/audio/transcriptions"
@@ -163,6 +164,7 @@ ENV_TO_CONFIG = {
     "MARAS_SWITCHBOARD_GATEWAY_MODEL": ("gateway", "model"),
     "MARAS_SWITCHBOARD_GATEWAY_SESSION_KEY": ("gateway", "session_key"),
     "MARAS_SWITCHBOARD_HERMES_ROOT": ("agent", "hermes_root"),
+    "MARAS_SWITCHBOARD_HERMES_PROFILE": ("agent", "hermes_profile"),
     "MARAS_SWITCHBOARD_HTTP_HOST": ("server", "host"),
     "MARAS_SWITCHBOARD_HTTP_PORT": ("server", "port"),
     "MARAS_SWITCHBOARD_WHISPER_MODEL": ("stt", "backend_models", "faster-whisper"),
@@ -214,6 +216,7 @@ DEFAULT_CONFIG = {
     "agent": {
         "backend": "gateway",
         "hermes_root": DEFAULT_HERMES_ROOT,
+        "hermes_profile": DEFAULT_HERMES_PROFILE,
         "use_context_files": True,
         "use_memory": True,
         "reply_sanity_check": True,

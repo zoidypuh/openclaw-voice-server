@@ -11,6 +11,7 @@ from typing import Any
 from .agents import validate_hermes_connection
 from .catalog import (
     APP_VERSION_LABEL,
+    DEFAULT_HERMES_PROFILE,
     DEFAULT_HERMES_ROOT,
     DEFAULT_LOCAL_GATEWAY_URL,
     DEFAULT_REMOTE_WHISPER_ENDPOINT_PATH,
@@ -429,6 +430,10 @@ class SetupService:
                 (settings.get("agent") or {}).get("hermes_root") or DEFAULT_HERMES_ROOT
             ).strip()
             or DEFAULT_HERMES_ROOT,
+            "hermes_profile": str(
+                (settings.get("agent") or {}).get("hermes_profile") or DEFAULT_HERMES_PROFILE
+            ).strip()
+            or DEFAULT_HERMES_PROFILE,
         }
         hermes_ready = self._validated_config_matches(hermes_snapshot, validation["hermes"])
 
@@ -492,6 +497,7 @@ class SetupService:
                 "default_voice_session_key": DEFAULT_VOICE_SESSION_KEY,
                 "hold_to_talk_shortcut": HOLD_TO_TALK_SHORTCUT_LABEL,
                 "default_hermes_root": DEFAULT_HERMES_ROOT,
+                "default_hermes_profile": DEFAULT_HERMES_PROFILE,
                 "gpu_note": (
                     "GPU mode currently targets NVIDIA CUDA. "
                     "Use it only when the CUDA runtime and model dependencies are already working, "
@@ -544,16 +550,30 @@ class SetupService:
         backend = normalize_agent_backend(payload.get("backend") or agent_settings.get("backend"))
         if backend == "hermes":
             hermes_root = str(payload.get("hermes_root") or agent_settings.get("hermes_root") or DEFAULT_HERMES_ROOT).strip()
+            hermes_profile = (
+                str(payload.get("hermes_profile") or agent_settings.get("hermes_profile") or DEFAULT_HERMES_PROFILE).strip()
+                or DEFAULT_HERMES_PROFILE
+            )
             result = await validate_hermes_connection(
                 project_root=hermes_root,
+                profile=hermes_profile,
             )
             resolved_root = str(result["project_root"])
             self.store.update_config(
                 {
-                    "agent": {"backend": "hermes", "hermes_root": resolved_root},
+                    "agent": {
+                        "backend": "hermes",
+                        "hermes_root": resolved_root,
+                        "hermes_profile": hermes_profile,
+                    },
                     "validation": {
                         "hermes": {
-                            "config_hash": self._config_hash({"hermes_root": resolved_root}),
+                            "config_hash": self._config_hash(
+                                {
+                                    "hermes_root": resolved_root,
+                                    "hermes_profile": hermes_profile,
+                                }
+                            ),
                         }
                     },
                 }

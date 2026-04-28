@@ -12,6 +12,7 @@ def test_build_conversation_agent_lets_hermes_use_its_configured_model():
         "agent": {
             "backend": "hermes",
             "hermes_root": "/tmp/hermes-agent",
+            "hermes_profile": "voice",
             "use_context_files": False,
             "use_memory": True,
             "toolsets": ["browser", "file"],
@@ -31,6 +32,7 @@ def test_build_conversation_agent_lets_hermes_use_its_configured_model():
 
     assert captured == {
         "project_root": "/tmp/hermes-agent",
+        "profile": "voice",
         "use_context_files": False,
         "use_memory": True,
         "enabled_toolsets": ["browser", "file"],
@@ -64,4 +66,5 @@ def test_build_conversation_agent_restores_hermes_context_without_tools_by_defau
 
     assert captured["use_context_files"] is True
     assert captured["use_memory"] is True
+    assert captured["profile"] == "voice"
     assert captured["enabled_toolsets"] == []

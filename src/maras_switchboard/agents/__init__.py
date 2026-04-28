@@ -1,7 +1,7 @@
 from .base import BaseConversationAgent, ConversationAgent
 from .hermes import HermesConversationAgent, validate_hermes_connection
 from .openai_chat import OpenAIChatAgent
-from ..catalog import normalize_agent_backend
+from ..catalog import DEFAULT_HERMES_PROFILE, normalize_agent_backend
 from ..gateway import resolve_voice_session_key
 
 
@@ -25,6 +25,7 @@ def build_conversation_agent(
         agent_settings = settings.get("agent") or {}
         return hermes_agent_cls(
             project_root=str(agent_settings.get("hermes_root") or "").strip() or None,
+            profile=str(agent_settings.get("hermes_profile") or DEFAULT_HERMES_PROFILE).strip(),
             use_context_files=bool(agent_settings.get("use_context_files", True)),
             use_memory=bool(agent_settings.get("use_memory", True)),
             enabled_toolsets=agent_settings.get("toolsets", []),

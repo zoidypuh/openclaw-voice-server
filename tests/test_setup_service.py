@@ -255,12 +255,20 @@ def test_validate_agent_saves_hermes_root_and_backend(tmp_path, monkeypatch):
         gateway_url=None,
         gateway_token=None,
         gateway_model=None,
+        profile=None,
     ):
         assert project_root == "/tmp/hermes-agent"
         assert gateway_url is None
         assert gateway_token is None
         assert gateway_model is None
-        return {"ok": True, "project_root": resolved_root, "reply_preview": "OK"}
+        assert profile == "voice"
+        return {
+            "ok": True,
+            "project_root": resolved_root,
+            "profile": "voice",
+            "hermes_home": str((tmp_path / ".hermes" / "profiles" / "voice").resolve()),
+            "reply_preview": "OK",
+        }
 
     monkeypatch.setattr(
         "maras_switchboard.setup_service.validate_hermes_connection",
@@ -278,8 +286,10 @@ def test_validate_agent_saves_hermes_root_and_backend(tmp_path, monkeypatch):
     saved = store.load_config()
 
     assert result["backend"] == "hermes"
+    assert result["profile"] == "voice"
     assert saved["agent"]["backend"] == "hermes"
     assert saved["agent"]["hermes_root"] == resolved_root
+    assert saved["agent"]["hermes_profile"] == "voice"
     assert saved["validation"]["hermes"]["config_hash"]
 
 
@@ -759,7 +769,10 @@ def test_runtime_ready_accepts_hermes_live_config(tmp_path, monkeypatch):
                 },
                 "hermes": {
                     "config_hash": service._config_hash(
-                        {"hermes_root": str(hermes_root.resolve())}
+                        {
+                            "hermes_root": str(hermes_root.resolve()),
+                            "hermes_profile": "voice",
+                        }
                     )
                 },
             },

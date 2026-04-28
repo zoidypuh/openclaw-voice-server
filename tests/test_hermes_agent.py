@@ -1,6 +1,4 @@
 import asyncio
-import sys
-import types
 
 from maras_switchboard.agents import hermes as hermes_module
 
@@ -62,6 +60,10 @@ def test_hermes_conversation_agent_replaces_incoherent_reply_with_huh(monkeypatc
             gateway_url=None,
             gateway_token=None,
             gateway_model=None,
+            api_url=None,
+            api_key=None,
+            api_model=None,
+            profile=None,
             use_context_files=True,
             use_memory=True,
             enabled_toolsets=None,
@@ -126,6 +128,10 @@ def test_hermes_conversation_agent_asks_for_clarification_on_random_person_or_na
             gateway_url=None,
             gateway_token=None,
             gateway_model=None,
+            api_url=None,
+            api_key=None,
+            api_model=None,
+            profile=None,
             use_context_files=True,
             use_memory=True,
             enabled_toolsets=None,
@@ -181,6 +187,10 @@ def test_hermes_conversation_agent_skips_sanity_check_for_backend_error_reply(mo
             gateway_url=None,
             gateway_token=None,
             gateway_model=None,
+            api_url=None,
+            api_key=None,
+            api_model=None,
+            profile=None,
             use_context_files=True,
             use_memory=True,
             enabled_toolsets=None,
@@ -235,6 +245,10 @@ def test_hermes_conversation_agent_sanity_prompt_uses_sliding_last_three_turns(m
             gateway_url=None,
             gateway_token=None,
             gateway_model=None,
+            api_url=None,
+            api_key=None,
+            api_model=None,
+            profile=None,
             use_context_files=True,
             use_memory=True,
             enabled_toolsets=None,
@@ -319,110 +333,127 @@ def test_write_voice_digest_deduplicates_and_persists(tmp_path):
     assert text.splitlines() == ["alpha", "beta", "ASK"]
 
 
-def test_hermes_session_keeps_nested_local_proxy_as_custom_openai(monkeypatch, tmp_path):
-    captured = {}
-    api_key = "unit-test-api-key"
-
-    class FakeAIAgent:
-        def __init__(self, **kwargs):
-            captured.update(kwargs)
-
-    fake_config_module = types.ModuleType("hermes_cli.config")
-    fake_config_module.load_config = lambda: {
-        "model": {
-            "default": "gpt-5.4",
-            "api_key": api_key,
-            "base_url": "http://127.0.0.1:8317/v1",
-            "provider": "custom",
-            "api_mode": "chat_completions",
-        }
-    }
-    fake_run_agent_module = types.ModuleType("run_agent")
-    fake_run_agent_module.AIAgent = FakeAIAgent
-
-    monkeypatch.setitem(sys.modules, "hermes_cli.config", fake_config_module)
-    monkeypatch.setitem(sys.modules, "run_agent", fake_run_agent_module)
-    monkeypatch.setattr(
-        hermes_module._HermesAgentSession,
-        "_resolve_subprocess_python",
-        staticmethod(lambda project_root: tmp_path / "python"),
-    )
-
-    session = hermes_module._HermesAgentSession(
-        system_prompt="You are Mara.",
-        session_id="test-session",
-        empty_reply_error="nope",
-        project_root=str(tmp_path),
-    )
-
-    assert session._agent is not None
-    assert captured["model"] == "gpt-5.4"
-    assert captured["provider"] == "custom"
-    assert captured["api_mode"] == "chat_completions"
-    assert captured["api_key"] == api_key
-    assert captured["base_url"] == "http://127.0.0.1:8317/v1"
-
-
-def test_hermes_session_passes_enabled_toolsets_to_aiagent(monkeypatch, tmp_path):
+def test_hermes_session_posts_to_api_and_reads_reply(monkeypatch, tmp_path):
     captured = {}
 
-    class FakeAIAgent:
-        def __init__(self, **kwargs):
-            captured.update(kwargs)
+    class FakeResponse:
+        status_code = 200
+        text = ""
 
-    fake_config_module = types.ModuleType("hermes_cli.config")
-    fake_config_module.load_config = lambda: {
-        "model": {
-            "default": "gpt-5.4",
-            "api_key": "***",
-            "base_url": "http://127.0.0.1:8317/v1",
-            "provider": "custom",
-            "api_mode": "chat_completions",
-        }
-    }
-    fake_run_agent_module = types.ModuleType("run_agent")
-    fake_run_agent_module.AIAgent = FakeAIAgent
+        def json(self):
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": "OK",
+                        }
+                    }
+                ]
+            }
 
-    monkeypatch.setitem(sys.modules, "hermes_cli.config", fake_config_module)
-    monkeypatch.setitem(sys.modules, "run_agent", fake_run_agent_module)
-    monkeypatch.setattr(
-        hermes_module._HermesAgentSession,
-        "_resolve_subprocess_python",
-        staticmethod(lambda project_root: tmp_path / "python"),
+    class FakeAsyncClient:
+        def __init__(self, *, timeout):
+            captured["timeout"] = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, *, headers, json):
+            captured["url"] = url
+            captured["headers"] = headers
+            captured["json"] = json
+            return FakeResponse()
+
+    monkeypatch.setattr(hermes_module.httpx, "AsyncClient", FakeAsyncClient)
+
+    session = hermes_module._HermesAgentSession(
+        system_prompt="System prompt.",
+        session_id="test-session",
+        empty_reply_error="nope",
+        project_root=str(tmp_path),
+        profile=str(tmp_path),
+        api_url="http://127.0.0.1:8643/v1",
+        api_key="unit-test-key",
+        api_model="gpt-5.5",
     )
+
+    reply = asyncio.run(session.ask("hello"))
+
+    assert reply == "OK"
+    assert captured["url"] == "http://127.0.0.1:8643/v1/chat/completions"
+    assert captured["headers"]["Authorization"] == "Bearer unit-test-key"
+    assert captured["json"]["model"] == "gpt-5.5"
+    assert captured["json"]["stream"] is False
+    assert captured["json"]["messages"] == [
+        {"role": "system", "content": "System prompt."},
+        {"role": "user", "content": "hello"},
+    ]
+
+
+def test_hermes_session_sends_local_history_to_api(monkeypatch, tmp_path):
+    captured_payloads = []
+    replies = iter(["first", "second"])
+
+    class FakeResponse:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {"choices": [{"message": {"content": next(replies)}}]}
+
+    class FakeAsyncClient:
+        def __init__(self, *, timeout):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, *, headers, json):
+            captured_payloads.append(json)
+            return FakeResponse()
+
+    monkeypatch.setattr(hermes_module.httpx, "AsyncClient", FakeAsyncClient)
+
+    session = hermes_module._HermesAgentSession(
+        system_prompt="System prompt.",
+        session_id="test-session",
+        empty_reply_error="nope",
+        project_root=str(tmp_path),
+        profile=str(tmp_path),
+    )
+
+    asyncio.run(session.ask("one"))
+    asyncio.run(session.ask("two"))
+
+    assert captured_payloads[1]["messages"] == [
+        {"role": "system", "content": "System prompt."},
+        {"role": "user", "content": "one"},
+        {"role": "assistant", "content": "first"},
+        {"role": "user", "content": "two"},
+    ]
+
+
+def test_hermes_session_resolves_named_voice_profile_home(monkeypatch, tmp_path):
+    hermes_root = tmp_path / "hermes-agent"
+    voice_home = tmp_path / ".hermes" / "profiles" / "voice"
+    hermes_root.mkdir()
+    voice_home.mkdir(parents=True)
+
+    monkeypatch.setenv("HOME", str(tmp_path))
 
     session = hermes_module._HermesAgentSession(
         system_prompt="You are Mara.",
         session_id="test-session",
         empty_reply_error="nope",
-        project_root=str(tmp_path),
-        enabled_toolsets=["browser", "file"],
+        project_root=str(hermes_root),
+        profile="voice",
     )
 
-    assert session._agent is not None
-    assert captured["enabled_toolsets"] == ["browser", "file"]
-
-
-def test_hermes_session_subprocess_payload_keeps_enabled_toolsets(monkeypatch, tmp_path):
-    monkeypatch.setattr(
-        hermes_module._HermesAgentSession,
-        "_resolve_subprocess_python",
-        staticmethod(lambda project_root: tmp_path / "python"),
-    )
-    monkeypatch.setattr(
-        hermes_module._HermesAgentSession,
-        "_build_agent",
-        lambda self, project_root: object(),
-    )
-
-    session = hermes_module._HermesAgentSession(
-        system_prompt="You are Mara.",
-        session_id="test-session",
-        empty_reply_error="nope",
-        project_root=str(tmp_path),
-        enabled_toolsets=["browser", "file"],
-    )
-
-    payload = session._subprocess_payload(prompt="hi")
-
-    assert payload["enabled_toolsets"] == ["browser", "file"]
+    assert session.profile == "voice"
+    assert session.hermes_home == voice_home.resolve()
