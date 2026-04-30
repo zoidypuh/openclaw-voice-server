@@ -17,6 +17,12 @@ def test_build_conversation_agent_lets_hermes_use_its_configured_model():
             "use_memory": True,
             "toolsets": ["browser", "file"],
             "reply_sanity_check": False,
+            "hermes_session_id": "current-mara-session",
+            "hermes_api_model": "cheap-voice-model",
+            "delegate_api_model": "full-mara-model",
+            "delegate_toolsets": ["terminal", "file", "web"],
+            "delegate_use_context_files": True,
+            "delegate_use_memory": True,
         },
         "gateway": {
             "url": "http://127.0.0.1:8317/v1",
@@ -37,6 +43,12 @@ def test_build_conversation_agent_lets_hermes_use_its_configured_model():
         "use_memory": True,
         "enabled_toolsets": ["browser", "file"],
         "reply_sanity_check": False,
+        "session_id": "current-mara-session",
+        "api_model": "cheap-voice-model",
+        "delegate_api_model": "full-mara-model",
+        "delegate_enabled_toolsets": ["terminal", "file", "web"],
+        "delegate_use_context_files": True,
+        "delegate_use_memory": True,
     }
 
 

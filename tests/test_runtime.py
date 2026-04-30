@@ -837,6 +837,7 @@ def test_handle_ws_uses_hermes_agent_when_selected(monkeypatch):
                 "hermes_root": "/tmp/hermes-agent",
                 "use_context_files": True,
                 "use_memory": True,
+                "hermes_session_id": "current-mara-session",
             }
             return settings
 
@@ -862,6 +863,12 @@ def test_handle_ws_uses_hermes_agent_when_selected(monkeypatch):
             use_memory=True,
             enabled_toolsets=None,
             reply_sanity_check=True,
+            session_id=None,
+            api_model=None,
+            delegate_api_model=None,
+            delegate_enabled_toolsets=None,
+            delegate_use_context_files=True,
+            delegate_use_memory=True,
         ):
             assert project_root == "/tmp/hermes-agent"
             assert gateway_url is None
@@ -872,6 +879,12 @@ def test_handle_ws_uses_hermes_agent_when_selected(monkeypatch):
             assert use_memory is True
             assert enabled_toolsets == []
             assert reply_sanity_check is True
+            assert session_id == "current-mara-session"
+            assert api_model is None
+            assert delegate_api_model is None
+            assert delegate_enabled_toolsets is None
+            assert delegate_use_context_files is True
+            assert delegate_use_memory is True
 
         async def stream_reply(self, text, abort_event):
             hermes_calls.append(text)

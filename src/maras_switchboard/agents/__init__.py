@@ -30,6 +30,12 @@ def build_conversation_agent(
             use_memory=bool(agent_settings.get("use_memory", True)),
             enabled_toolsets=agent_settings.get("toolsets", []),
             reply_sanity_check=bool(agent_settings.get("reply_sanity_check", True)),
+            session_id=str(agent_settings.get("hermes_session_id") or "").strip() or None,
+            api_model=str(agent_settings.get("hermes_api_model") or "").strip() or None,
+            delegate_api_model=str(agent_settings.get("delegate_api_model") or "").strip() or None,
+            delegate_enabled_toolsets=agent_settings.get("delegate_toolsets"),
+            delegate_use_context_files=bool(agent_settings.get("delegate_use_context_files", True)),
+            delegate_use_memory=bool(agent_settings.get("delegate_use_memory", True)),
         )
     return direct_agent_cls(**_gateway_agent_settings(settings))
 

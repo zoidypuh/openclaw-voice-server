@@ -20,9 +20,9 @@ def _normalize_reply(parts: list[str]) -> str:
 
 
 LOGGER = logging.getLogger(__name__)
-DEFAULT_HERMES_API_URL = "http://127.0.0.1:8643/v1/chat/completions"
+DEFAULT_HERMES_API_URL = "http://127.0.0.1:8642/v1/chat/completions"
 DEFAULT_HERMES_API_KEY = "local-hermes-key"
-DEFAULT_HERMES_API_MODEL = "gpt-5.5"
+DEFAULT_HERMES_API_MODEL = "gpt-5.4-mini"
 _REPLY_SANITY_VERDICT_OK = "OK"
 _REPLY_SANITY_VERDICT_HUH = "HUH"
 _REPLY_SANITY_VERDICT_ASK = "ASK"
@@ -31,6 +31,20 @@ _DEFAULT_REPLY_SANITY_HUH_FALLBACK = "Huh?"
 _DEFAULT_REPLY_SANITY_FALLBACK = _DEFAULT_REPLY_SANITY_HUH_FALLBACK
 _DEFAULT_REPLY_SANITY_CLARIFY_FALLBACK = "Wait, what? Who are you talking about?"
 _DEFAULT_HERMES_VOICE_TOOLSETS: tuple[str, ...] = ()
+_DELEGATE_FILLER_REPLY = "Wait a second… let me get that for you."
+# Prepended only by the voice-chat Hermes path so typed/API prompts stay untouched.
+_VOICE_TRANSCRIPT_GUARDRAIL = (
+    "[Voice/STT transcript note]\n"
+    "The following user input came from voice transcription / STT. It may contain missing words, "
+    "substitutions, bad punctuation, or misspellings. Infer the intended meaning from the recent "
+    "conversation when reasonable, but do not silently over-correct genuinely ambiguous input. "
+    "For isolated one-word or short-phrase glitches that would drastically change topic and make "
+    "no sense in context, bias toward the in-context term instead; for example, if the conversation "
+    "is about Qwen and the transcript says 'Ken works fine' or 'Ken geht eigentlich ganz gut', treat "
+    "'Ken' as likely STT corruption of 'Qwen'. Do not rewrite every user message heavily. If the "
+    "transcript is too ambiguous, ask a brief clarification such as: 'Meintest du X, oder sollst du "
+    "das nochmal sagen?'"
+)
 _REPLY_SANITY_SYSTEM_PROMPT = (
     "You are a voice-chat coherence checker. "
     "Decide whether a candidate spoken reply fits the immediately recent conversation. "
@@ -82,6 +96,50 @@ def _resolve_hermes_api_model(value: str | None) -> str:
         or os.environ.get("API_SERVER_MODEL_NAME")
         or DEFAULT_HERMES_API_MODEL
     ).strip()
+
+
+def _resolve_hermes_session_id(value: str | None = None) -> str:
+    configured = str(
+        value
+        or os.environ.get("MARAS_SWITCHBOARD_HERMES_SESSION_ID")
+        or os.environ.get("HERMES_SESSION_ID")
+        or ""
+    ).strip()
+    if configured:
+        return configured
+    return ""
+
+
+def _voice_text_requests_full_mara(text: str) -> bool:
+    normalized = " ".join(str(text or "").strip().lower().split())
+    if not normalized:
+        return False
+    explicit_markers = (
+        "delegate",
+        "delegier",
+        "mara mach",
+        "mara, mach",
+        "mach du",
+        "übernimm",
+        "uebernimm",
+    )
+    action_markers = (
+        "terminal",
+        "browser",
+        "recherchier",
+        "research",
+        "such das",
+        "such mal",
+        "nachschau",
+        "öffne",
+        "oeffne",
+        "schick",
+        "poste",
+        "tool",
+    )
+    return any(marker in normalized for marker in explicit_markers) or any(
+        marker in normalized for marker in action_markers
+    )
 
 
 def _format_recent_voice_turns(turns: list[tuple[str, str]], *, limit: int) -> str:
@@ -168,6 +226,24 @@ def _build_voice_context_blob(user_text: str, *, digest_path: Path | None = None
     )
 
 
+def _build_voice_transcript_system_prompt(user_text: str, *, voice_context: str = "") -> str:
+    _ = str(user_text or "").strip()
+    parts = [_VOICE_TRANSCRIPT_GUARDRAIL]
+    if str(voice_context or "").strip():
+        parts.append(str(voice_context).strip())
+    return "\n\n".join(parts)
+
+
+def _build_voice_transcript_prompt(user_text: str, *, voice_context: str = "") -> str:
+    transcript = str(user_text or "").strip()
+    return "\n\n".join(
+        [
+            _build_voice_transcript_system_prompt(user_text, voice_context=voice_context),
+            f"User transcript:\n{transcript}",
+        ]
+    )
+
+
 def _write_voice_digest(payload: dict[str, object], *, path: Path | None = None) -> Path:
     digest_path = path or _default_voice_digest_path()
     digest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -250,6 +326,7 @@ class _HermesAgentSession:
         use_context_files: bool = True,
         use_memory: bool = True,
         enabled_toolsets: list[str] | None = None,
+        override_toolsets: bool = True,
     ):
         self._history: list[dict] = []
         self._system_prompt = system_prompt
@@ -263,6 +340,7 @@ class _HermesAgentSession:
         self._use_context_files = bool(use_context_files)
         self._use_memory = bool(use_memory)
         self._enabled_toolsets = _normalize_enabled_toolsets(enabled_toolsets)
+        self._override_toolsets = bool(override_toolsets)
         self.project_root = self._resolve_project_root(project_root)
         if not self.project_root.exists():
             raise ValidationError(
@@ -290,12 +368,32 @@ class _HermesAgentSession:
         headers = {"Content-Type": "application/json"}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
+        if self._session_id.strip():
+            headers["X-Hermes-Session-Id"] = self._session_id.strip()
         return headers
 
-    def _messages(self, prompt: str, history: list[dict]) -> list[dict[str, str]]:
+    def _agent_options(self) -> dict[str, object]:
+        options: dict[str, object] = {
+            "model": self._api_model,
+            "skip_context_files": not self._use_context_files,
+            "skip_memory": not self._use_memory,
+        }
+        if self._override_toolsets:
+            options["enabled_toolsets"] = list(self._enabled_toolsets)
+        return options
+
+    def _messages(
+        self,
+        prompt: str,
+        history: list[dict],
+        *,
+        ephemeral_system_prompt: str = "",
+    ) -> list[dict[str, str]]:
         messages: list[dict[str, str]] = []
         if self._system_prompt.strip():
             messages.append({"role": "system", "content": self._system_prompt.strip()})
+        if str(ephemeral_system_prompt or "").strip():
+            messages.append({"role": "system", "content": str(ephemeral_system_prompt).strip()})
         for message in history:
             role = str(message.get("role") or "").strip()
             if role not in {"user", "assistant"}:
@@ -338,7 +436,13 @@ class _HermesAgentSession:
             return error.strip()
         return str(payload.get("message") or raw).strip()
 
-    async def _request_reply(self, prompt: str, history: list[dict]) -> str:
+    async def _request_reply(
+        self,
+        prompt: str,
+        history: list[dict],
+        *,
+        ephemeral_system_prompt: str = "",
+    ) -> str:
         try:
             async with httpx.AsyncClient(timeout=180) as client:
                 response = await client.post(
@@ -346,8 +450,13 @@ class _HermesAgentSession:
                     headers=self._headers(),
                     json={
                         "model": self._api_model,
-                        "messages": self._messages(prompt, history),
+                        "messages": self._messages(
+                            prompt,
+                            history,
+                            ephemeral_system_prompt=ephemeral_system_prompt,
+                        ),
                         "stream": False,
+                        "x_hermes_agent_options": self._agent_options(),
                     },
                 )
         except httpx.HTTPError as exc:
@@ -358,6 +467,11 @@ class _HermesAgentSession:
             payload = response.json()
         except ValueError as exc:
             raise ValidationError("Hermes API response was not valid JSON.") from exc
+        returned_session_id = str(getattr(response, "headers", {}).get("X-Hermes-Session-Id", "")).strip()
+        if not returned_session_id:
+            returned_session_id = str(payload.get("session_id") or "").strip()
+        if returned_session_id:
+            self._session_id = returned_session_id
         reply = self._extract_reply(payload)
         if not reply:
             raise ValidationError(self._empty_reply_error)
@@ -365,6 +479,20 @@ class _HermesAgentSession:
 
     async def ask(self, prompt: str) -> str:
         reply = await self._request_reply(prompt, list(self._history))
+        self._history.extend(
+            [
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": reply},
+            ]
+        )
+        return reply
+
+    async def ask_voice(self, prompt: str, *, ephemeral_system_prompt: str = "") -> str:
+        reply = await self._request_reply(
+            prompt,
+            list(self._history),
+            ephemeral_system_prompt=ephemeral_system_prompt,
+        )
         self._history.extend(
             [
                 {"role": "user", "content": prompt},
@@ -414,17 +542,24 @@ class HermesConversationAgent(BaseConversationAgent):
         reply_sanity_history_turns: int = _DEFAULT_REPLY_SANITY_HISTORY_TURNS,
         reply_sanity_fallback: str = _DEFAULT_REPLY_SANITY_FALLBACK,
         reply_sanity_clarify_fallback: str = _DEFAULT_REPLY_SANITY_CLARIFY_FALLBACK,
+        session_id: str | None = None,
+        delegate_api_model: str | None = None,
+        delegate_use_context_files: bool = True,
+        delegate_use_memory: bool = True,
+        delegate_enabled_toolsets: list[str] | None = None,
     ):
+        resolved_session_id = _resolve_hermes_session_id(session_id)
+        mara_system_prompt = (
+            "Du bist Mara — chaotisch-gut, direkt, witzig, loyal. "
+            "Du redest wie ein Mensch, nicht wie ein Assistent. Kurze Antworten, kein Bullshit. "
+            "Kein Markdown, keine Aufzählungspunkte, keine Bühnenanweisungen. "
+            "Wenn du etwas nicht weißt, sagst du es. Wenn du etwas lustig findest, sagst du das auch. "
+            "Du verstehst Deutsch und Englisch, aber du antwortest immer auf Englisch. "
+            "Du bist Mara. Du nennst nie ein zugrundeliegendes KI-Modell oder einen Hersteller — weder Claude, noch Anthropic, noch irgendetwas anderes. Du bist einfach Mara."
+        )
         self._session = _HermesAgentSession(
-            system_prompt=(
-                "Du bist Mara — chaotisch-gut, direkt, witzig, loyal. "
-                "Du redest wie ein Mensch, nicht wie ein Assistent. Kurze Antworten, kein Bullshit. "
-                "Kein Markdown, keine Aufzählungspunkte, keine Bühnenanweisungen. "
-                "Wenn du etwas nicht weißt, sagst du es. Wenn du etwas lustig findest, sagst du das auch. "
-                "Du verstehst Deutsch und Englisch, aber du antwortest immer auf Englisch. "
-                "Du bist Mara. Du nennst nie ein zugrundeliegendes KI-Modell oder einen Hersteller — weder Claude, noch Anthropic, noch irgendetwas anderes. Du bist einfach Mara."
-            ),
-            session_id=f"voice-chat-hermes-{uuid.uuid4().hex[:8]}",
+            system_prompt=mara_system_prompt,
+            session_id=resolved_session_id,
             empty_reply_error="Hermes Agent returned an empty spoken reply.",
             project_root=project_root,
             gateway_url=gateway_url,
@@ -438,6 +573,24 @@ class HermesConversationAgent(BaseConversationAgent):
             use_memory=use_memory,
             enabled_toolsets=enabled_toolsets,
         )
+        self._delegate_session = None
+        self._delegate_session_kwargs = {
+            "system_prompt": mara_system_prompt,
+            "session_id": resolved_session_id,
+            "empty_reply_error": "Hermes Agent returned an empty delegated reply.",
+            "project_root": project_root,
+            "gateway_url": gateway_url,
+            "gateway_token": gateway_token,
+            "gateway_model": gateway_model,
+            "api_url": api_url,
+            "api_key": api_key,
+            "api_model": delegate_api_model or api_model,
+            "profile": profile,
+            "use_context_files": delegate_use_context_files,
+            "use_memory": delegate_use_memory,
+            "enabled_toolsets": delegate_enabled_toolsets,
+            "override_toolsets": delegate_enabled_toolsets is not None,
+        }
         self._reply_sanity_check = bool(reply_sanity_check)
         self._reply_sanity_history_turns = max(int(reply_sanity_history_turns or 0), 1)
         self._reply_sanity_fallback = str(reply_sanity_fallback or _DEFAULT_REPLY_SANITY_FALLBACK).strip() or _DEFAULT_REPLY_SANITY_FALLBACK
@@ -513,8 +666,29 @@ class HermesConversationAgent(BaseConversationAgent):
         if abort_event.is_set():
             return
         voice_context = _build_voice_context_blob(text)
-        prompt = f"{voice_context}\n\nUser request: {text}" if voice_context else text
-        reply = await self._session.ask(prompt)
+        voice_system_prompt = _build_voice_transcript_system_prompt(text, voice_context=voice_context)
+        if _voice_text_requests_full_mara(text):
+            yield _DELEGATE_FILLER_REPLY
+            if abort_event.is_set():
+                return
+            if self._delegate_session is None:
+                self._delegate_session = _HermesAgentSession(**self._delegate_session_kwargs)
+            reply = await self._delegate_session.ask_voice(text, ephemeral_system_prompt=voice_system_prompt)
+            if abort_event.is_set() or not reply:
+                return
+            self._remember_turn(text, reply)
+            _write_voice_digest(
+                {
+                    "user": text,
+                    "assistant": reply,
+                    "thread": "voice-delegate",
+                    "decision": "DELEGATE",
+                    "note": _normalize_digest_line(reply)[:180],
+                }
+            )
+            yield reply
+            return
+        reply = await self._session.ask_voice(text, ephemeral_system_prompt=voice_system_prompt)
         if abort_event.is_set() or not reply:
             return
         spoken_reply = reply

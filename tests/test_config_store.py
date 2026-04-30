@@ -103,7 +103,11 @@ def test_config_store_reads_hermes_root_from_env(tmp_path):
     env_path = tmp_path / ".env"
     env_path.write_text(
         "MARAS_SWITCHBOARD_HERMES_ROOT=/tmp/hermes-agent\n"
-        "MARAS_SWITCHBOARD_HERMES_PROFILE=voice\n",
+        "MARAS_SWITCHBOARD_HERMES_PROFILE=voice\n"
+        "MARAS_SWITCHBOARD_HERMES_SESSION_ID=current-mara-session\n"
+        "MARAS_SWITCHBOARD_HERMES_API_MODEL=cheap-voice-model\n"
+        "MARAS_SWITCHBOARD_HERMES_DELEGATE_API_MODEL=full-mara-model\n"
+        "MARAS_SWITCHBOARD_HERMES_DELEGATE_TOOLSETS=terminal,file,web\n",
         encoding="utf-8",
     )
 
@@ -112,6 +116,10 @@ def test_config_store_reads_hermes_root_from_env(tmp_path):
 
     assert settings["agent"]["hermes_root"] == "/tmp/hermes-agent"
     assert settings["agent"]["hermes_profile"] == "voice"
+    assert settings["agent"]["hermes_session_id"] == "current-mara-session"
+    assert settings["agent"]["hermes_api_model"] == "cheap-voice-model"
+    assert settings["agent"]["delegate_api_model"] == "full-mara-model"
+    assert settings["agent"]["delegate_toolsets"] == ["terminal", "file", "web"]
 
 
 def test_config_store_accepts_agentic_env_aliases(tmp_path):

@@ -30,6 +30,12 @@ def _parse_scalar(value: str) -> Any:
         return text
 
 
+def _parse_config_env_value(value: str, path: tuple[str, ...]) -> Any:
+    if path and path[-1].endswith("toolsets"):
+        return [item.strip() for item in str(value or "").split(",") if item.strip()]
+    return _parse_scalar(value)
+
+
 def _deep_merge(target: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
     for key, value in updates.items():
         if isinstance(value, dict) and isinstance(target.get(key), dict):
@@ -139,7 +145,7 @@ class ConfigStore:
                 continue
             if _has_explicit_nested_value(raw_config, path):
                 continue
-            _set_nested(config, path, _parse_scalar(env_value))
+            _set_nested(config, path, _parse_config_env_value(env_value, path))
 
         agent = config.get("agent")
         if isinstance(agent, dict):
