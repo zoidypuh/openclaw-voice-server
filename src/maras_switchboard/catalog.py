@@ -10,6 +10,8 @@ DEFAULT_VOICE_SESSION_KEY = "agent:main:voice-chat-main"
 DEFAULT_LOCAL_GATEWAY_URL = "http://127.0.0.1:18789"
 DEFAULT_HERMES_ROOT = str((Path.home() / ".hermes" / "hermes-agent").resolve())
 DEFAULT_HERMES_PROFILE = "voice"
+DEFAULT_HERMES_API_URL = "http://127.0.0.1:8642/v1/chat/completions"
+DEFAULT_HERMES_API_MODEL = "hermes-agent"
 DEFAULT_REMOTE_WHISPER_HOST_ALIAS = "remote-whisper"
 DEFAULT_REMOTE_WHISPER_PORT = 18000
 DEFAULT_REMOTE_WHISPER_ENDPOINT_PATH = "/v1/audio/transcriptions"
@@ -151,6 +153,7 @@ SECRET_ENV_KEYS = {
     "MARAS_SWITCHBOARD_GATEWAY_TOKEN",
     "MARAS_SWITCHBOARD_ELEVENLABS_API_KEY",
     "MARAS_SWITCHBOARD_XAI_API_KEY",
+    "MARAS_SWITCHBOARD_HERMES_API_KEY",
     "XAI_API_KEY",
 }
 
@@ -165,6 +168,8 @@ ENV_TO_CONFIG = {
     "MARAS_SWITCHBOARD_GATEWAY_SESSION_KEY": ("gateway", "session_key"),
     "MARAS_SWITCHBOARD_HERMES_ROOT": ("agent", "hermes_root"),
     "MARAS_SWITCHBOARD_HERMES_PROFILE": ("agent", "hermes_profile"),
+    "MARAS_SWITCHBOARD_HERMES_API_URL": ("agent", "hermes_api_url"),
+    "MARAS_SWITCHBOARD_HERMES_API_MODEL": ("agent", "hermes_api_model"),
     "MARAS_SWITCHBOARD_HTTP_HOST": ("server", "host"),
     "MARAS_SWITCHBOARD_HTTP_PORT": ("server", "port"),
     "MARAS_SWITCHBOARD_WHISPER_MODEL": ("stt", "backend_models", "faster-whisper"),
@@ -217,6 +222,8 @@ DEFAULT_CONFIG = {
         "backend": "gateway",
         "hermes_root": DEFAULT_HERMES_ROOT,
         "hermes_profile": DEFAULT_HERMES_PROFILE,
+        "hermes_api_url": DEFAULT_HERMES_API_URL,
+        "hermes_api_model": DEFAULT_HERMES_API_MODEL,
         "use_context_files": True,
         "use_memory": True,
         "reply_sanity_check": True,

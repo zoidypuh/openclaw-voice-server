@@ -170,6 +170,12 @@ class ConfigStore:
                 "MARAS_SWITCHBOARD_XAI_API_KEY",
                 "AGENTIC_SWITCHBOARD_XAI_API_KEY",
             ),
+            "hermes_api_key": _first_env_value(
+                env_values,
+                "MARAS_SWITCHBOARD_HERMES_API_KEY",
+                "AGENTIC_SWITCHBOARD_HERMES_API_KEY",
+                "API_SERVER_KEY",
+            ),
         }
         return config
 

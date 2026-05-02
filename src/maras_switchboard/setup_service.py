@@ -11,6 +11,8 @@ from typing import Any
 from .agents import validate_hermes_connection
 from .catalog import (
     APP_VERSION_LABEL,
+    DEFAULT_HERMES_API_MODEL,
+    DEFAULT_HERMES_API_URL,
     DEFAULT_HERMES_PROFILE,
     DEFAULT_HERMES_ROOT,
     DEFAULT_LOCAL_GATEWAY_URL,
@@ -425,6 +427,7 @@ class SetupService:
             and gateway_token_fingerprint == validation["gateway"]["token_fingerprint"]
             and self._validated_config_matches(gateway_snapshot, validation["gateway"])
         )
+        hermes_api_key_fingerprint = self._fingerprint_secret(settings["secrets"].get("hermes_api_key", ""))
         hermes_snapshot = {
             "hermes_root": str(
                 (settings.get("agent") or {}).get("hermes_root") or DEFAULT_HERMES_ROOT
@@ -434,8 +437,19 @@ class SetupService:
                 (settings.get("agent") or {}).get("hermes_profile") or DEFAULT_HERMES_PROFILE
             ).strip()
             or DEFAULT_HERMES_PROFILE,
+            "hermes_api_url": str(
+                (settings.get("agent") or {}).get("hermes_api_url") or DEFAULT_HERMES_API_URL
+            ).strip()
+            or DEFAULT_HERMES_API_URL,
+            "hermes_api_model": str(
+                (settings.get("agent") or {}).get("hermes_api_model") or DEFAULT_HERMES_API_MODEL
+            ).strip()
+            or DEFAULT_HERMES_API_MODEL,
         }
-        hermes_ready = self._validated_config_matches(hermes_snapshot, validation["hermes"])
+        hermes_ready = bool(
+            self._validated_config_matches(hermes_snapshot, validation["hermes"])
+            and hermes_api_key_fingerprint == str(validation["hermes"].get("api_key_fingerprint") or "")
+        )
 
         runtime_ready = all(
             [
@@ -498,6 +512,8 @@ class SetupService:
                 "hold_to_talk_shortcut": HOLD_TO_TALK_SHORTCUT_LABEL,
                 "default_hermes_root": DEFAULT_HERMES_ROOT,
                 "default_hermes_profile": DEFAULT_HERMES_PROFILE,
+                "default_hermes_api_url": DEFAULT_HERMES_API_URL,
+                "default_hermes_api_model": DEFAULT_HERMES_API_MODEL,
                 "gpu_note": (
                     "GPU mode currently targets NVIDIA CUDA. "
                     "Use it only when the CUDA runtime and model dependencies are already working, "
@@ -514,8 +530,8 @@ class SetupService:
                 ),
                 "hermes_note": (
                     f"Hermes Agent is expected at {DEFAULT_HERMES_ROOT} by default. "
-                    "Point this field at the Hermes checkout root that contains run_agent.py. "
-                    "The runtime can use either a repo-local venv or ~/.hermes/venv."
+                    "Point Hermes API Endpoint at the Hermes API server /v1/chat/completions route. "
+                    "The API key is optional and may be left blank for local no-auth servers."
                 ),
                 "windows_client_note": f"The Windows tray client uses one fixed hold-to-talk shortcut: {HOLD_TO_TALK_SHORTCUT_LABEL}.",
                 "default_supertonic_python_path": detect_supertonic_python_path(),
@@ -554,30 +570,51 @@ class SetupService:
                 str(payload.get("hermes_profile") or agent_settings.get("hermes_profile") or DEFAULT_HERMES_PROFILE).strip()
                 or DEFAULT_HERMES_PROFILE
             )
+            hermes_api_url = normalize_gateway_url(
+                str(payload.get("hermes_api_url") or agent_settings.get("hermes_api_url") or DEFAULT_HERMES_API_URL).strip()
+            )
+            hermes_api_model = (
+                str(payload.get("hermes_api_model") or agent_settings.get("hermes_api_model") or DEFAULT_HERMES_API_MODEL).strip()
+                or DEFAULT_HERMES_API_MODEL
+            )
+            if "hermes_api_key" in payload:
+                hermes_api_key = str(payload.get("hermes_api_key") or "").strip()
+            else:
+                hermes_api_key = str(settings["secrets"].get("hermes_api_key") or "").strip()
+            if not hermes_api_url:
+                raise ValidationError("Enter the Hermes Agent API endpoint.")
+            if not hermes_api_model:
+                raise ValidationError("Enter the Hermes Agent model.")
             result = await validate_hermes_connection(
                 project_root=hermes_root,
                 profile=hermes_profile,
+                api_url=hermes_api_url,
+                api_key=hermes_api_key,
+                api_model=hermes_api_model,
             )
             resolved_root = str(result["project_root"])
+            resolved_api_url = str(result.get("api_url") or hermes_api_url)
+            hermes_config = {
+                "hermes_root": resolved_root,
+                "hermes_profile": hermes_profile,
+                "hermes_api_url": resolved_api_url,
+                "hermes_api_model": hermes_api_model,
+            }
             self.store.update_config(
                 {
                     "agent": {
                         "backend": "hermes",
-                        "hermes_root": resolved_root,
-                        "hermes_profile": hermes_profile,
+                        **hermes_config,
                     },
                     "validation": {
                         "hermes": {
-                            "config_hash": self._config_hash(
-                                {
-                                    "hermes_root": resolved_root,
-                                    "hermes_profile": hermes_profile,
-                                }
-                            ),
+                            "config_hash": self._config_hash(hermes_config),
+                            "api_key_fingerprint": self._fingerprint_secret(hermes_api_key),
                         }
                     },
                 }
             )
+            self.store.update_secrets({"MARAS_SWITCHBOARD_HERMES_API_KEY": hermes_api_key})
             return {"ok": True, "backend": "hermes", **result}
 
         if backend != "gateway":

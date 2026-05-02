@@ -431,6 +431,15 @@
       </label>
     </div>
     <div class="grid hidden" id="hermes-backend-fields">
+      <label>Hermes API Endpoint
+        <input id="agent-hermes-api-url" type="text" placeholder="http://127.0.0.1:8642/v1/chat/completions">
+      </label>
+      <label>Hermes API Key (optional)
+        <input id="agent-hermes-api-key" type="password" placeholder="Leave blank for local no-auth">
+      </label>
+      <label>Hermes API Model
+        <input id="agent-hermes-api-model" type="text" placeholder="hermes-agent">
+      </label>
       <label>Hermes Root
         <input id="agent-hermes-root" type="text" placeholder="/home/gismar/.hermes/hermes-agent">
       </label>
@@ -1103,6 +1112,9 @@ function populateFromState(state) {
   );
   document.getElementById('agent-backend').value = agent.backend || 'gateway';
   document.getElementById('agent-hermes-root').value = agent.hermes_root || state.hints.default_hermes_root || '';
+  document.getElementById('agent-hermes-api-url').value = agent.hermes_api_url || state.hints.default_hermes_api_url || '';
+  document.getElementById('agent-hermes-api-model').value = agent.hermes_api_model || state.hints.default_hermes_api_model || 'hermes-agent';
+  document.getElementById('agent-hermes-api-key').value = '';
 
   const gateway = state.saved.gateway;
   document.getElementById('gateway-url').value = gateway.url;
@@ -1219,6 +1231,9 @@ document.getElementById('agent-backend').addEventListener('change', () => {
   updateFlowVisibility();
 });
 document.getElementById('agent-hermes-root').addEventListener('input', updateFlowVisibility);
+document.getElementById('agent-hermes-api-url').addEventListener('input', updateFlowVisibility);
+document.getElementById('agent-hermes-api-key').addEventListener('input', updateFlowVisibility);
+document.getElementById('agent-hermes-api-model').addEventListener('input', updateFlowVisibility);
 document.getElementById('gateway-url').addEventListener('input', updateFlowVisibility);
 document.getElementById('gateway-token').addEventListener('input', updateFlowVisibility);
 document.getElementById('gateway-model').addEventListener('input', updateFlowVisibility);
@@ -1412,6 +1427,9 @@ document.getElementById('validate-gateway').addEventListener('click', async () =
       body: JSON.stringify({
         backend,
         hermes_root: document.getElementById('agent-hermes-root').value,
+        hermes_api_url: document.getElementById('agent-hermes-api-url').value,
+        hermes_api_key: document.getElementById('agent-hermes-api-key').value,
+        hermes_api_model: document.getElementById('agent-hermes-api-model').value,
         url: document.getElementById('gateway-url').value,
         token: document.getElementById('gateway-token').value,
         model: document.getElementById('gateway-model').value,
@@ -1421,12 +1439,14 @@ document.getElementById('validate-gateway').addEventListener('click', async () =
     setResult(
       'gateway-result',
       backend === 'hermes'
-        ? `Validated Hermes reply: ${payload.reply_preview}`
+        ? `Validated Hermes endpoint: ${payload.api_url}. Reply: ${payload.reply_preview}`
         : `Validated gateway reply: ${payload.reply_preview}`,
       true,
     );
     if (backend === 'gateway') {
       document.getElementById('gateway-token').value = '';
+    } else {
+      document.getElementById('agent-hermes-api-key').value = '';
     }
     await refreshState();
     scrollToSection('launch-summary');

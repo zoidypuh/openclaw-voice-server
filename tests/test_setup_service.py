@@ -255,18 +255,25 @@ def test_validate_agent_saves_hermes_root_and_backend(tmp_path, monkeypatch):
         gateway_url=None,
         gateway_token=None,
         gateway_model=None,
+        api_url=None,
+        api_key=None,
+        api_model=None,
         profile=None,
     ):
         assert project_root == "/tmp/hermes-agent"
         assert gateway_url is None
         assert gateway_token is None
         assert gateway_model is None
+        assert api_url == "http://127.0.0.1:8642/v1/chat/completions"
+        assert api_key == ""
+        assert api_model == "hermes-agent"
         assert profile == "voice"
         return {
             "ok": True,
             "project_root": resolved_root,
             "profile": "voice",
             "hermes_home": str((tmp_path / ".hermes" / "profiles" / "voice").resolve()),
+            "api_url": "http://127.0.0.1:8642/v1/chat/completions",
             "reply_preview": "OK",
         }
 
@@ -280,6 +287,9 @@ def test_validate_agent_saves_hermes_root_and_backend(tmp_path, monkeypatch):
             {
                 "backend": "hermes",
                 "hermes_root": "/tmp/hermes-agent",
+                "hermes_api_url": "http://127.0.0.1:8642",
+                "hermes_api_key": "",
+                "hermes_api_model": "hermes-agent",
             }
         )
     )
@@ -290,8 +300,65 @@ def test_validate_agent_saves_hermes_root_and_backend(tmp_path, monkeypatch):
     assert saved["agent"]["backend"] == "hermes"
     assert saved["agent"]["hermes_root"] == resolved_root
     assert saved["agent"]["hermes_profile"] == "voice"
+    assert saved["agent"]["hermes_api_url"] == "http://127.0.0.1:8642/v1/chat/completions"
+    assert saved["agent"]["hermes_api_model"] == "hermes-agent"
     assert saved["validation"]["hermes"]["config_hash"]
+    assert saved["validation"]["hermes"]["api_key_fingerprint"] == ""
 
+
+
+def test_validate_agent_saves_optional_hermes_api_key(tmp_path, monkeypatch):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+    resolved_root = str((tmp_path / "hermes-agent").resolve())
+
+    async def fake_validate_hermes_connection(
+        *,
+        project_root,
+        gateway_url=None,
+        gateway_token=None,
+        gateway_model=None,
+        api_url=None,
+        api_key=None,
+        api_model=None,
+        profile=None,
+    ):
+        assert api_url == "https://hermes.example.test/v1/chat/completions"
+        assert api_key == "local-secret"
+        assert api_model == "mara-agent"
+        return {
+            "ok": True,
+            "project_root": resolved_root,
+            "profile": profile,
+            "hermes_home": str((tmp_path / ".hermes" / "profiles" / "voice").resolve()),
+            "api_url": api_url,
+            "reply_preview": "OK",
+        }
+
+    monkeypatch.setattr(
+        "maras_switchboard.setup_service.validate_hermes_connection",
+        fake_validate_hermes_connection,
+    )
+
+    result = asyncio.run(
+        service.validate_agent(
+            {
+                "backend": "hermes",
+                "hermes_root": "/tmp/hermes-agent",
+                "hermes_api_url": "https://hermes.example.test",
+                "hermes_api_key": "local-secret",
+                "hermes_api_model": "mara-agent",
+            }
+        )
+    )
+    saved = store.load_config()
+    env_text = (tmp_path / ".env").read_text(encoding="utf-8")
+
+    assert result["api_url"] == "https://hermes.example.test/v1/chat/completions"
+    assert saved["agent"]["hermes_api_url"] == "https://hermes.example.test/v1/chat/completions"
+    assert saved["agent"]["hermes_api_model"] == "mara-agent"
+    assert "MARAS_SWITCHBOARD_HERMES_API_KEY=local-secret" in env_text
+    assert saved["validation"]["hermes"]["api_key_fingerprint"] == service._fingerprint_secret("local-secret")
 
 def test_setup_state_requires_explicit_validation(tmp_path):
     store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
@@ -772,8 +839,11 @@ def test_runtime_ready_accepts_hermes_live_config(tmp_path, monkeypatch):
                         {
                             "hermes_root": str(hermes_root.resolve()),
                             "hermes_profile": "voice",
+                            "hermes_api_url": "http://127.0.0.1:8642/v1/chat/completions",
+                            "hermes_api_model": "hermes-agent",
                         }
-                    )
+                    ),
+                    "api_key_fingerprint": "",
                 },
             },
         }

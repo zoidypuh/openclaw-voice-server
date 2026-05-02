@@ -17,6 +17,8 @@ def test_build_conversation_agent_lets_hermes_use_its_configured_model():
             "use_memory": True,
             "toolsets": ["browser", "file"],
             "reply_sanity_check": False,
+            "hermes_api_url": "http://127.0.0.1:8642/v1/chat/completions",
+            "hermes_api_model": "hermes-agent",
         },
         "gateway": {
             "url": "http://127.0.0.1:8317/v1",
@@ -25,6 +27,7 @@ def test_build_conversation_agent_lets_hermes_use_its_configured_model():
         },
         "secrets": {
             "gateway_token": "unit-test-gateway-token",
+            "hermes_api_key": "local-hermes-key",
         },
     }
 
@@ -37,6 +40,9 @@ def test_build_conversation_agent_lets_hermes_use_its_configured_model():
         "use_memory": True,
         "enabled_toolsets": ["browser", "file"],
         "reply_sanity_check": False,
+        "api_url": "http://127.0.0.1:8642/v1/chat/completions",
+        "api_key": "local-hermes-key",
+        "api_model": "hermes-agent",
     }
 
 

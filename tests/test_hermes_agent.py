@@ -109,7 +109,8 @@ def test_hermes_conversation_agent_replaces_incoherent_reply_with_huh(monkeypatc
     assert len(instances) == 2
     main_session, sanity_session = instances
     assert main_session.replace_calls == ["Huh?"]
-    assert main_session.prompts[0] == "that would help"
+    assert "voice transcription / STT" in main_session.prompts[0]
+    assert "User request: that would help" in main_session.prompts[0]
     assert "Current user: that would help" in sanity_session.prompts[0]
     assert "Candidate reply: <voice> You want it? You got it!" in sanity_session.prompts[0]
 
@@ -226,7 +227,7 @@ def test_hermes_conversation_agent_skips_sanity_check_for_backend_error_reply(mo
     assert len(instances) == 2
     main_session, sanity_session = instances
     assert main_session.replace_calls == []
-    assert main_session.prompts[0] == "hello?"
+    assert "User request: hello?" in main_session.prompts[0]
     assert sanity_session.prompts == []
 
 
@@ -296,6 +297,22 @@ def test_hermes_conversation_agent_sanity_prompt_uses_sliding_last_three_turns(m
     assert "Turn 3 user: u4" in last_prompt
     assert "Current user: u5" in last_prompt
     assert "Candidate reply: a5" in last_prompt
+
+
+def test_voice_stt_recovery_prompt_includes_recent_exchange_transcript():
+    prompt = hermes_module._build_voice_stt_recovery_prompt(
+        "Ken geht eigentlich ganz gut",
+        [("we were testing Qwen", "yeah qwen works"), ("what about latency?", "still okay")],
+        history_turns=2,
+    )
+
+    assert "voice transcription / STT" in prompt
+    assert "NOT new user input" in prompt
+    assert "<voice-exchange-transcript>" in prompt
+    assert "Turn 1 user: we were testing Qwen" in prompt
+    assert "Turn 2 assistant: still okay" in prompt
+    assert "User request: Ken geht eigentlich ganz gut" in prompt
+    assert "infer the intended wording" in prompt
 
 
 def test_voice_context_blob_includes_fresh_digest(tmp_path):

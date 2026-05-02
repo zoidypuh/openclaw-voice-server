@@ -54,10 +54,13 @@ def test_setup_html_has_conversation_agent_selector_and_hermes_controls():
     assert 'id="gateway-backend-fields"' in setup_html
     assert 'id="hermes-backend-fields"' in setup_html
     assert 'id="agent-hermes-root"' in setup_html
+    assert 'id="agent-hermes-api-url"' in setup_html
+    assert 'id="agent-hermes-api-key"' in setup_html
+    assert 'id="agent-hermes-api-model"' in setup_html
     assert "function currentAgentBackend() {" in setup_html
     assert "function renderConversationBackendControls() {" in setup_html
     assert "api/setup/validate-agent" in setup_html
-    assert "Validated Hermes reply" in setup_html
+    assert "Validated Hermes endpoint" in setup_html
 
 
 def test_setup_html_uses_root_app_base_so_trailing_slash_urls_do_not_404():

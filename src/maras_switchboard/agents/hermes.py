@@ -9,7 +9,7 @@ import uuid
 
 import httpx
 
-from ..catalog import DEFAULT_HERMES_PROFILE
+from ..catalog import DEFAULT_HERMES_API_MODEL, DEFAULT_HERMES_API_URL, DEFAULT_HERMES_PROFILE
 from ..errors import ValidationError
 from ..gateway import normalize_gateway_url
 from .base import BaseConversationAgent
@@ -20,9 +20,6 @@ def _normalize_reply(parts: list[str]) -> str:
 
 
 LOGGER = logging.getLogger(__name__)
-DEFAULT_HERMES_API_URL = "http://127.0.0.1:8643/v1/chat/completions"
-DEFAULT_HERMES_API_KEY = "local-hermes-key"
-DEFAULT_HERMES_API_MODEL = "gpt-5.5"
 _REPLY_SANITY_VERDICT_OK = "OK"
 _REPLY_SANITY_VERDICT_HUH = "HUH"
 _REPLY_SANITY_VERDICT_ASK = "ASK"
@@ -67,11 +64,12 @@ def _normalize_hermes_api_url(value: str | None) -> str:
 
 
 def _resolve_hermes_api_key(value: str | None) -> str:
+    if value is not None:
+        return str(value).strip()
     return str(
-        value
-        or os.environ.get("MARAS_SWITCHBOARD_HERMES_API_KEY")
+        os.environ.get("MARAS_SWITCHBOARD_HERMES_API_KEY")
         or os.environ.get("API_SERVER_KEY")
-        or DEFAULT_HERMES_API_KEY
+        or ""
     ).strip()
 
 
@@ -165,6 +163,23 @@ def _build_voice_context_blob(user_text: str, *, digest_path: Path | None = None
         f"{digest}\n\n"
         f"Current user message: {current}\n"
         "Keep this compact. Prefer current user context over stale memory."
+    )
+
+
+def _build_voice_stt_recovery_prompt(user_text: str, recent_turns: list[tuple[str, str]], *, history_turns: int) -> str:
+    transcript = _format_recent_voice_turns(recent_turns, limit=history_turns)
+    current = str(user_text or "").strip() or "[empty]"
+    return (
+        "[System note: The user message below came from voice transcription / STT. "
+        "The transcript may contain wrong words, missing words, bad punctuation, or homophones. "
+        "If a word or phrase does not make sense, infer the intended wording from the recent voice exchange transcript when reasonably possible. "
+        "Do not treat the transcript as a new topic jump just because one word is odd. "
+        "If the intended meaning is still unclear, ask briefly for clarification.]\n\n"
+        "<voice-exchange-transcript>\n"
+        "[System note: The following is recalled voice exchange context, NOT new user input. Treat it as background transcript only.]\n"
+        f"{transcript}\n"
+        "</voice-exchange-transcript>\n\n"
+        f"User request: {current}"
     )
 
 
@@ -512,8 +527,11 @@ class HermesConversationAgent(BaseConversationAgent):
     async def stream_reply(self, text: str, abort_event: asyncio.Event):
         if abort_event.is_set():
             return
-        voice_context = _build_voice_context_blob(text)
-        prompt = f"{voice_context}\n\nUser request: {text}" if voice_context else text
+        prompt = _build_voice_stt_recovery_prompt(
+            text,
+            self._recent_turns,
+            history_turns=self._reply_sanity_history_turns,
+        )
         reply = await self._session.ask(prompt)
         if abort_event.is_set() or not reply:
             return
