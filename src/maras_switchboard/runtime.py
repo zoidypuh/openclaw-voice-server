@@ -18,7 +18,7 @@ from .catalog import normalize_agent_backend
 from .config_store import ConfigStore
 from .errors import ValidationError
 from .stt import build_transcriber
-from .tts import build_synthesizer, normalize_elevenlabs_preset
+from .tts import build_synthesizer, normalize_elevenlabs_preset, normalize_xai_tts_voice
 from .text import (
     extract_speech_directives,
     should_drop_voice_transcript,
@@ -178,6 +178,32 @@ class VoiceRuntime:
             ).strip()
             if preset_name:
                 base_tts_settings["elevenlabs_preset"] = normalize_elevenlabs_preset(preset_name)
+        elif provider == "xai":
+            voice_id = str(
+                override.get("voice_id")
+                or override.get("xai_voice_id")
+                or speaker_voice_ids.get(normalized_speaker)
+                or base_tts_settings.get("xai_voice_id")
+                or ""
+            ).strip()
+            if voice_id:
+                base_tts_settings["xai_voice_id"] = normalize_xai_tts_voice(voice_id)
+            language = str(override.get("language") or override.get("xai_language") or "").strip()
+            if language:
+                base_tts_settings["xai_language"] = language
+            codec = str(override.get("codec") or override.get("xai_output_codec") or "").strip()
+            if codec:
+                base_tts_settings["xai_output_codec"] = codec
+            if "sample_rate" in override or "xai_sample_rate" in override:
+                base_tts_settings["xai_sample_rate"] = override.get(
+                    "sample_rate",
+                    override.get("xai_sample_rate"),
+                )
+            if "bit_rate" in override or "xai_bit_rate" in override:
+                base_tts_settings["xai_bit_rate"] = override.get(
+                    "bit_rate",
+                    override.get("xai_bit_rate"),
+                )
         elif provider == "edge":
             voice = str(override.get("voice") or override.get("edge_voice") or "").strip()
             if voice:

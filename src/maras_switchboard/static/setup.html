@@ -361,6 +361,36 @@
     <div class="result" id="supertonic-result"></div>
   </section>
 
+  <section class="section hidden" id="xai-section">
+    <div class="section-header">
+      <div class="section-title">
+        <h2>5. xAI TTS</h2>
+        <p>Use xAI text-to-speech through the server-side API key, then validate one synthesis pass before saving.</p>
+      </div>
+      <div class="badge" id="xai-badge">Not checked</div>
+    </div>
+    <div class="grid">
+      <label>API key
+        <input id="xai-api-key" type="password" placeholder="Stored XAI_API_KEY will be reused if left blank">
+      </label>
+      <label>Voice
+        <select id="xai-voice"></select>
+      </label>
+      <label>Language
+        <input id="xai-language" type="text" placeholder="en">
+      </label>
+      <label>Output format
+        <select id="xai-output-format"></select>
+      </label>
+    </div>
+    <div class="note" id="xai-note"></div>
+    <div class="actions">
+      <button class="primary" id="validate-xai">Validate xAI TTS And Save</button>
+      <button id="continue-xai">Continue With Validated xAI TTS</button>
+    </div>
+    <div class="result" id="xai-result"></div>
+  </section>
+
   <section class="section hidden" id="chatterbox-section">
     <div class="section-header">
       <div class="section-title">
@@ -512,6 +542,9 @@ function ttsProviderSectionId(provider) {
   }
   if (provider === 'elevenlabs') {
     return 'eleven-section';
+  }
+  if (provider === 'xai') {
+    return 'xai-section';
   }
   if (provider === 'supertonic') {
     return 'supertonic-section';
@@ -793,6 +826,25 @@ function syncElevenVoiceSelectionFromId() {
   }
 }
 
+function xaiFormatIdFromSettings(tts) {
+  const codec = String(tts?.xai_output_codec || setupState?.hints?.default_xai_tts_codec || 'mp3').trim();
+  const sampleRate = Number(tts?.xai_sample_rate || setupState?.hints?.default_xai_tts_sample_rate || 44100);
+  const bitRate = tts?.xai_bit_rate ?? setupState?.hints?.default_xai_tts_bit_rate ?? 128000;
+  if (codec === 'wav') {
+    return `${codec}:${sampleRate}`;
+  }
+  return `${codec}:${sampleRate}:${Number(bitRate || 128000)}`;
+}
+
+function parseXaiFormatId(value) {
+  const parts = String(value || '').split(':');
+  return {
+    codec: parts[0] || 'mp3',
+    sample_rate: Number(parts[1] || 44100),
+    bit_rate: parts[2] ? Number(parts[2]) : null,
+  };
+}
+
 function getEffectiveStatus() {
   const status = setupState?.status || {};
   const saved = setupState?.saved;
@@ -802,6 +854,7 @@ function getEffectiveStatus() {
       tts_ready: false,
       edge_ready: false,
       eleven_ready: false,
+      xai_ready: false,
       supertonic_ready: false,
       chatterbox_ready: false,
       gateway_ready: false,
@@ -855,6 +908,16 @@ function getEffectiveStatus() {
     && document.getElementById('eleven-preset').value === (ttsSaved.elevenlabs_preset || 'natural')
   );
 
+  const xaiReady = Boolean(
+    ttsReady
+    && currentProvider === 'xai'
+    && status.xai_tts_ready
+    && document.getElementById('xai-api-key').value.trim() === ''
+    && document.getElementById('xai-voice').value === (ttsSaved.xai_voice_id || 'Eve')
+    && document.getElementById('xai-language').value.trim() === (ttsSaved.xai_language || 'en')
+    && document.getElementById('xai-output-format').value === xaiFormatIdFromSettings(ttsSaved)
+  );
+
   const supertonicReady = Boolean(
     ttsReady
     && currentProvider === 'supertonic'
@@ -885,7 +948,7 @@ function getEffectiveStatus() {
   const currentAgentBackendVal = currentAgentBackend();
   const savedSessionKey = gatewaySaved.session_key || (setupState?.hints?.default_voice_session_key || '');
   const gatewayReady = Boolean(
-    (ttsDisabled || edgeReady || elevenReady || supertonicReady || chatterboxReady)
+    (ttsDisabled || edgeReady || elevenReady || xaiReady || supertonicReady || chatterboxReady)
     && currentAgentBackendVal === 'gateway'
     && (agentSaved.backend || 'gateway') === 'gateway'
     && status.gateway_ready
@@ -896,7 +959,7 @@ function getEffectiveStatus() {
   );
   const savedHermesRoot = (agentSaved.hermes_root || (setupState?.hints?.default_hermes_root || '')).trim();
   const hermesReady = Boolean(
-    (ttsDisabled || edgeReady || elevenReady || supertonicReady || chatterboxReady)
+    (ttsDisabled || edgeReady || elevenReady || xaiReady || supertonicReady || chatterboxReady)
     && currentAgentBackendVal === 'hermes'
     && (agentSaved.backend || 'gateway') === 'hermes'
     && status.hermes_ready
@@ -909,6 +972,7 @@ function getEffectiveStatus() {
     tts_ready: ttsReady,
     edge_ready: edgeReady,
     eleven_ready: elevenReady,
+    xai_ready: xaiReady,
     supertonic_ready: supertonicReady,
     chatterbox_ready: chatterboxReady,
     gateway_ready: gatewayReady,
@@ -924,6 +988,7 @@ function updateFlowVisibility() {
   const showTts = effective.stt_ready;
   const showEdge = showTts && effective.tts_ready && currentProvider === 'edge';
   const showEleven = showTts && effective.tts_ready && currentProvider === 'elevenlabs';
+  const showXai = showTts && effective.tts_ready && currentProvider === 'xai';
   const showSupertonic = showTts && effective.tts_ready && currentProvider === 'supertonic';
   const showChatterbox = showTts && effective.tts_ready && currentProvider === 'chatterbox-turbo';
   const showDisabled = showTts && effective.tts_ready && currentProvider === 'disabled';
@@ -931,19 +996,22 @@ function updateFlowVisibility() {
     ? effective.edge_ready
     : showEleven
       ? effective.eleven_ready
-      : showSupertonic
-        ? effective.supertonic_ready
-        : showChatterbox
-          ? effective.chatterbox_ready
-          : showDisabled
-            ? true
-            : false;
+      : showXai
+        ? effective.xai_ready
+        : showSupertonic
+          ? effective.supertonic_ready
+          : showChatterbox
+            ? effective.chatterbox_ready
+            : showDisabled
+              ? true
+              : false;
   const showGateway = showTts && effective.tts_ready && providerReady;
   const showLaunch = showGateway && effective.runtime_ready;
 
   document.getElementById('tts-section').classList.toggle('hidden', !showTts);
   document.getElementById('edge-section').classList.toggle('hidden', !showEdge);
   document.getElementById('eleven-section').classList.toggle('hidden', !showEleven);
+  document.getElementById('xai-section').classList.toggle('hidden', !showXai);
   document.getElementById('supertonic-section').classList.toggle('hidden', !showSupertonic);
   document.getElementById('chatterbox-section').classList.toggle('hidden', !showChatterbox);
   document.getElementById('gateway-section').classList.toggle('hidden', !showGateway);
@@ -953,6 +1021,7 @@ function updateFlowVisibility() {
   setBadge('tts-badge', effective.tts_ready ? 'Validated' : 'Needs validation', effective.tts_ready);
   setBadge('edge-badge', effective.edge_ready ? 'Validated' : 'Needs validation', effective.edge_ready);
   setBadge('eleven-badge', effective.eleven_ready ? 'Validated' : 'Needs validation', effective.eleven_ready);
+  setBadge('xai-badge', effective.xai_ready ? 'Validated' : 'Needs validation', effective.xai_ready);
   setBadge('supertonic-badge', effective.supertonic_ready ? 'Validated' : 'Needs validation', effective.supertonic_ready);
   setBadge('chatterbox-badge', effective.chatterbox_ready ? 'Validated' : 'Needs validation', effective.chatterbox_ready);
   setBadge(
@@ -965,6 +1034,7 @@ function updateFlowVisibility() {
   document.getElementById('continue-tts').disabled = !effective.tts_ready;
   document.getElementById('continue-edge').disabled = !effective.edge_ready;
   document.getElementById('continue-eleven').disabled = !effective.eleven_ready;
+  document.getElementById('continue-xai').disabled = !effective.xai_ready;
   document.getElementById('continue-supertonic').disabled = !effective.supertonic_ready;
   document.getElementById('continue-chatterbox').disabled = !effective.chatterbox_ready;
   document.getElementById('continue-gateway').disabled = !effective.conversation_ready;
@@ -1055,6 +1125,8 @@ function populateFromState(state) {
   const supertonicLanguageLabels = Object.fromEntries((state.catalog.supertonic_languages || []).map((item) => [item.id, item.label]));
   const chatterboxDeviceLabels = Object.fromEntries((state.catalog.chatterbox_devices || []).map((item) => [item.id, item.label]));
   const presetLabels = Object.fromEntries((state.catalog.elevenlabs_presets || []).map((item) => [item.id, item.label]));
+  const xaiVoiceLabels = Object.fromEntries((state.catalog.xai_tts_voices || []).map((item) => [item.id, item.label]));
+  const xaiFormatLabels = Object.fromEntries((state.catalog.xai_tts_output_formats || []).map((item) => [item.id, item.label]));
   updateSelectOptions(
     document.getElementById('tts-default'),
     state.catalog.tts_providers.map((item) => item.id),
@@ -1080,12 +1152,27 @@ function populateFromState(state) {
     (state.catalog.elevenlabs_presets || []).map((item) => item.id),
     presetLabels,
   );
+  updateSelectOptions(
+    document.getElementById('xai-voice'),
+    (state.catalog.xai_tts_voices || []).map((item) => item.id),
+    xaiVoiceLabels,
+  );
+  updateSelectOptions(
+    document.getElementById('xai-output-format'),
+    (state.catalog.xai_tts_output_formats || []).map((item) => item.id),
+    xaiFormatLabels,
+  );
   document.getElementById('tts-default').value = tts.default_provider;
   document.getElementById('edge-rate').value = tts.edge_rate;
   document.getElementById('eleven-model').value = tts.elevenlabs_model;
   document.getElementById('eleven-voice-id').value = tts.elevenlabs_voice_id;
   document.getElementById('eleven-voice-name').value = tts.elevenlabs_voice_name;
   document.getElementById('eleven-preset').value = tts.elevenlabs_preset || 'natural';
+  document.getElementById('xai-api-key').value = '';
+  document.getElementById('xai-voice').value = tts.xai_voice_id || state.hints.default_xai_tts_voice || 'Eve';
+  document.getElementById('xai-language').value = tts.xai_language || state.hints.default_xai_tts_language || 'en';
+  document.getElementById('xai-output-format').value = xaiFormatIdFromSettings(tts);
+  document.getElementById('xai-note').textContent = state.hints.xai_tts_note || '';
   document.getElementById('supertonic-python-path').value = tts.supertonic_python_path || state.hints.default_supertonic_python_path || '';
   document.getElementById('supertonic-voice').value = tts.supertonic_voice || state.hints.default_supertonic_voice || 'M4';
   document.getElementById('supertonic-language').value = tts.supertonic_language || state.hints.default_supertonic_language || 'en';
@@ -1216,6 +1303,10 @@ document.getElementById('chatterbox-repetition-penalty').addEventListener('input
 document.getElementById('eleven-api-key').addEventListener('input', updateFlowVisibility);
 document.getElementById('eleven-model').addEventListener('input', updateFlowVisibility);
 document.getElementById('eleven-preset').addEventListener('change', updateFlowVisibility);
+document.getElementById('xai-api-key').addEventListener('input', updateFlowVisibility);
+document.getElementById('xai-voice').addEventListener('change', updateFlowVisibility);
+document.getElementById('xai-language').addEventListener('input', updateFlowVisibility);
+document.getElementById('xai-output-format').addEventListener('change', updateFlowVisibility);
 document.getElementById('eleven-voice-select').addEventListener('change', () => {
   const selected = elevenVoices.find((voice) => voice.voice_id === document.getElementById('eleven-voice-select').value);
   document.getElementById('eleven-voice-id').value = selected ? selected.voice_id : '';
@@ -1366,6 +1457,37 @@ document.getElementById('validate-chatterbox').addEventListener('click', async (
   }
 });
 
+document.getElementById('validate-xai').addEventListener('click', async () => {
+  try {
+    setResult('xai-result', 'Testing xAI TTS...');
+    const outputFormat = parseXaiFormatId(document.getElementById('xai-output-format').value);
+    const payload = await fetchJson(appUrl('api/setup/validate-xai-tts'), {
+      method: 'POST',
+      body: JSON.stringify({
+        api_key: document.getElementById('xai-api-key').value,
+        voice_id: document.getElementById('xai-voice').value,
+        language: document.getElementById('xai-language').value,
+        codec: outputFormat.codec,
+        sample_rate: outputFormat.sample_rate,
+        bit_rate: outputFormat.bit_rate,
+      }),
+    });
+    document.getElementById('xai-api-key').value = '';
+    document.getElementById('xai-voice').value = payload.voice_id;
+    document.getElementById('xai-language').value = payload.language;
+    document.getElementById('xai-output-format').value = xaiFormatIdFromSettings({
+      xai_output_codec: payload.output_format.codec,
+      xai_sample_rate: payload.output_format.sample_rate,
+      xai_bit_rate: payload.output_format.bit_rate,
+    });
+    setResult('xai-result', `Validated xAI TTS: ${payload.voice_id}, ${payload.audio_bytes} bytes.`, true);
+    await refreshState();
+    scrollToSection('gateway-section');
+  } catch (error) {
+    setResult('xai-result', error.message, false);
+  }
+});
+
 document.getElementById('validate-eleven-key').addEventListener('click', async () => {
   try {
     setResult('eleven-result', 'Validating ElevenLabs API key...');
@@ -1461,6 +1583,7 @@ document.getElementById('continue-tts').addEventListener('click', () => {
 });
 document.getElementById('continue-edge').addEventListener('click', () => scrollToSection('gateway-section'));
 document.getElementById('continue-eleven').addEventListener('click', () => scrollToSection('gateway-section'));
+document.getElementById('continue-xai').addEventListener('click', () => scrollToSection('gateway-section'));
 document.getElementById('continue-supertonic').addEventListener('click', () => scrollToSection('gateway-section'));
 document.getElementById('continue-chatterbox').addEventListener('click', () => scrollToSection('gateway-section'));
 document.getElementById('continue-gateway').addEventListener('click', () => scrollToSection('launch-summary'));

@@ -46,6 +46,23 @@ from .supertonic import (
     resolve_supertonic_python_path,
     validate_supertonic_voice,
 )
+from .xai import (
+    XAI_TTS_DEFAULT_BIT_RATE,
+    XAI_TTS_DEFAULT_CODEC,
+    XAI_TTS_DEFAULT_LANGUAGE,
+    XAI_TTS_DEFAULT_SAMPLE_RATE,
+    XAI_TTS_DEFAULT_VOICE,
+    XAI_TTS_OUTPUT_FORMATS,
+    XAI_TTS_VOICES,
+    XAITTSSynthesizer,
+    normalize_xai_tts_bit_rate,
+    normalize_xai_tts_codec,
+    normalize_xai_tts_language,
+    normalize_xai_tts_output_format,
+    normalize_xai_tts_sample_rate,
+    normalize_xai_tts_voice,
+    validate_xai_tts_voice,
+)
 
 
 def build_synthesizer(tts_settings: dict, secrets: dict[str, str]) -> BaseSynthesizer:
@@ -61,6 +78,15 @@ def build_synthesizer(tts_settings: dict, secrets: dict[str, str]) -> BaseSynthe
             voice_id=tts_settings["elevenlabs_voice_id"],
             model_id=tts_settings["elevenlabs_model"],
             default_preset=tts_settings["elevenlabs_preset"],
+        )
+    if provider == "xai":
+        return XAITTSSynthesizer(
+            api_key=secrets["xai_api_key"],
+            voice_id=tts_settings.get("xai_voice_id", XAI_TTS_DEFAULT_VOICE),
+            language=tts_settings.get("xai_language", XAI_TTS_DEFAULT_LANGUAGE),
+            codec=tts_settings.get("xai_output_codec", XAI_TTS_DEFAULT_CODEC),
+            sample_rate=tts_settings.get("xai_sample_rate", XAI_TTS_DEFAULT_SAMPLE_RATE),
+            bit_rate=tts_settings.get("xai_bit_rate", XAI_TTS_DEFAULT_BIT_RATE),
         )
     if provider == "supertonic":
         return SupertonicSynthesizer(

@@ -97,6 +97,55 @@ def test_elevenlabs_voices_uses_saved_secret(tmp_path, monkeypatch):
     assert result == {"ok": True, "voices": [{"voice_id": "voice-abc", "name": "Saved Voice"}]}
 
 
+def test_validate_xai_tts_persists_resolved_settings(tmp_path, monkeypatch):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+
+    async def fake_validate_xai_tts(*, api_key, voice_id, language, codec, sample_rate, bit_rate):
+        assert api_key == "xai-test"
+        assert voice_id == "Eve"
+        assert language == "en"
+        assert codec == "mp3"
+        assert sample_rate == 44100
+        assert bit_rate == 128000
+        return {
+            "ok": True,
+            "voice_id": voice_id,
+            "voice_name": voice_id,
+            "language": language,
+            "output_format": {"codec": codec, "sample_rate": sample_rate, "bit_rate": bit_rate},
+            "audio_bytes": 1234,
+        }
+
+    monkeypatch.setattr("maras_switchboard.setup_service.validate_xai_tts_voice_step", fake_validate_xai_tts)
+
+    result = asyncio.run(
+        service.validate_xai_tts(
+            {
+                "api_key": "xai-test",
+                "voice_id": "eve",
+                "language": "en",
+                "codec": "mp3",
+                "sample_rate": "44100",
+                "bit_rate": "128000",
+            }
+        )
+    )
+
+    saved = store.load_config()
+    env_text = (tmp_path / ".env").read_text(encoding="utf-8")
+
+    assert result["audio_bytes"] == 1234
+    assert "MARAS_SWITCHBOARD_XAI_API_KEY=xai-test" in env_text
+    assert saved["tts"]["xai_voice_id"] == "Eve"
+    assert saved["tts"]["xai_language"] == "en"
+    assert saved["tts"]["xai_output_codec"] == "mp3"
+    assert saved["tts"]["xai_sample_rate"] == 44100
+    assert saved["tts"]["xai_bit_rate"] == 128000
+    assert saved["validation"]["xai_tts"]["config_hash"]
+    assert saved["validation"]["xai_tts"]["api_key_fingerprint"]
+
+
 def test_validate_supertonic_persists_resolved_settings(tmp_path, monkeypatch):
     store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
     service = SetupService(store)
@@ -678,6 +727,73 @@ def test_runtime_ready_accepts_supertonic_live_config(tmp_path, monkeypatch):
     state = service.state()
 
     assert state["status"]["supertonic_ready"] is True
+    assert state["status"]["runtime_ready"] is True
+
+
+def test_runtime_ready_accepts_xai_tts_live_config(tmp_path, monkeypatch):
+    store = ConfigStore(config_path=tmp_path / "config.json", env_path=tmp_path / ".env")
+    service = SetupService(store)
+    output_format = {"codec": "mp3", "sample_rate": 44100, "bit_rate": 128000}
+    store.update_config(
+        {
+            "stt": {
+                "enabled_backends": ["whisper"],
+                "default_backend": "whisper",
+                "language": "en",
+                "whisper_endpoint_url": "http://127.0.0.1:18000/v1/audio/transcriptions",
+            },
+            "tts": {
+                "enabled_providers": ["xai"],
+                "default_provider": "xai",
+                "xai_voice_id": "Eve",
+                "xai_language": "en",
+                "xai_output_codec": "mp3",
+                "xai_sample_rate": 44100,
+                "xai_bit_rate": 128000,
+            },
+            "gateway": {
+                "url": "http://127.0.0.1:18789/v1/chat/completions",
+                "model": "maras-switchboard:main",
+                "session_key": "voice-main",
+            },
+            "validation": {
+                "tts": {
+                    "config_hash": service._config_hash(
+                        {"enabled_providers": ["xai"], "default_provider": "xai"}
+                    )
+                },
+                "xai_tts": {
+                    "config_hash": service._config_hash(
+                        {"voice_id": "Eve", "language": "en", "output_format": output_format}
+                    ),
+                    "api_key_fingerprint": service._fingerprint_secret("xai-test"),
+                },
+                "gateway": {
+                    "config_hash": service._config_hash(
+                        {
+                            "url": "http://127.0.0.1:18789/v1/chat/completions",
+                            "model": "maras-switchboard:main",
+                            "session_key": "voice-main",
+                        }
+                    ),
+                    "token_fingerprint": service._fingerprint_secret("gw-secret"),
+                },
+            },
+        }
+    )
+    store.update_secrets(
+        {
+            "MARAS_SWITCHBOARD_GATEWAY_TOKEN": "gw-secret",
+            "XAI_API_KEY": "xai-test",
+        }
+    )
+    monkeypatch.setenv("XAI_API_KEY", "xai-test")
+
+    monkeypatch.setattr("maras_switchboard.setup_service.module_available", lambda import_name: import_name is None)
+
+    state = service.state()
+
+    assert state["status"]["xai_tts_ready"] is True
     assert state["status"]["runtime_ready"] is True
 
 

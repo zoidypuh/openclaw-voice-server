@@ -18,6 +18,11 @@ DEFAULT_REMOTE_WHISPER_ENDPOINT_PATH = "/v1/audio/transcriptions"
 DEFAULT_REMOTE_WHISPER_MODEL = "distil-large-v3"
 HOLD_TO_TALK_SHORTCUT_LABEL = "Ctrl+Alt+Shift+A"
 ELEVENLABS_DEFAULT_PRESET = "natural"
+XAI_TTS_DEFAULT_VOICE = "Eve"
+XAI_TTS_DEFAULT_LANGUAGE = "en"
+XAI_TTS_DEFAULT_CODEC = "mp3"
+XAI_TTS_DEFAULT_SAMPLE_RATE = 44100
+XAI_TTS_DEFAULT_BIT_RATE = 128000
 ELEVENLABS_PRESETS = {
     "calm": {
         "label": "Calm",
@@ -133,6 +138,12 @@ SUPPORTED_TTS_PROVIDERS = {
     "elevenlabs": {
         "id": "elevenlabs",
         "label": "ElevenLabs",
+        "package": None,
+        "import_name": None,
+    },
+    "xai": {
+        "id": "xai",
+        "label": "xAI TTS",
         "package": None,
         "import_name": None,
     },
@@ -252,6 +263,11 @@ DEFAULT_CONFIG = {
         "elevenlabs_voice_name": "",
         "elevenlabs_model": "eleven_flash_v2_5",
         "elevenlabs_preset": ELEVENLABS_DEFAULT_PRESET,
+        "xai_voice_id": XAI_TTS_DEFAULT_VOICE,
+        "xai_language": XAI_TTS_DEFAULT_LANGUAGE,
+        "xai_output_codec": XAI_TTS_DEFAULT_CODEC,
+        "xai_sample_rate": XAI_TTS_DEFAULT_SAMPLE_RATE,
+        "xai_bit_rate": XAI_TTS_DEFAULT_BIT_RATE,
         "supertonic_python_path": "",
         "supertonic_voice": "M4",
         "supertonic_language": "en",
@@ -289,6 +305,10 @@ DEFAULT_CONFIG = {
             "api_key_fingerprint": "",
         },
         "eleven_voice": {
+            "config_hash": "",
+            "api_key_fingerprint": "",
+        },
+        "xai_tts": {
             "config_hash": "",
             "api_key_fingerprint": "",
         },

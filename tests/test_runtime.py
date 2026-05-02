@@ -186,6 +186,38 @@ def test_tts_settings_for_speaker_applies_chatterbox_turbo_override():
     assert resolved["chatterbox_repetition_penalty"] == 1.1
 
 
+def test_tts_settings_for_speaker_applies_xai_override():
+    settings = {
+        "tts": {
+            "default_provider": "supertonic",
+            "xai_voice_id": "Eve",
+            "xai_language": "en",
+            "xai_output_codec": "mp3",
+            "xai_sample_rate": 44100,
+            "xai_bit_rate": 128000,
+            "speaker_overrides": {
+                "speaker-b": {
+                    "provider": "xai",
+                    "voice_id": "ara",
+                    "language": "fr",
+                    "codec": "wav",
+                    "sample_rate": 48000,
+                    "bit_rate": None,
+                }
+            },
+        }
+    }
+
+    resolved = VoiceRuntime._tts_settings_for_speaker(settings, "Speaker B")
+
+    assert resolved["default_provider"] == "xai"
+    assert resolved["xai_voice_id"] == "Ara"
+    assert resolved["xai_language"] == "fr"
+    assert resolved["xai_output_codec"] == "wav"
+    assert resolved["xai_sample_rate"] == 48000
+    assert resolved["xai_bit_rate"] is None
+
+
 def test_handle_ws_interrupts_active_stream_and_rejects_overlap(monkeypatch):
     FakeWebSocketResponse.created.clear()
     transcribe_calls = 0

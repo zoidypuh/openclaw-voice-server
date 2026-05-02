@@ -245,6 +245,7 @@ class ConfigStore:
             "tts": {
                 **settings["tts"],
                 "elevenlabs_api_key_present": bool(settings["secrets"]["elevenlabs_api_key"]),
+                "xai_api_key_present": bool(settings["secrets"]["xai_api_key"]),
             },
             "audio": settings["audio"],
             "windows_client": settings["windows_client"],

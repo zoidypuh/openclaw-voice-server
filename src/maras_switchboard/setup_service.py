@@ -46,6 +46,13 @@ from .tts import (
     SUPERTONIC_DEFAULT_VOICE,
     SUPERTONIC_SUPPORTED_LANGUAGES,
     SUPERTONIC_SUPPORTED_VOICES,
+    XAI_TTS_DEFAULT_BIT_RATE,
+    XAI_TTS_DEFAULT_CODEC,
+    XAI_TTS_DEFAULT_LANGUAGE,
+    XAI_TTS_DEFAULT_SAMPLE_RATE,
+    XAI_TTS_DEFAULT_VOICE,
+    XAI_TTS_OUTPUT_FORMATS,
+    XAI_TTS_VOICES,
     detect_chatterbox_turbo_python_path,
     detect_chatterbox_turbo_voice_prompt_path,
     detect_supertonic_python_path,
@@ -62,6 +69,12 @@ from .tts import (
     normalize_supertonic_speed,
     normalize_supertonic_total_steps,
     normalize_supertonic_voice,
+    normalize_xai_tts_bit_rate,
+    normalize_xai_tts_codec,
+    normalize_xai_tts_language,
+    normalize_xai_tts_output_format,
+    normalize_xai_tts_sample_rate,
+    normalize_xai_tts_voice,
     resolve_chatterbox_turbo_python_path,
     resolve_chatterbox_turbo_voice_prompt_path,
     resolve_supertonic_python_path,
@@ -70,6 +83,7 @@ from .tts import (
     validate_elevenlabs_api_key as validate_elevenlabs_api_key_step,
     validate_elevenlabs_voice as validate_elevenlabs_voice_step,
     validate_supertonic_voice as validate_supertonic_voice_step,
+    validate_xai_tts_voice as validate_xai_tts_voice_step,
 )
 
 
@@ -247,6 +261,14 @@ class SetupService:
                 and str(tts.get("elevenlabs_voice_id") or "").strip()
                 and str(tts.get("elevenlabs_model") or "").strip()
             )
+        if provider_id == "xai":
+            return bool(
+                str(settings["secrets"].get("xai_api_key") or "").strip()
+                and str(tts.get("xai_voice_id") or "").strip()
+                and str(tts.get("xai_language") or "").strip()
+                and str(tts.get("xai_output_codec") or "").strip()
+                and tts.get("xai_sample_rate")
+            )
         if provider_id == "supertonic":
             return bool(
                 str(tts.get("supertonic_python_path") or "").strip()
@@ -377,6 +399,22 @@ class SetupService:
             and api_key_fingerprint == validation["eleven_voice"]["api_key_fingerprint"]
             and self._validated_config_matches(eleven_voice_snapshot, validation["eleven_voice"])
         )
+        xai_api_key_fingerprint = self._fingerprint_secret(settings["secrets"]["xai_api_key"])
+        xai_output_format = normalize_xai_tts_output_format(
+            codec=settings["tts"].get("xai_output_codec", XAI_TTS_DEFAULT_CODEC),
+            sample_rate=settings["tts"].get("xai_sample_rate", XAI_TTS_DEFAULT_SAMPLE_RATE),
+            bit_rate=settings["tts"].get("xai_bit_rate", XAI_TTS_DEFAULT_BIT_RATE),
+        )
+        xai_tts_snapshot = {
+            "voice_id": normalize_xai_tts_voice(settings["tts"].get("xai_voice_id")),
+            "language": normalize_xai_tts_language(settings["tts"].get("xai_language")),
+            "output_format": xai_output_format,
+        }
+        xai_tts_ready = "xai" not in settings["tts"]["enabled_providers"] or bool(
+            xai_api_key_fingerprint
+            and xai_api_key_fingerprint == validation.get("xai_tts", {}).get("api_key_fingerprint")
+            and self._validated_config_matches(xai_tts_snapshot, validation.get("xai_tts", {}))
+        )
         supertonic_snapshot = {
             "python_path": settings["tts"].get("supertonic_python_path", ""),
             "voice": settings["tts"].get("supertonic_voice", ""),
@@ -466,6 +504,7 @@ class SetupService:
             "edge_ready": edge_ready,
             "eleven_key_ready": eleven_key_ready,
             "eleven_voice_ready": eleven_voice_ready,
+            "xai_tts_ready": xai_tts_ready,
             "supertonic_ready": supertonic_ready,
             "chatterbox_ready": chatterbox_ready,
             "runtime_ready": runtime_ready,
@@ -499,6 +538,29 @@ class SetupService:
                 "elevenlabs_presets": [
                     {"id": preset_id, "label": preset["label"]}
                     for preset_id, preset in ELEVENLABS_PRESETS.items()
+                ],
+                "xai_tts_voices": [
+                    {"id": voice_id, "label": f"{voice_id} - {description}"}
+                    for voice_id, description in XAI_TTS_VOICES.items()
+                ],
+                "xai_tts_output_formats": [
+                    {
+                        "codec": codec,
+                        "sample_rate": sample_rate,
+                        "bit_rate": bit_rate,
+                        "id": (
+                            f"{codec}:{sample_rate}:{bit_rate}"
+                            if bit_rate is not None
+                            else f"{codec}:{sample_rate}"
+                        ),
+                        "label": (
+                            f"{codec.upper()} {sample_rate / 1000:g} kHz, {bit_rate // 1000} kbps"
+                            if bit_rate is not None
+                            else f"{codec.upper()} {sample_rate / 1000:g} kHz"
+                        ),
+                    }
+                    for (codec, sample_rate), details in XAI_TTS_OUTPUT_FORMATS.items()
+                    for bit_rate in details["bit_rates"]
                 ],
                 "chatterbox_devices": [
                     {"id": "auto", "label": "Auto"},
@@ -547,6 +609,11 @@ class SetupService:
                 "default_chatterbox_top_p": CHATTERBOX_TURBO_DEFAULT_TOP_P,
                 "default_chatterbox_top_k": CHATTERBOX_TURBO_DEFAULT_TOP_K,
                 "default_chatterbox_repetition_penalty": CHATTERBOX_TURBO_DEFAULT_REPETITION_PENALTY,
+                "default_xai_tts_voice": XAI_TTS_DEFAULT_VOICE,
+                "default_xai_tts_language": XAI_TTS_DEFAULT_LANGUAGE,
+                "default_xai_tts_codec": XAI_TTS_DEFAULT_CODEC,
+                "default_xai_tts_sample_rate": XAI_TTS_DEFAULT_SAMPLE_RATE,
+                "default_xai_tts_bit_rate": XAI_TTS_DEFAULT_BIT_RATE,
                 "supertonic_note": (
                     "Supertonic is a very fast local TTS engine, but it currently works best from a dedicated Python 3.12/3.13 environment. "
                     "Point Python Executable at a venv that already has the supertonic package installed. "
@@ -556,6 +623,10 @@ class SetupService:
                     "Chatterbox Turbo runs from a dedicated Python environment with chatterbox-tts installed. "
                     "Use a clear reference audio prompt longer than five seconds; first validation may download model files. "
                     "Auto device skips CUDA when the installed PyTorch build does not support the detected GPU."
+                ),
+                "xai_tts_note": (
+                    "xAI TTS uses the same XAI_API_KEY secret as xAI STT. "
+                    "The voice call server sends text to xAI and streams the returned audio bytes to the active voice client."
                 ),
             },
         }
@@ -938,6 +1009,71 @@ class SetupService:
                 },
             }
         )
+        return result
+
+    async def validate_xai_tts(self, payload: dict[str, Any]) -> dict[str, Any]:
+        settings = self.store.load_runtime_settings()
+        current_tts = settings["tts"]
+        api_key = str(settings["secrets"].get("xai_api_key") or "").strip()
+        if "api_key" in payload:
+            api_key = str(payload.get("api_key") or "").strip()
+        if not api_key:
+            raise ValidationError("Set XAI_API_KEY or enter an xAI API key.")
+        voice_id = normalize_xai_tts_voice(
+            str(payload.get("voice_id") or current_tts.get("xai_voice_id") or XAI_TTS_DEFAULT_VOICE).strip()
+        )
+        language = normalize_xai_tts_language(
+            str(payload.get("language") or current_tts.get("xai_language") or XAI_TTS_DEFAULT_LANGUAGE).strip()
+        )
+        codec = normalize_xai_tts_codec(
+            str(payload.get("codec") or current_tts.get("xai_output_codec") or XAI_TTS_DEFAULT_CODEC).strip()
+        )
+        sample_rate = normalize_xai_tts_sample_rate(
+            codec,
+            payload.get("sample_rate")
+            if "sample_rate" in payload
+            else current_tts.get("xai_sample_rate", XAI_TTS_DEFAULT_SAMPLE_RATE),
+        )
+        bit_rate = normalize_xai_tts_bit_rate(
+            codec,
+            sample_rate,
+            payload.get("bit_rate")
+            if "bit_rate" in payload
+            else current_tts.get("xai_bit_rate", XAI_TTS_DEFAULT_BIT_RATE),
+        )
+        result = await validate_xai_tts_voice_step(
+            api_key=api_key,
+            voice_id=voice_id,
+            language=language,
+            codec=codec,
+            sample_rate=sample_rate,
+            bit_rate=bit_rate,
+        )
+        output_format = result["output_format"]
+        saved_tts = {
+            "xai_voice_id": result["voice_id"],
+            "xai_language": result["language"],
+            "xai_output_codec": output_format["codec"],
+            "xai_sample_rate": output_format["sample_rate"],
+            "xai_bit_rate": output_format.get("bit_rate"),
+        }
+        xai_tts_snapshot = {
+            "voice_id": saved_tts["xai_voice_id"],
+            "language": saved_tts["xai_language"],
+            "output_format": output_format,
+        }
+        self.store.update_config(
+            {
+                "tts": saved_tts,
+                "validation": {
+                    "xai_tts": {
+                        "config_hash": self._config_hash(xai_tts_snapshot),
+                        "api_key_fingerprint": self._fingerprint_secret(api_key),
+                    }
+                },
+            }
+        )
+        self.store.update_secrets({"MARAS_SWITCHBOARD_XAI_API_KEY": api_key})
         return result
 
     async def validate_elevenlabs_voice(self, payload: dict[str, Any]) -> dict[str, Any]:

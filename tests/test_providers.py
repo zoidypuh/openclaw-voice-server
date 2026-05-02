@@ -17,16 +17,20 @@ from maras_switchboard.tts import chatterbox_turbo as chatterbox_module
 from maras_switchboard.tts import edge as edge_module
 from maras_switchboard.tts import elevenlabs as elevenlabs_module
 from maras_switchboard.tts import supertonic as supertonic_module
+from maras_switchboard.tts import xai as xai_tts_module
 from maras_switchboard.tts.backends import (
     ElevenLabsSynthesizer,
+    XAITTSSynthesizer,
     list_elevenlabs_voices,
     normalize_chatterbox_turbo_device,
     normalize_elevenlabs_preset,
     normalize_supertonic_voice,
+    normalize_xai_tts_output_format,
     validate_chatterbox_turbo_voice,
     validate_elevenlabs_voice,
     validate_edge_voice,
     validate_supertonic_voice,
+    validate_xai_tts_voice,
 )
 
 
@@ -605,6 +609,90 @@ def test_auto_language_normalizes_to_none():
 def test_elevenlabs_preset_helpers_fall_back_to_natural():
     assert normalize_elevenlabs_preset("EXPRESSIVE") == "expressive"
     assert normalize_elevenlabs_preset("unknown") == "natural"
+
+
+def test_xai_tts_synthesize_posts_structured_output_format(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+        content = b"mp3"
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, headers, json):
+            captured["url"] = url
+            captured["headers"] = headers
+            captured["json"] = json
+            return FakeResponse()
+
+    monkeypatch.setattr(xai_tts_module.httpx, "AsyncClient", lambda timeout: FakeClient())
+
+    synthesizer = XAITTSSynthesizer(
+        api_key="xai-test",
+        voice_id="eve",
+        language="en",
+        codec="mp3",
+        sample_rate=44100,
+        bit_rate=128000,
+    )
+    audio = asyncio.run(synthesizer.synthesize("hello", voice_id="Ara"))
+
+    assert audio == b"mp3"
+    assert captured["url"] == "https://api.x.ai/v1/tts"
+    assert captured["headers"]["Authorization"] == "Bearer xai-test"
+    assert captured["json"] == {
+        "text": "hello",
+        "voice_id": "Ara",
+        "output_format": {"codec": "mp3", "sample_rate": 44100, "bit_rate": 128000},
+        "language": "en",
+    }
+    assert synthesizer.audio_mime_type == "audio/mpeg"
+
+
+def test_xai_tts_wav_format_omits_bit_rate():
+    assert normalize_xai_tts_output_format(codec="wav", sample_rate=48000, bit_rate=128000) == {
+        "codec": "wav",
+        "sample_rate": 48000,
+    }
+
+
+def test_validate_xai_tts_voice_returns_audio_metadata(monkeypatch):
+    class FakeResponse:
+        status_code = 200
+        content = b"audio-bytes"
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, headers, json):
+            return FakeResponse()
+
+    monkeypatch.setattr(xai_tts_module.httpx, "AsyncClient", lambda timeout: FakeClient())
+
+    result = asyncio.run(
+        validate_xai_tts_voice(
+            api_key="xai-test",
+            voice_id="Eve",
+            language="en",
+            codec="mp3",
+            sample_rate=44100,
+            bit_rate=128000,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["voice_id"] == "Eve"
+    assert result["audio_bytes"] == len(b"audio-bytes")
 
 
 def test_elevenlabs_synthesize_includes_voice_settings_and_voice_override(monkeypatch):
