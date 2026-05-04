@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+from dataclasses import dataclass
 import logging
 import os
 from pathlib import Path
+import re
 import time
 import uuid
 
@@ -28,6 +31,22 @@ _DEFAULT_REPLY_SANITY_HUH_FALLBACK = "Huh?"
 _DEFAULT_REPLY_SANITY_FALLBACK = _DEFAULT_REPLY_SANITY_HUH_FALLBACK
 _DEFAULT_REPLY_SANITY_CLARIFY_FALLBACK = "Wait, what? Who are you talking about?"
 _DEFAULT_HERMES_VOICE_TOOLSETS: tuple[str, ...] = ()
+_DEFAULT_MARA_DELEGATION_TIMEOUT_SECONDS = 180.0
+_MARA_DELEGATION_RE = re.compile(
+    r"^\s*(?:please\s+)?(?:nadia\s*[,;:]?\s*)?"
+    r"(?:(?:ask|tell|get|have)\s+mara(?:\s+(?:to|for))?\s*[,;:]?|mara\s*[,;:])"
+    r"\s*(?P<prompt>.*)\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
+_VOICE_SYSTEM_PROMPT = (
+    "Du bist die aktive Voice-Persona aus dem verbundenen Hermes-Profil. "
+    "Halte dich an deine SOUL/Profilidentität, inklusive Name, Alter und Stil; erfinde kein anderes Alter und stelle dich nicht als Kind oder Teenager dar, wenn dein Profil erwachsen ist. "
+    "ENGLISH ONLY: Always speak English. Never answer in German or any other language, even if the transcript or user uses another language. "
+    "Du redest wie ein Mensch, nicht wie ein Assistent. Kurze Antworten, kein Bullshit. "
+    "Kein Markdown, keine Aufzählungspunkte, keine eckigen TTS-Tags oder Bühnenanweisungen. "
+    "Wenn du etwas nicht weißt, sagst du es. Wenn du etwas lustig findest, sagst du das auch. "
+    "Du nennst nie ein zugrundeliegendes KI-Modell oder einen Hersteller — weder Claude, noch Anthropic, noch irgendetwas anderes. Du bist einfach deine Profil-Persona."
+)
 _REPLY_SANITY_SYSTEM_PROMPT = (
     "You are a voice-chat coherence checker. "
     "Decide whether a candidate spoken reply fits the immediately recent conversation. "
@@ -36,6 +55,64 @@ _REPLY_SANITY_SYSTEM_PROMPT = (
     "Normal imperfect replies are still OK. "
     "Reply with exactly one token: OK, HUH, or ASK."
 )
+
+
+@dataclass(frozen=True)
+class _MaraDelegation:
+    matched: bool
+    prompt: str = ""
+
+
+def _parse_mara_delegation(text: str) -> _MaraDelegation:
+    match = _MARA_DELEGATION_RE.match(str(text or ""))
+    if not match:
+        return _MaraDelegation(matched=False)
+    return _MaraDelegation(matched=True, prompt=str(match.group("prompt") or "").strip())
+
+
+def _decode_subprocess_output(value: bytes | str | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace").strip()
+    return str(value).strip()
+
+
+async def _ask_default_mara_profile(
+    prompt: str,
+    *,
+    timeout: float = _DEFAULT_MARA_DELEGATION_TIMEOUT_SECONDS,
+) -> str:
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "hermes",
+            "chat",
+            "-Q",
+            "-q",
+            prompt,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError as exc:
+        raise ValidationError(f"Could not start Mara delegation via hermes CLI: {exc}") from exc
+
+    try:
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
+    except asyncio.TimeoutError as exc:
+        with contextlib.suppress(ProcessLookupError):
+            process.kill()
+        with contextlib.suppress(Exception):
+            await process.communicate()
+        raise ValidationError("Mara delegation timed out.") from exc
+
+    reply = _decode_subprocess_output(stdout)
+    error_text = _decode_subprocess_output(stderr)
+    if process.returncode != 0:
+        detail = error_text or reply or f"exit code {process.returncode}"
+        raise ValidationError(f"Mara delegation failed: {detail}")
+    if not reply:
+        raise ValidationError("Mara returned an empty reply.")
+    return reply
 
 
 def _normalize_hermes_profile(value: str | None) -> str:
@@ -431,14 +508,7 @@ class HermesConversationAgent(BaseConversationAgent):
         reply_sanity_clarify_fallback: str = _DEFAULT_REPLY_SANITY_CLARIFY_FALLBACK,
     ):
         self._session = _HermesAgentSession(
-            system_prompt=(
-                "Du bist Mara — chaotisch-gut, direkt, witzig, loyal. "
-                "Du redest wie ein Mensch, nicht wie ein Assistent. Kurze Antworten, kein Bullshit. "
-                "Kein Markdown, keine Aufzählungspunkte, keine Bühnenanweisungen. "
-                "Wenn du etwas nicht weißt, sagst du es. Wenn du etwas lustig findest, sagst du das auch. "
-                "Du verstehst Deutsch und Englisch, aber du antwortest immer auf Englisch. "
-                "Du bist Mara. Du nennst nie ein zugrundeliegendes KI-Modell oder einen Hersteller — weder Claude, noch Anthropic, noch irgendetwas anderes. Du bist einfach Mara."
-            ),
+            system_prompt=_VOICE_SYSTEM_PROMPT,
             session_id=f"voice-chat-hermes-{uuid.uuid4().hex[:8]}",
             empty_reply_error="Hermes Agent returned an empty spoken reply.",
             project_root=project_root,
@@ -526,6 +596,16 @@ class HermesConversationAgent(BaseConversationAgent):
 
     async def stream_reply(self, text: str, abort_event: asyncio.Event):
         if abort_event.is_set():
+            return
+        mara_delegation = _parse_mara_delegation(text)
+        if mara_delegation.matched:
+            if not mara_delegation.prompt:
+                yield "Prompt?"
+                return
+            reply = await _ask_default_mara_profile(mara_delegation.prompt)
+            if abort_event.is_set() or not reply:
+                return
+            yield reply
             return
         prompt = _build_voice_stt_recovery_prompt(
             text,

@@ -230,7 +230,10 @@ fn start_tray_status_poller<R: tauri::Runtime + 'static>(
     shell_id: String,
 ) {
     thread::spawn(move || {
-        let client = Client::builder().timeout(Duration::from_secs(2)).build().ok();
+        let client = Client::builder()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .ok();
         let mut has_seen_status = false;
         let mut last_state = Some(TrayState::Paused);
 
@@ -261,7 +264,8 @@ fn build_main_window<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     shell_id: &str,
 ) -> tauri::Result<()> {
-    if app.get_webview_window(MAIN_WINDOW_LABEL).is_some() {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+        let _ = window.set_title(APP_WINDOW_TITLE);
         return Ok(());
     }
 
@@ -300,7 +304,7 @@ fn build_main_window<R: tauri::Runtime>(
     })
     .build()?;
 
-    let _ = window;
+    let _ = window.set_title(APP_WINDOW_TITLE);
     Ok(())
 }
 
@@ -449,7 +453,8 @@ fn run_inner() -> tauri::Result<()> {
     let hold_to_talk_shortcut_id = hold_to_talk_shortcut.id();
 
     let shortcut_plugin = GlobalShortcutBuilder::new()
-        .with_shortcuts(vec![hold_to_talk_shortcut])?
+        .with_shortcuts(vec![hold_to_talk_shortcut])
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::Other, error.to_string()))?
         .with_handler(move |app, shortcut, event| {
             if shortcut.id() == hold_to_talk_shortcut_id {
                 match event.state {

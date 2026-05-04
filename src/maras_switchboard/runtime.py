@@ -617,60 +617,33 @@ class VoiceRuntime:
         abort_event = asyncio.Event()
         pending_turn_commit_meta: dict[str, object] | None = None
 
-        async def process_audio(
-            audio_bytes: bytes,
+        async def process_text(
+            text: str,
             task_abort_event: asyncio.Event,
             *,
-            turn_commit_meta: dict[str, object] | None = None,
+            input_source: str,
+            turn: VoiceTurnMetrics | None = None,
+            send_thinking: bool = True,
         ) -> None:
-            loop = asyncio.get_running_loop()
-            turn = VoiceTurnMetrics()
-            if turn_commit_meta:
-                LOGGER.info(
-                    "[client] turn commit reason=%s speech=%sms silence=%sms threshold=%s level=%s wait=%sms",
-                    str(turn_commit_meta.get("reason") or "-"),
-                    int(turn_commit_meta.get("speech_ms") or 0),
-                    int(turn_commit_meta.get("silence_ms") or 0),
-                    turn_commit_meta.get("threshold_db"),
-                    turn_commit_meta.get("level_db"),
-                    int(turn_commit_meta.get("wait_after_speak_ms") or 0),
-                )
-            await ws.send_json({"status": "thinking"})
-            stt_started_at = time.perf_counter()
-            result = await loop.run_in_executor(None, transcriber.transcribe, audio_bytes)
-            turn.stt_seconds = time.perf_counter() - stt_started_at
-            text = result.text.strip()
-            duration = float(getattr(result, "duration_seconds", 0.0) or 0.0)
-            turn.speech_duration_seconds = duration
+            turn = turn or VoiceTurnMetrics()
+            if send_thinking:
+                await ws.send_json({"status": "thinking"})
+            turn.transcript = str(text or "").strip()
             if task_abort_event.is_set():
                 return
-            if not text:
-                LOGGER.info(
-                    "[%s] speech input detected (%s) but STT returned no transcript after %s",
-                    turn.turn_id,
-                    _format_elapsed(duration),
-                    _format_elapsed(turn.stt_seconds),
-                )
-                await ws.send_json({"status": "idle"})
-                return
-            audio_settings = settings.get("audio", {})
-            min_duration = max(float(audio_settings.get("min_speech_ms", 350) or 350) / 1000.0, 0.0)
-            if should_drop_voice_transcript(text, duration, min_duration=min_duration):
-                LOGGER.debug(
-                    "[dim]dropped: %s (%s)[/dim]",
-                    _summarize_text(text),
-                    _format_elapsed(duration),
-                )
+            if not turn.transcript:
                 await ws.send_json({"status": "idle"})
                 return
 
-            turn.transcript = text
-            LOGGER.info(
-                "[bold cyan]🎤 %s[/bold cyan]  [dim]stt=%s  audio=%s[/dim]",
-                _summarize_text(turn.transcript),
-                _format_elapsed(turn.stt_seconds),
-                _format_elapsed(turn.speech_duration_seconds),
-            )
+            if input_source == "typed":
+                LOGGER.info("[bold cyan]⌨ %s[/bold cyan]", _summarize_text(turn.transcript))
+            else:
+                LOGGER.info(
+                    "[bold cyan]🎤 %s[/bold cyan]  [dim]stt=%s  audio=%s[/dim]",
+                    _summarize_text(turn.transcript),
+                    _format_elapsed(turn.stt_seconds),
+                    _format_elapsed(turn.speech_duration_seconds),
+                )
             await ws.send_json({"type": "transcript", "text": turn.transcript})
             await ws.send_json({"type": "reply-text", "text": "", "replace": True})
 
@@ -698,7 +671,7 @@ class VoiceRuntime:
                 return synth_cache[cache_key]
 
             async def send_reply_chunk(clean_text: str) -> None:
-                nonlocal speaking_started
+                nonlocal speaking_started, buffered_reply_text
                 chunk_text = clean_text.strip()
                 if _should_skip_spoken_reply(chunk_text):
                     LOGGER.info(
@@ -706,8 +679,8 @@ class VoiceRuntime:
                         _summarize_text(chunk_text),
                     )
                     return
-                await ws.send_json({"type": "reply-text", "text": chunk_text, "append": True})
                 if tts_disabled:
+                    await ws.send_json({"type": "reply-text", "text": chunk_text, "append": True})
                     if turn.ttft_seconds is None:
                         turn.ttft_seconds = time.perf_counter() - reply_started_at
                     turn.reply_chunks.append(_summarize_text(chunk_text))
@@ -719,7 +692,6 @@ class VoiceRuntime:
                 if self._tts_requires_buffered_reply(settings, speaker_name=reply_speaker):
                     if turn.ttft_seconds is None:
                         turn.ttft_seconds = time.perf_counter() - reply_started_at
-                    nonlocal buffered_reply_text
                     buffered_reply_text = (
                         f"{buffered_reply_text} {chunk_text}".strip()
                         if buffered_reply_text
@@ -748,6 +720,7 @@ class VoiceRuntime:
                     if current_audio_mime_type != "audio/mpeg":
                         speaking_payload["audio_mime_type"] = current_audio_mime_type
                     await ws.send_json(speaking_payload)
+                await ws.send_json({"type": "reply-text", "text": chunk_text, "append": True})
                 await ws.send_bytes(audio)
                 if turn.first_audio_seconds is None:
                     turn.first_audio_seconds = time.perf_counter() - turn.started_at
@@ -759,7 +732,7 @@ class VoiceRuntime:
                         _format_elapsed(turn.first_audio_seconds),
                     )
 
-            async for chunk in conversation_agent.stream_reply(text, task_abort_event):
+            async for chunk in conversation_agent.stream_reply(turn.transcript, task_abort_event):
                 if task_abort_event.is_set():
                     return
                 clean = strip_markdown(chunk)
@@ -816,6 +789,7 @@ class VoiceRuntime:
                         if current_audio_mime_type != "audio/mpeg":
                             speaking_payload["audio_mime_type"] = current_audio_mime_type
                         await ws.send_json(speaking_payload)
+                    await ws.send_json({"type": "reply-text", "text": buffered_reply_text, "append": True})
                     await ws.send_bytes(audio)
                     if turn.first_audio_seconds is None:
                         turn.first_audio_seconds = time.perf_counter() - turn.started_at
@@ -838,6 +812,62 @@ class VoiceRuntime:
             else:
                 LOGGER.info("[yellow]⚠ empty reply[/yellow]  [dim]roundtrip %s[/dim]", _format_elapsed(total_elapsed))
             await ws.send_json({"status": "idle"})
+
+        async def process_audio(
+            audio_bytes: bytes,
+            task_abort_event: asyncio.Event,
+            *,
+            turn_commit_meta: dict[str, object] | None = None,
+        ) -> None:
+            loop = asyncio.get_running_loop()
+            turn = VoiceTurnMetrics()
+            if turn_commit_meta:
+                LOGGER.info(
+                    "[client] turn commit reason=%s speech=%sms silence=%sms threshold=%s level=%s wait=%sms",
+                    str(turn_commit_meta.get("reason") or "-"),
+                    int(turn_commit_meta.get("speech_ms") or 0),
+                    int(turn_commit_meta.get("silence_ms") or 0),
+                    turn_commit_meta.get("threshold_db"),
+                    turn_commit_meta.get("level_db"),
+                    int(turn_commit_meta.get("wait_after_speak_ms") or 0),
+                )
+            await ws.send_json({"status": "thinking"})
+            stt_started_at = time.perf_counter()
+            result = await loop.run_in_executor(None, transcriber.transcribe, audio_bytes)
+            turn.stt_seconds = time.perf_counter() - stt_started_at
+            text = result.text.strip()
+            duration = float(getattr(result, "duration_seconds", 0.0) or 0.0)
+            turn.speech_duration_seconds = duration
+            if task_abort_event.is_set():
+                return
+            if not text:
+                LOGGER.info(
+                    "[%s] speech input detected (%s) but STT returned no transcript after %s",
+                    turn.turn_id,
+                    _format_elapsed(duration),
+                    _format_elapsed(turn.stt_seconds),
+                )
+                await ws.send_json({"status": "idle"})
+                return
+            audio_settings = settings.get("audio", {})
+            min_duration = max(float(audio_settings.get("min_speech_ms", 350) or 350) / 1000.0, 0.0)
+            if should_drop_voice_transcript(text, duration, min_duration=min_duration):
+                LOGGER.debug(
+                    "[dim]dropped: %s (%s)[/dim]",
+                    _summarize_text(text),
+                    _format_elapsed(duration),
+                )
+                await ws.send_json({"status": "idle"})
+                return
+
+            turn.transcript = text
+            await process_text(
+                turn.transcript,
+                task_abort_event,
+                input_source="voice",
+                turn=turn,
+                send_thinking=False,
+            )
 
         async def cancel_active_task(*, send_idle: bool) -> None:
             nonlocal active_task
@@ -875,6 +905,22 @@ class VoiceRuntime:
                     if active_task is asyncio.current_task():
                         active_task = None
 
+        async def run_text_task(text: str, task_abort_event: asyncio.Event) -> None:
+            nonlocal active_task
+            async with self._turn_lock:
+                try:
+                    await process_text(text, task_abort_event, input_source="typed")
+                except ValidationError as exc:
+                    await ws.send_json({"status": "idle", "error": str(exc)})
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:  # pragma: no cover - defensive runtime guard
+                    LOGGER.exception("Typed voice processing failed")
+                    await ws.send_json({"status": "idle", "error": str(exc)})
+                finally:
+                    if active_task is asyncio.current_task():
+                        active_task = None
+
         try:
             async for message in ws:
                 if message.type == WSMsgType.ERROR:
@@ -901,6 +947,13 @@ class VoiceRuntime:
                         )
                     elif msg_type == "interrupt":
                         await cancel_active_task(send_idle=True)
+                    elif msg_type == "text-input":
+                        text = str(payload.get("text") or "").strip()
+                        if not text:
+                            continue
+                        await cancel_active_task(send_idle=False)
+                        abort_event = asyncio.Event()
+                        active_task = asyncio.create_task(run_text_task(text, abort_event))
                     elif msg_type == "turn-commit":
                         pending_turn_commit_meta = {
                             "reason": str(payload.get("reason") or "").strip(),

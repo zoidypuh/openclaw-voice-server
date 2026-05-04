@@ -889,6 +889,9 @@ def test_handle_ws_uses_hermes_agent_when_selected(monkeypatch):
             gateway_url=None,
             gateway_token=None,
             gateway_model=None,
+            api_url=None,
+            api_key=None,
+            api_model=None,
             profile=None,
             use_context_files=True,
             use_memory=True,
@@ -937,6 +940,56 @@ def test_handle_ws_uses_hermes_agent_when_selected(monkeypatch):
 
     assert hermes_calls == ["hello from mic"]
     assert ws.binary_messages == [b"audio"]
+
+
+def test_handle_ws_routes_typed_text_without_stt(monkeypatch):
+    FakeWebSocketResponse.created.clear()
+    agent_calls = []
+
+    class FakeTranscriber:
+        def transcribe(self, audio_bytes):
+            raise AssertionError("typed text should bypass STT")
+
+    class FakeSynthesizer:
+        async def synthesize(self, text, *, preset_name=None):
+            assert text == "Use Comfy."
+            return b"typed-audio"
+
+    class FakeConversationAgent:
+        async def stream_reply(self, text, abort_event):
+            agent_calls.append(text)
+            yield "Use Comfy."
+
+    monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
+    monkeypatch.setattr(runtime_module, "build_synthesizer", lambda tts, secrets: FakeSynthesizer())
+    monkeypatch.setattr(runtime_module, "build_conversation_agent", lambda settings, **kwargs: FakeConversationAgent())
+    monkeypatch.setattr(runtime_module.web, "WebSocketResponse", FakeWebSocketResponse)
+
+    async def scenario():
+        runtime = VoiceRuntime(FakeStore())
+        handler_task = asyncio.create_task(runtime.handle_ws(object()))
+
+        while not FakeWebSocketResponse.created:
+            await asyncio.sleep(0)
+        ws = FakeWebSocketResponse.created[-1]
+        await ws.messages.put(
+            FakeMessage(
+                WSMsgType.TEXT,
+                payload={"type": "text-input", "text": "I mean Comfy, not coffee."},
+            )
+        )
+        while ws.json_messages[-1:] != [{"status": "idle"}]:
+            await asyncio.sleep(0)
+        await ws.messages.put(FakeWebSocketResponse.STOP)
+        await handler_task
+        return ws
+
+    ws = asyncio.run(scenario())
+
+    assert agent_calls == ["I mean Comfy, not coffee."]
+    assert {"type": "transcript", "text": "I mean Comfy, not coffee."} in ws.json_messages
+    assert {"type": "reply-text", "text": "Use Comfy.", "append": True} in ws.json_messages
+    assert ws.binary_messages == [b"typed-audio"]
 
 
 def test_handle_ws_skips_audio_when_tts_disabled(monkeypatch):

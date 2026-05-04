@@ -5,15 +5,19 @@ from aiohttp.test_utils import TestClient, TestServer
 from maras_switchboard.app import create_app
 
 
-async def _fetch(path: str):
+async def _request(path: str, *, method: str = "GET", json_payload: dict | None = None):
     client = TestClient(TestServer(create_app()))
     await client.start_server()
     try:
-        response = await client.get(path, allow_redirects=False)
+        response = await client.request(method, path, json=json_payload, allow_redirects=False)
         body = await response.text()
         return response.status, dict(response.headers), body
     finally:
         await client.close()
+
+
+async def _fetch(path: str):
+    return await _request(path)
 
 
 def test_setup_trailing_slash_redirects_to_canonical_route():
@@ -58,3 +62,74 @@ def test_legacy_setup_prefixed_setup_state_route_still_works_for_stale_tabs():
 
     assert status == 200
     assert '"status"' in body
+
+
+def test_runtime_profile_route_maps_mara_to_slim_voice_mara_gateway(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.json"
+    env_path = tmp_path / ".env"
+    monkeypatch.setenv("MARAS_SWITCHBOARD_CONFIG_FILE", str(config_path))
+    monkeypatch.setenv("MARAS_SWITCHBOARD_ENV_FILE", str(env_path))
+
+    status, _, body = asyncio.run(
+        _request(
+            "/api/runtime/profile",
+            method="POST",
+            json_payload={"profile": "mara"},
+        )
+    )
+    state_status, _, state_body = asyncio.run(_fetch("/api/runtime/state"))
+
+    assert status == 200
+    written = config_path.read_text(encoding="utf-8")
+    env_text = env_path.read_text(encoding="utf-8")
+    assert '"hermes_profile": "voice-mara"' in written
+    assert '"hermes_api_url": "http://127.0.0.1:8644/v1"' in written
+    assert '"hermes_api_model": "voice-mara"' in written
+    assert "MARAS_SWITCHBOARD_HERMES_API_KEY=local-hermes-key" in env_text
+    assert '"id": "mara"' in body
+    assert state_status == 200
+    assert '"active": "mara"' in state_body
+
+
+def test_runtime_profile_route_maps_nadia_to_dedicated_venice_gateway(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.json"
+    env_path = tmp_path / ".env"
+    monkeypatch.setenv("MARAS_SWITCHBOARD_CONFIG_FILE", str(config_path))
+    monkeypatch.setenv("MARAS_SWITCHBOARD_ENV_FILE", str(env_path))
+
+    status, _, body = asyncio.run(
+        _request(
+            "/api/runtime/profile",
+            method="POST",
+            json_payload={"profile": "nadia"},
+        )
+    )
+    written = config_path.read_text(encoding="utf-8")
+
+    assert status == 200
+    assert '"hermes_profile": "nadia"' in written
+    assert '"hermes_api_url": "http://127.0.0.1:8645/v1"' in written
+    assert '"hermes_api_model": "nadia"' in written
+    assert '"id": "nadia"' in body
+
+
+def test_runtime_profile_route_maps_default_to_mara(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.json"
+    env_path = tmp_path / ".env"
+    monkeypatch.setenv("MARAS_SWITCHBOARD_CONFIG_FILE", str(config_path))
+    monkeypatch.setenv("MARAS_SWITCHBOARD_ENV_FILE", str(env_path))
+
+    status, _, body = asyncio.run(
+        _request(
+            "/api/runtime/profile",
+            method="POST",
+            json_payload={"profile": "default"},
+        )
+    )
+    written = config_path.read_text(encoding="utf-8")
+
+    assert status == 200
+    assert '"hermes_profile": "voice-mara"' in written
+    assert '"hermes_api_url": "http://127.0.0.1:8644/v1"' in written
+    assert '"hermes_api_model": "voice-mara"' in written
+    assert '"id": "mara"' in body

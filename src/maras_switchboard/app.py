@@ -16,6 +16,36 @@ from .windows_client_state import WindowsClientStateStore
 
 
 LOGGER = logging.getLogger(__name__)
+QWEN_VOICE_MODEL = "gpu/qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive"
+VENICE_VOICE_MODEL = "venice/venice-uncensored-1-2"
+DEFAULT_HERMES_VOICE_API_URL = "http://127.0.0.1:8643/v1"
+NADIA_VOICE_API_URL = "http://127.0.0.1:8645/v1"
+MARA_VOICE_API_URL = "http://127.0.0.1:8644/v1"
+LOCAL_HERMES_API_KEY = "local-hermes-key"
+DEFAULT_VOICE_PROFILE_ID = "mara"
+VOICE_PROFILE_CHOICES = (
+    {
+        "id": "juergen",
+        "label": "Juergen",
+        "hermes_profile": "juergen",
+        "hermes_api_url": DEFAULT_HERMES_VOICE_API_URL,
+        "hermes_model": QWEN_VOICE_MODEL,
+    },
+    {
+        "id": "nadia",
+        "label": "Nadia",
+        "hermes_profile": "nadia",
+        "hermes_api_url": NADIA_VOICE_API_URL,
+        "hermes_model": "nadia",
+    },
+    {
+        "id": "mara",
+        "label": "Mara",
+        "hermes_profile": "voice-mara",
+        "hermes_api_url": MARA_VOICE_API_URL,
+        "hermes_model": "voice-mara",
+    },
+)
 
 
 def configure_logging() -> None:
@@ -63,6 +93,34 @@ def _default_avatar_preset(saved: dict[str, object]) -> str:
 
 def _runtime_ready(setup_service: SetupService) -> bool:
     return bool(setup_service.state()["status"]["runtime_ready"])
+
+
+def _normalize_voice_profile(value: str) -> dict[str, str]:
+    normalized = str(value or "").strip().lower()
+    if normalized == "default":
+        normalized = DEFAULT_VOICE_PROFILE_ID
+    for profile in VOICE_PROFILE_CHOICES:
+        if normalized in {
+            str(profile["id"]).lower(),
+            str(profile["label"]).lower(),
+            str(profile["hermes_profile"]).lower(),
+        }:
+            return profile
+    raise ValidationError("Choose a supported voice profile.")
+
+
+def _default_voice_profile() -> dict[str, str]:
+    return _normalize_voice_profile(DEFAULT_VOICE_PROFILE_ID)
+
+
+def _public_voice_profile(profile: dict[str, str]) -> dict[str, str]:
+    return {
+        "id": profile["id"],
+        "label": profile["label"],
+        "hermes_profile": profile["hermes_profile"],
+        "hermes_api_url": profile["hermes_api_url"],
+        "hermes_model": profile["hermes_model"],
+    }
 
 
 def _html_file_response(path: Path) -> web.FileResponse:
@@ -125,17 +183,57 @@ def create_app() -> web.Application:
 
     async def runtime_state(request: web.Request) -> web.Response:
         state = setup_service.state()
+        agent = state["saved"]["agent"]
+        current_profile = str(agent.get("hermes_profile") or "").strip()
+        active_profile = next(
+            (
+                profile["id"]
+                for profile in VOICE_PROFILE_CHOICES
+                if profile["hermes_profile"] == current_profile
+                and profile["hermes_model"] == str(agent.get("hermes_api_model") or "").strip()
+            ),
+            next(
+                (
+                    profile["id"]
+                    for profile in VOICE_PROFILE_CHOICES
+                    if profile["hermes_profile"] == current_profile
+                ),
+                _default_voice_profile()["id"],
+            ),
+        )
         return web.json_response(
             {
                 "version_label": APP_VERSION_LABEL,
                 "runtime_ready": state["status"]["runtime_ready"],
                 "audio": state["saved"]["audio"],
+                "agent": agent,
+                "voice_profiles": {
+                    "active": active_profile,
+                    "choices": [_public_voice_profile(profile) for profile in VOICE_PROFILE_CHOICES],
+                },
                 "avatar": {
                     "default_preset": _default_avatar_preset(state["saved"]),
                 },
                 "windows_client": state["saved"]["windows_client"],
             }
         )
+
+    async def runtime_profile(request: web.Request) -> web.Response:
+        payload = await parse_json(request)
+        selected = _normalize_voice_profile(str(payload.get("profile") or ""))
+        store.update_config(
+            {
+                "agent": {
+                    "backend": "hermes",
+                    "hermes_profile": selected["hermes_profile"],
+                    "hermes_api_url": selected["hermes_api_url"],
+                    "hermes_api_model": selected["hermes_model"],
+                }
+            }
+        )
+        self_key = LOCAL_HERMES_API_KEY
+        store.update_secrets({"MARAS_SWITCHBOARD_HERMES_API_KEY": self_key})
+        return web.json_response({"ok": True, "profile": selected})
 
     async def runtime_speech_probe(request: web.Request) -> web.Response:
         return await runtime.handle_speech_probe(request)
@@ -240,6 +338,7 @@ def create_app() -> web.Application:
     add_route("GET", "/health", health)
     add_route("GET", "/api/setup/state", setup_state)
     add_route("GET", "/api/runtime/state", runtime_state)
+    add_route("POST", "/api/runtime/profile", runtime_profile)
     add_route("POST", "/api/runtime/speech-probe", runtime_speech_probe)
     add_route("POST", "/api/runtime/speak", runtime_speak)
     add_route("GET", "/api/windows-client/status", windows_client_status)

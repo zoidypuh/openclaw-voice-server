@@ -18,26 +18,22 @@
     color: var(--text);
     font-family: "IBM Plex Sans", system-ui, sans-serif;
     display: grid;
-    place-items: center;
+    place-items: start center;
   }
-  #version {
-    position: fixed;
-    top: 16px;
-    right: 18px;
-    color: #808080;
-    font-size: 0.95rem;
-    letter-spacing: 0.02em;
-  }
-  #version .alpha {
-    color: #f0c44e;
-  }
-  #setup-link {
+  #corner-controls {
     position: fixed;
     top: 16px;
     left: 18px;
     display: inline-flex;
     align-items: center;
+    gap: 0.48rem;
+    z-index: 4;
+  }
+  #setup-link {
+    display: inline-flex;
+    align-items: center;
     justify-content: center;
+    min-height: 1.92rem;
     padding: 0.34rem 0.72rem;
     border: 1px solid rgba(255,255,255,0.12);
     border-radius: 999px;
@@ -55,7 +51,7 @@
     border-color: rgba(255,255,255,0.2);
     color: #d8d8d8;
   }
-  body[data-shell="tauri"] #setup-link {
+  body[data-shell="tauri"] #corner-controls {
     top: 14px;
     left: 14px;
   }
@@ -65,37 +61,33 @@
   main {
     width: min(92vw, 560px);
     display: grid;
-    gap: 16px;
+    gap: 12px;
     justify-items: center;
-    transform: translateY(-18px);
+    margin-top: 38px;
   }
   #ascii-title {
-    width: 100%;
+    width: max-content;
+    max-width: 100%;
     margin: 0 0 -2px;
-    overflow: hidden;
+    overflow: visible;
     display: grid;
-    gap: 0.08rem;
+    gap: 0.48rem;
     justify-items: center;
     filter:
       drop-shadow(0 12px 18px rgba(0,0,0,0.9))
       drop-shadow(0 2px 2px rgba(0,0,0,0.72))
       drop-shadow(0 0 16px rgba(16,80,112,0.22));
   }
-  #shortcut-command {
-    color: rgba(188, 203, 214, 0.62);
-    font-family: "IBM Plex Mono", "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-    font-size: 0.68rem;
-    letter-spacing: 0.08em;
-    text-transform: lowercase;
-  }
   .ascii-title-line {
     margin: 0;
     font-family: "IBM Plex Mono", "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-    font-size: 0.5rem;
+    width: max-content;
+    max-width: 100%;
+    font-size: clamp(0.4rem, 1.35vw, 0.62rem);
     font-weight: 500;
     line-height: 1.04;
     letter-spacing: 0;
-    text-align: center;
+    text-align: left;
     white-space: pre;
   }
   .ascii-title-mara {
@@ -118,18 +110,142 @@
       0 0 18px rgba(64, 176, 255, 0.18),
       0 10px 22px rgba(5, 32, 55, 0.8);
   }
-  @media (min-width: 430px) {
-    .ascii-title-line {
-      font-size: 0.64rem;
-    }
-  }
   #top-bar {
     width: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
+    gap: 0.62rem;
     flex-wrap: wrap;
+  }
+  .profile-btn {
+    appearance: none;
+    width: clamp(4.4rem, 18vw, 5.35rem);
+    aspect-ratio: 1;
+    border: 1px solid rgba(255,255,255,0.16);
+    background: rgba(255,255,255,0.04);
+    color: #d5d5d5;
+    border-radius: 8px;
+    padding: 0;
+    cursor: pointer;
+    overflow: hidden;
+    position: relative;
+    image-rendering: pixelated;
+    transition:
+      transform 120ms ease,
+      background 120ms ease,
+      border-color 120ms ease,
+      box-shadow 120ms ease;
+  }
+  .profile-btn:hover {
+    transform: translateY(-1px);
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.28);
+  }
+  .profile-btn.active {
+    border-color: rgba(109,226,255,0.95);
+    background: rgba(109,226,255,0.1);
+    box-shadow:
+      0 0 0 2px rgba(109,226,255,0.34),
+      0 0 16px rgba(109,226,255,0.42),
+      0 0 34px rgba(109,226,255,0.3),
+      0 0 56px rgba(255,152,54,0.16);
+    animation: profileActiveGlow 1500ms ease-in-out infinite;
+  }
+  .profile-btn.active img {
+    filter:
+      brightness(1.12)
+      saturate(1.18)
+      drop-shadow(0 0 10px rgba(109,226,255,0.68));
+  }
+  .profile-btn:disabled {
+    opacity: 0.54;
+    cursor: wait;
+    transform: none;
+  }
+  .profile-btn img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+    image-rendering: pixelated;
+  }
+  .profile-btn::before,
+  .profile-btn::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+    opacity: 0;
+  }
+  .profile-btn::before {
+    top: 18%;
+    left: 56%;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background:
+      radial-gradient(circle, rgba(255,255,255,0.94) 0 48%, transparent 52%);
+    box-shadow:
+      10px -7px 0 rgba(255,255,255,0.82),
+      21px -11px 0 rgba(255,255,255,0.68);
+    z-index: 1;
+  }
+  .profile-btn::after {
+    left: 39%;
+    bottom: 30%;
+    width: 22%;
+    height: 5%;
+    border-radius: 999px;
+    background: rgba(22, 11, 13, 0.86);
+    box-shadow: 0 0 8px rgba(255, 126, 103, 0.3);
+    z-index: 2;
+  }
+  .profile-btn.active.thinking::before {
+    opacity: 1;
+    animation: profileThinkingBubbles 900ms ease-in-out infinite;
+  }
+  .profile-btn.active.speaking::after {
+    opacity: 1;
+    animation: profileMouthTalk 160ms steps(2, end) infinite;
+  }
+  .profile-btn span {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 0.22rem 0.12rem;
+    background: linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,0.76));
+    color: rgba(245,245,245,0.9);
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.95);
+    z-index: 3;
+  }
+  @keyframes profileActiveGlow {
+    0%, 100% {
+      box-shadow:
+        0 0 0 2px rgba(109,226,255,0.3),
+        0 0 14px rgba(109,226,255,0.36),
+        0 0 30px rgba(109,226,255,0.24),
+        0 0 50px rgba(255,152,54,0.12);
+    }
+    50% {
+      box-shadow:
+        0 0 0 2px rgba(109,226,255,0.48),
+        0 0 22px rgba(109,226,255,0.56),
+        0 0 46px rgba(109,226,255,0.38),
+        0 0 68px rgba(255,152,54,0.2);
+    }
+  }
+  @keyframes profileThinkingBubbles {
+    0%, 100% { transform: translateY(2px); opacity: 0.42; }
+    50% { transform: translateY(-3px); opacity: 1; }
+  }
+  @keyframes profileMouthTalk {
+    0% { transform: scaleY(0.45); }
+    100% { transform: scaleY(2.1); }
   }
   #utility-bar {
     width: 100%;
@@ -188,21 +304,74 @@
     background: rgba(134,200,255,0.08);
   }
   #pause-btn {
-    min-width: 7.2rem;
-    padding: 0.58rem 1.12rem;
-    font-size: 0.9rem;
-    letter-spacing: 0.06em;
+    position: fixed;
+    top: 16px;
+    right: 18px;
+    min-width: 5.9rem;
+    min-height: 1.92rem;
+    z-index: 4;
+  }
+  body[data-shell="tauri"] #pause-btn {
+    top: 14px;
+    right: 14px;
+  }
+  .power-toggle {
+    appearance: none;
+    display: inline-grid;
+    grid-template-columns: auto 2.12rem auto;
+    align-items: center;
+    gap: 0.34rem;
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 999px;
+    background: rgba(255,255,255,0.04);
+    color: #8a8a8a;
+    padding: 0.26rem 0.46rem;
+    cursor: pointer;
+    transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  }
+  .power-toggle:hover {
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.22);
+  }
+  .power-label {
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    line-height: 1;
+  }
+  .power-track {
+    position: relative;
+    width: 2.12rem;
+    height: 1.08rem;
+    border: 1px solid rgba(255,255,255,0.16);
+    border-radius: 999px;
+    background: rgba(255,70,50,0.18);
+    box-shadow: inset 0 1px 4px rgba(0,0,0,0.72);
+  }
+  .power-knob {
+    position: absolute;
+    top: 0.13rem;
+    left: 0.14rem;
+    width: 0.76rem;
+    height: 0.76rem;
+    border-radius: 50%;
+    background: linear-gradient(180deg, #ededed, #8a8f96);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.86);
+    transition: transform 140ms ease;
+  }
+  .power-toggle.active {
+    color: #94ddff;
+    border-color: rgba(109,226,255,0.36);
+    background: rgba(109,226,255,0.08);
+  }
+  .power-toggle.active .power-track {
+    background: rgba(42,202,112,0.22);
+  }
+  .power-toggle.active .power-knob {
+    transform: translateX(1.03rem);
   }
   #mute-btn {
     min-width: 5.2rem;
-  }
-  #status-hint {
-    flex: 0 1 auto;
-    min-height: 0;
-    text-align: left;
-    color: #7f7f7f;
-    font-size: 0.73rem;
-    letter-spacing: 0.04em;
   }
   #level-row {
     width: 100%;
@@ -235,15 +404,6 @@
   }
   #level-value.peak-held {
     color: #ffb067;
-  }
-  #thinking-timer {
-    width: 100%;
-    min-height: 1.1em;
-    text-align: center;
-    color: #8e8e8e;
-    font-size: 0.95rem;
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 0.04em;
   }
   .popup-panel {
     width: 100%;
@@ -291,6 +451,7 @@
     display: none !important;
   }
   #state-visual-shell {
+    display: none;
     position: relative;
     width: 100%;
     border: 1px solid rgba(255,255,255,0.1);
@@ -312,8 +473,10 @@
   }
   .visual-caption {
     display: grid;
+    grid-template-rows: auto 1fr;
     gap: 0.18rem;
-    min-height: 2.5rem;
+    height: clamp(5.6rem, 18dvh, 15rem);
+    min-height: 0;
     padding: 0.45rem 0.65rem 0.5rem;
     border: 1px solid rgba(255,255,255,0.09);
     border-radius: 14px;
@@ -330,13 +493,14 @@
     color: #d9dde2;
     font-size: 0.9rem;
     line-height: 1.32;
-    max-height: min(28vh, 13rem);
-    overflow-y: auto;
-    scrollbar-width: thin;
+    min-height: 0;
+    height: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
     scrollbar-color: rgba(255,255,255,0.18) transparent;
   }
   .visual-caption-log::-webkit-scrollbar {
-    width: 8px;
+    width: 0;
   }
   .visual-caption-log::-webkit-scrollbar-thumb {
     background: rgba(255,255,255,0.18);
@@ -367,27 +531,82 @@
   .visual-caption.empty .visual-caption-log {
     color: #6d747d;
   }
+  .text-turn-form {
+    width: 100%;
+  }
+  .text-turn-input {
+    display: block;
+    width: 100%;
+    height: clamp(2.55rem, 8dvh, 7rem);
+    min-height: 0;
+    max-height: none;
+    resize: none;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 14px;
+    background: rgba(6,11,15,0.82);
+    color: #d9dde2;
+    padding: 0.68rem 0.78rem;
+    font: inherit;
+    font-size: 0.92rem;
+    line-height: 1.25;
+    outline: none;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
+  }
+  .text-turn-input:focus {
+    border-color: rgba(109,226,255,0.34);
+    box-shadow:
+      inset 0 0 0 1px rgba(109,226,255,0.1),
+      0 0 18px rgba(109,226,255,0.12);
+  }
 </style>
 </head>
 <body>
-<a id="setup-link" href="./setup">setup</a>
-<div id="version">v0.1 <span class="alpha">ALPHA</span></div>
+<div id="corner-controls">
+  <a id="setup-link" href="./setup">setup</a>
+</div>
+<button id="pause-btn" class="power-toggle" type="button" aria-label="voice off" aria-pressed="false">
+  <span class="power-label power-label-off">OFF</span>
+  <span class="power-track" aria-hidden="true"><span class="power-knob"></span></span>
+  <span class="power-label power-label-on">ON</span>
+</button>
 <main>
-  <div id="shortcut-command">space / ctrl+alt+shift+a hold to talk</div>
   <div id="ascii-title" aria-label="Mara's Switchboard">
     <pre class="ascii-title-line ascii-title-mara"> __  __                 _
 |  \/  | __ _ _ __ __ _( )___
 | |\/| |/ _` | '__/ _` |// __|
 | |  | | (_| | | | (_| | \__ \
 |_|  |_|\__,_|_|  \__,_| |___/</pre>
-    <pre class="ascii-title-line ascii-title-switchboard"> ___|_      _(_) |_ ___| |__ | |__   ___   __ _ _ __ __| |
+    <pre class="ascii-title-line ascii-title-switchboard"> ____          _ _       _     _                         _
+/ ___|_      _(_) |_ ___| |__ | |__   ___   __ _ _ __ __| |
 \___ \ \ /\ / / | __/ __| '_ \| '_ \ / _ \ / _` | '__/ _` |
  ___) \ V  V /| | || (__| | | | |_) | (_) | (_| | | | (_| |
 |____/ \_/\_/ |_|\__\___|_| |_|_.__/ \___/ \__,_|_|  \__,_|</pre>
   </div>
   <div id="top-bar">
-    <button id="pause-btn" class="control-btn" type="button">paused</button>
-    <div id="status-hint" class="hidden"></div>
+    <button class="profile-btn" type="button" data-profile="juergen" title="talk to Juergen">
+      <img
+        src="https://assets.grok.com/users/79a2fd3b-7550-41e7-bd0f-efd16b7d2704/generated/d6f49df9-627b-468b-a60f-17d15e32a438/image.jpg"
+        data-fallback="/static/media/profile-juergen-pixel.png"
+        alt="Juergen"
+      >
+      <span>Juergen</span>
+    </button>
+    <button class="profile-btn" type="button" data-profile="nadia" title="talk to Nadia">
+      <img
+        src="https://assets.grok.com/users/79a2fd3b-7550-41e7-bd0f-efd16b7d2704/generated/269ad86a-9a54-4000-ae15-22c348b2ec3f/image.jpg"
+        data-fallback="/static/media/profile-nadia-pixel.png"
+        alt="Nadia"
+      >
+      <span>Nadia</span>
+    </button>
+    <button class="profile-btn" type="button" data-profile="mara" title="talk to Mara">
+      <img
+        src="https://assets.grok.com/users/79a2fd3b-7550-41e7-bd0f-efd16b7d2704/generated/098c2cee-79ba-4671-b60d-c7ecbd54079a/image.jpg"
+        data-fallback="/static/media/profile-mara-pixel.png"
+        alt="Mara"
+      >
+      <span>Mara</span>
+    </button>
   </div>
   <div id="utility-bar">
     <button id="interrupt-btn" class="mini-btn" type="button">interrupt</button>
@@ -415,7 +634,6 @@
       <input id="turn-end-threshold" class="tuning-slider" type="range" min="-60" max="0" step="1">
     </label>
   </section>
-  <div id="thinking-timer" class="hidden"></div>
   <div id="state-visual-shell" aria-label="voice state display">
     <canvas id="state-visual" width="520" height="312"></canvas>
   </div>
@@ -425,6 +643,9 @@
       <div id="transcript-log" class="visual-caption-log"></div>
     </div>
   </div>
+  <form id="text-turn-form" class="text-turn-form" autocomplete="off">
+    <textarea id="text-turn-input" class="text-turn-input" rows="1" aria-label="typed voice message" spellcheck="true"></textarea>
+  </form>
 </main>
 
 <script>
@@ -444,6 +665,7 @@ const STATE_VISUAL_HEIGHT = 312;
 const STATE_VISUAL_RENDER_SCALE = 0.58;
 const STATE_VISUAL_BANDS = 22;
 const ASCII_ART_URL = new URL('/media/ascii-art.txt', window.location.href).toString();
+const DEFAULT_VOICE_PROFILE = 'mara';
 const stateVisualCanvas = document.getElementById('state-visual');
 const stateVisualCtx = stateVisualCanvas.getContext('2d');
 
@@ -462,6 +684,106 @@ function configureSetupLink() {
   setupLink.rel = 'noopener noreferrer';
   setupLink.textContent = 'browser settings';
   setupLink.title = 'open setup in your browser';
+}
+
+function profileButtons() {
+  return Array.from(document.querySelectorAll('.profile-btn'));
+}
+
+function normalizeVoiceProfile(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'default') {
+    return DEFAULT_VOICE_PROFILE;
+  }
+  return normalized || DEFAULT_VOICE_PROFILE;
+}
+
+function renderVoiceProfileButtons() {
+  for (const button of profileButtons()) {
+    const isActive = button.dataset.profile === activeVoiceProfile;
+    button.classList.toggle('active', isActive);
+    for (const stateName of ['paused', 'listening', 'thinking', 'speaking', 'interrupting', 'reconnecting']) {
+      button.classList.remove(stateName);
+    }
+    if (isActive) {
+      button.classList.add(currentState);
+    }
+    button.disabled = profileSwitchPending;
+    button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  }
+}
+
+function applyVoiceProfileState(runtimeState) {
+  const fromRuntime = runtimeState?.voice_profiles?.active
+    || runtimeState?.agent?.hermes_profile
+    || DEFAULT_VOICE_PROFILE;
+  activeVoiceProfile = normalizeVoiceProfile(fromRuntime);
+  renderVoiceProfileButtons();
+}
+
+function useProfileImageFallback(image) {
+  const fallback = image?.dataset?.fallback || '';
+  if (!fallback || image.dataset.fallbackActive === 'true') {
+    return;
+  }
+  image.dataset.fallbackActive = 'true';
+  image.src = fallback;
+}
+
+function configureProfileImages() {
+  for (const image of document.querySelectorAll('.profile-btn img')) {
+    image.addEventListener('error', () => useProfileImageFallback(image), { once: true });
+  }
+}
+
+async function selectVoiceProfile(profile) {
+  const normalized = normalizeVoiceProfile(profile);
+  if (profileSwitchPending) {
+    return;
+  }
+  if (normalized === activeVoiceProfile) {
+    await setPausedState(false, { forceInterrupt: true });
+    return;
+  }
+  profileSwitchPending = true;
+  renderVoiceProfileButtons();
+  setStatusText(`switching to ${normalized}`);
+  try {
+    const response = await fetch(appUrl('api/runtime/profile'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: normalized }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.ok === false) {
+      throw new Error(payload.error || `profile switch failed (${response.status})`);
+    }
+    activeVoiceProfile = normalizeVoiceProfile(payload.profile?.id || normalized);
+    runtimeStatePromise = null;
+    requestInterrupt({ keepPaused: false });
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+      ws.close(1000, 'profile switch');
+    } else {
+      void connect();
+    }
+    await setPausedState(false, { forceInterrupt: true });
+    setStatusText(`${activeVoiceProfile} ready`);
+    scheduleListeningStatusRestore();
+  } catch (error) {
+    setStatusText(error?.message || String(error));
+  } finally {
+    profileSwitchPending = false;
+    renderVoiceProfileButtons();
+  }
+}
+
+function configureVoiceProfileControls() {
+  for (const button of profileButtons()) {
+    button.addEventListener('click', () => {
+      void selectVoiceProfile(button.dataset.profile);
+    });
+  }
+  renderVoiceProfileButtons();
 }
 
 let ws = null;
@@ -491,7 +813,6 @@ let asciiArtLines = [];
 let asciiArtLoadStarted = false;
 let heldPeakLevelDb = -60;
 let heldPeakUntil = 0;
-let thinkingStartedAt = null;
 let transientStatusTimer = null;
 let shellStatusTimer = null;
 let lastPublishedShellState = '';
@@ -511,8 +832,6 @@ let bargeInGraceUntil = 0;
 let pendingBargeInAudio = null;
 let pendingBargeInCommitMeta = null;
 let holdToTalkActive = false;
-let browserHoldToTalkShortcutActive = false;
-let browserHoldToTalkShortcutCode = '';
 let runtimeStatePromise = null;
 let playbackUnlocked = false;
 let webAudioUnlocked = false;
@@ -522,6 +841,8 @@ let pendingPlaybackSource = '';
 let pendingAudioMimeType = 'audio/mpeg';
 let currentAudioSourceNode = null;
 let pendingManualPlaybackItem = null;
+let activeVoiceProfile = DEFAULT_VOICE_PROFILE;
+let profileSwitchPending = false;
 let lastAudioProcessAt = 0;
 let audioRecoveryPromise = null;
 let audioStartupPromise = null;
@@ -532,6 +853,7 @@ let spokenReplyText = '';
 let transcriptLogEntries = [];
 let activeReplyEntryId = '';
 let transcriptEntryCounter = 0;
+let transcriptScrollAnimationId = 0;
 let settings = {
   silence_ms: 900,
   silence_threshold: 0.015,
@@ -711,6 +1033,9 @@ function setStatusText(text) {
     return;
   }
   const hint = document.getElementById('status-hint');
+  if (!hint) {
+    return;
+  }
   hint.textContent = normalized;
   hint.classList.remove('hidden');
 }
@@ -720,8 +1045,36 @@ function scrollTranscriptOverlayToBottom() {
   if (!transcriptLog) {
     return;
   }
+  if (transcriptScrollAnimationId) {
+    cancelAnimationFrame(transcriptScrollAnimationId);
+    transcriptScrollAnimationId = 0;
+  }
   requestAnimationFrame(() => {
-    transcriptLog.scrollTop = transcriptLog.scrollHeight;
+    const maxScroll = Math.max(0, transcriptLog.scrollHeight - transcriptLog.clientHeight);
+    if (maxScroll <= 0) {
+      transcriptLog.scrollTop = 0;
+      return;
+    }
+    const duration = clampNumber(maxScroll * 72, 2200, 14000, 4200);
+    const holdMs = 550;
+    const startedAt = performance.now();
+    transcriptLog.scrollTop = 0;
+
+    function animate(now) {
+      const elapsed = Math.max(0, now - startedAt - holdMs);
+      const progress = clampNumber(elapsed / duration, 0, 1, 1);
+      const eased = progress < 0.5
+        ? 2 * progress * progress
+        : 1 - ((-2 * progress + 2) ** 2) / 2;
+      transcriptLog.scrollTop = maxScroll * eased;
+      if (progress < 1) {
+        transcriptScrollAnimationId = requestAnimationFrame(animate);
+      } else {
+        transcriptScrollAnimationId = 0;
+      }
+    }
+
+    transcriptScrollAnimationId = requestAnimationFrame(animate);
   });
 }
 
@@ -760,7 +1113,7 @@ function pushTranscriptEntry(role, text) {
     role,
     text: nextText,
   };
-  transcriptLogEntries.push(entry);
+  transcriptLogEntries = [entry];
   return entry;
 }
 
@@ -768,7 +1121,7 @@ function setHeardTranscript(text) {
   heardTranscriptText = String(text || '').trim();
   spokenReplyText = '';
   activeReplyEntryId = '';
-  pushTranscriptEntry('heard', heardTranscriptText);
+  pushTranscriptEntry('user - heard', heardTranscriptText);
   renderTranscriptOverlay();
 }
 
@@ -778,7 +1131,7 @@ function appendSpokenReply(text) {
     return;
   }
   if (!activeReplyEntryId) {
-    const entry = pushTranscriptEntry('reply', nextText);
+    const entry = pushTranscriptEntry('assistant', nextText);
     activeReplyEntryId = entry ? entry.id : '';
     spokenReplyText = entry ? entry.text : nextText;
     renderTranscriptOverlay();
@@ -802,14 +1155,14 @@ function replaceSpokenReply(text) {
     return;
   }
   if (!activeReplyEntryId) {
-    const entry = pushTranscriptEntry('reply', spokenReplyText);
+    const entry = pushTranscriptEntry('assistant', spokenReplyText);
     activeReplyEntryId = entry ? entry.id : '';
     renderTranscriptOverlay();
     return;
   }
   const activeEntry = transcriptLogEntries.find((entry) => entry.id === activeReplyEntryId);
   if (!activeEntry) {
-    const entry = pushTranscriptEntry('reply', spokenReplyText);
+    const entry = pushTranscriptEntry('assistant', spokenReplyText);
     activeReplyEntryId = entry ? entry.id : '';
     renderTranscriptOverlay();
     return;
@@ -1003,22 +1356,11 @@ function voiceInterruptDisabled() {
 
 function clearStatusHint() {
   const hint = document.getElementById('status-hint');
+  if (!hint) {
+    return;
+  }
   hint.textContent = '';
   hint.classList.add('hidden');
-}
-
-function pauseButtonLabel() {
-  if (paused) {
-    return 'paused';
-  }
-  const state = visualStateFor(currentState);
-  if (state === 'thinking') {
-    return 'thinking';
-  }
-  if (state === 'speaking') {
-    return 'speaking';
-  }
-  return 'listening';
 }
 
 function isHoldToTalkActive() {
@@ -1051,6 +1393,49 @@ function sendBufferedTurn(audioBuffer, { commitMeta = null } = {}) {
   pendingIdle = false;
   setState('thinking');
   ws.send(audioBuffer);
+  return true;
+}
+
+async function ensureVoiceSocketOpen() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    return true;
+  }
+  if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+    await connect();
+  }
+  const startedAt = performance.now();
+  while (ws && ws.readyState === WebSocket.CONNECTING && performance.now() - startedAt < 2000) {
+    await delay(25);
+  }
+  return Boolean(ws && ws.readyState === WebSocket.OPEN);
+}
+
+async function sendTypedTurn(text) {
+  const typedText = String(text || '').trim();
+  if (!typedText) {
+    return false;
+  }
+  stopPlayback();
+  requestInterrupt({ keepPaused: false });
+  paused = false;
+  muted = true;
+  applyMicMuteState();
+  updateControlStates();
+  try {
+    await unlockPlaybackAudio();
+  } catch (error) {
+    console.warn('typed turn playback unlock failed', error);
+  }
+  if (!await ensureVoiceSocketOpen()) {
+    setStatusText('voice socket unavailable');
+    return false;
+  }
+  interruptPending = false;
+  setHeardTranscript(typedText);
+  busy = true;
+  pendingIdle = false;
+  setState('thinking');
+  ws.send(JSON.stringify({ type: 'text-input', text: typedText }));
   return true;
 }
 
@@ -1139,6 +1524,31 @@ function configureTuningControls() {
   });
 }
 
+function configureTextTurnInput() {
+  const form = document.getElementById('text-turn-form');
+  const input = document.getElementById('text-turn-input');
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const typedText = input.value.trim();
+    if (!typedText) {
+      return;
+    }
+    input.value = '';
+    void sendTypedTurn(typedText).then((sent) => {
+      if (!sent) {
+        input.value = typedText;
+      }
+    });
+  });
+  input.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' || event.shiftKey || event.isComposing) {
+      return;
+    }
+    event.preventDefault();
+    form.requestSubmit();
+  });
+}
+
 function scheduleListeningStatusRestore() {
   if (transientStatusTimer) {
     clearTimeout(transientStatusTimer);
@@ -1154,8 +1564,9 @@ function scheduleListeningStatusRestore() {
 function updateControlStates() {
   const pauseBtn = document.getElementById('pause-btn');
   const muteBtn = document.getElementById('mute-btn');
-  pauseBtn.textContent = pauseButtonLabel();
   pauseBtn.classList.toggle('active', !paused);
+  pauseBtn.setAttribute('aria-pressed', paused ? 'false' : 'true');
+  pauseBtn.setAttribute('aria-label', paused ? 'voice off' : 'voice on');
   muteBtn.textContent = 'mute';
   muteBtn.classList.toggle('active', muted);
   renderInterruptControls();
@@ -1213,113 +1624,6 @@ function setInterruptMode(nextMode) {
   applyMicMuteState();
   updateControlStates();
   return interruptMode;
-}
-
-function eventTargetAcceptsTextInput(event) {
-  const target = event?.target;
-  if (!target || target === document.body || target === document.documentElement) {
-    return false;
-  }
-  if (target.isContentEditable) {
-    return true;
-  }
-  const tagName = String(target.tagName || '').toUpperCase();
-  return tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT' || tagName === 'BUTTON';
-}
-
-function keyboardEventHasPlainModifierState(event) {
-  return !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
-}
-
-function keyboardEventIsHoldToTalkShortcut(event) {
-  if (event.code === 'Space' && keyboardEventHasPlainModifierState(event)) {
-    return true;
-  }
-  return event.code === 'KeyA' && event.ctrlKey && event.altKey && event.shiftKey && !event.metaKey;
-}
-
-function holdToTalkShortcutShouldEnd(event) {
-  if (!browserHoldToTalkShortcutActive) {
-    return false;
-  }
-  if (event.code === browserHoldToTalkShortcutCode) {
-    return true;
-  }
-  return browserHoldToTalkShortcutCode === 'KeyA'
-    && ['ControlLeft', 'ControlRight', 'AltLeft', 'AltRight', 'ShiftLeft', 'ShiftRight'].includes(event.code);
-}
-
-function endBrowserHoldToTalkShortcut() {
-  if (!browserHoldToTalkShortcutActive) {
-    return;
-  }
-  browserHoldToTalkShortcutActive = false;
-  browserHoldToTalkShortcutCode = '';
-  endHoldToTalk();
-}
-
-function handleBrowserShortcutKeyDown(event) {
-  if (eventTargetAcceptsTextInput(event)) {
-    return;
-  }
-  if (keyboardEventIsHoldToTalkShortcut(event)) {
-    event.preventDefault();
-    if (event.repeat || browserHoldToTalkShortcutActive) {
-      return;
-    }
-    browserHoldToTalkShortcutActive = true;
-    browserHoldToTalkShortcutCode = event.code;
-    void beginHoldToTalk();
-    return;
-  }
-  if (!keyboardEventHasPlainModifierState(event) || event.repeat) {
-    return;
-  }
-  if (event.code === 'KeyP') {
-    event.preventDefault();
-    void setPausedState(!paused);
-    return;
-  }
-  if (event.code === 'KeyM') {
-    event.preventDefault();
-    const nextMuted = !muted;
-    setMutedState(nextMuted);
-    if (!nextMuted && paused) {
-      void setPausedState(false);
-    }
-    return;
-  }
-  if (event.code === 'Escape' || event.code === 'KeyI') {
-    event.preventDefault();
-    manualInterrupt();
-    return;
-  }
-  if (event.code === 'KeyB') {
-    event.preventDefault();
-    setInterruptMode(interruptMode === 'barge-in' ? 'off' : 'barge-in');
-  }
-}
-
-function handleBrowserShortcutKeyUp(event) {
-  if (holdToTalkShortcutShouldEnd(event)) {
-    event.preventDefault();
-    endBrowserHoldToTalkShortcut();
-    return;
-  }
-  if (eventTargetAcceptsTextInput(event)) {
-    return;
-  }
-}
-
-function bindBrowserKeyboardShortcuts() {
-  document.addEventListener('keydown', handleBrowserShortcutKeyDown);
-  document.addEventListener('keyup', handleBrowserShortcutKeyUp);
-  window.addEventListener('blur', endBrowserHoldToTalkShortcut);
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-      endBrowserHoldToTalkShortcut();
-    }
-  });
 }
 
 function resolveShellState() {
@@ -1847,6 +2151,7 @@ async function loadRuntimeState() {
     })
     .then((runtimeState) => {
       applyRuntimeAudioSettings(runtimeState.audio);
+      applyVoiceProfileState(runtimeState);
       return runtimeState;
     })
     .catch((error) => {
@@ -1856,18 +2161,9 @@ async function loadRuntimeState() {
   return runtimeStatePromise;
 }
 
-function formatThinkingElapsed(ms) {
-  return `${(ms / 1000).toFixed(3)}s`;
-}
-
 function updateIndicatorVisibility(state) {
   const level = document.getElementById('level-row');
-  const timer = document.getElementById('thinking-timer');
   level.classList.toggle('hidden', state !== 'listening');
-  timer.classList.toggle('hidden', state !== 'thinking');
-  if (state !== 'thinking') {
-    timer.textContent = '';
-  }
   if (state !== 'listening') {
     setLevelDb(LEVEL_DB_FLOOR, { updatePeak: false });
     resetLevelPeakHold();
@@ -2192,6 +2488,52 @@ function drawPixelMeterSegment(ctx, x, y, width, height, fill, glow, asciiLayout
   drawAsciiLightForRect(ctx, asciiLayout, x - 1, y - 1, width + 2, height + 2, fill);
 }
 
+function drawThinkingSignalCircles(ctx, width, height, nowSeconds, theme, asciiLayout) {
+  const centerY = Math.round(height * 0.43);
+  const pathLeft = 54;
+  const pathRight = width - 54;
+  const pathWidth = Math.max(1, pathRight - pathLeft);
+  const cycle = (nowSeconds * 0.42) % 1;
+  const spawnCount = 5;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineWidth = 1;
+  ctx.shadowColor = theme.glow;
+  ctx.shadowBlur = asciiLayout ? 2 : 8;
+
+  for (let index = 0; index < spawnCount; index += 1) {
+    const age = (cycle + index / spawnCount) % 1;
+    const x = Math.round(pathLeft + age * pathWidth);
+    const wave = Math.sin(age * Math.PI * 2);
+    const y = Math.round(centerY + wave * height * 0.18);
+    const radius = 4 + age * Math.min(width, height) * 0.14;
+    const alpha = (1 - age) ** 1.7;
+    if (alpha <= 0.02) {
+      continue;
+    }
+
+    ctx.strokeStyle = `rgba(255, 236, 190, ${0.08 + alpha * 0.32})`;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.05 + alpha * 0.22})`;
+    ctx.fillRect(x - 1, y - 1, 2, 2);
+    drawAsciiLightForRect(
+      ctx,
+      asciiLayout,
+      x - radius,
+      y - radius,
+      radius * 2,
+      radius * 2,
+      `rgba(255, 236, 190, ${0.06 + alpha * 0.16})`,
+    );
+  }
+
+  ctx.restore();
+}
+
 function drawStateVisualPixelMeter(ctx, width, height, state, nowSeconds, energy, theme, asciiLayout) {
   const bandCount = STATE_VISUAL_BANDS;
   const marginX = 40;
@@ -2278,6 +2620,9 @@ function drawStateVisualFrame(nowMs) {
   }
   drawStateVisualBackdrop(stateVisualCtx, width, height, theme);
   const asciiLayout = drawStateVisualAsciiBackdrop(stateVisualCtx, width, height, theme);
+  if (state === 'thinking') {
+    drawThinkingSignalCircles(stateVisualCtx, width, height, nowSeconds, theme, asciiLayout);
+  }
   drawStateVisualPixelMeter(stateVisualCtx, width, height, state, nowSeconds, energy, theme, asciiLayout);
   drawStateVisualReadout(stateVisualCtx, width, height, state, nowSeconds, energy, theme);
 }
@@ -2290,14 +2635,8 @@ function animateStateVisual(nowMs) {
 function setState(state) {
   currentState = state;
   document.body.dataset.state = state;
+  renderVoiceProfileButtons();
   setStatusText(state);
-  if (state === 'thinking') {
-    if (thinkingStartedAt === null) {
-      thinkingStartedAt = performance.now();
-    }
-  } else {
-    thinkingStartedAt = null;
-  }
   updateIndicatorVisibility(state);
   drawStateVisualFrame(performance.now());
   updateControlStates();
@@ -3167,11 +3506,6 @@ async function initWithRetryOnce() {
 }
 
 function animateLevelDecay() {
-  if (currentState === 'thinking' && thinkingStartedAt !== null) {
-    document.getElementById('thinking-timer').textContent = formatThinkingElapsed(
-      performance.now() - thinkingStartedAt,
-    );
-  }
   if (busy || currentState !== 'listening') {
     if (currentLevelDb !== LEVEL_DB_FLOOR) {
       setLevelDb(LEVEL_DB_FLOOR);
@@ -3212,9 +3546,14 @@ document.getElementById('play-reply-btn').addEventListener('click', () => {
 setState('paused');
 resizeStateVisual();
 configureSetupLink();
+configureProfileImages();
+configureVoiceProfileControls();
 configureTuningControls();
-bindBrowserKeyboardShortcuts();
+configureTextTurnInput();
 updateControlStates();
+void loadRuntimeState().catch((error) => {
+  console.warn('runtime state preload failed', error);
+});
 
 window.__marasSwitchboardManualInterrupt = manualInterrupt;
 window.__marasSwitchboardHoldToTalkStart = beginHoldToTalk;

@@ -66,7 +66,8 @@ def test_voice_html_has_mute_button_and_mic_gate():
     assert '<div id="ascii-title" aria-label="Mara\'s Switchboard">' in voice_html
     assert 'class="ascii-title-line ascii-title-mara"' in voice_html
     assert 'class="ascii-title-line ascii-title-switchboard"' in voice_html
-    assert "transform: translateY(-18px);" in voice_html
+    assert "margin-top: 38px;" in voice_html
+    assert "transform: translateY(-18px);" not in voice_html
     assert "drop-shadow(0 12px 18px rgba(0,0,0,0.9))" in voice_html
     assert "drop-shadow(0 2px 2px rgba(0,0,0,0.72))" in voice_html
     assert "0 10px 22px rgba(74, 15, 2, 0.78);" in voice_html
@@ -75,11 +76,13 @@ def test_voice_html_has_mute_button_and_mic_gate():
     assert "color: rgba(122, 216, 255, 0.58);" in voice_html
     assert "background-clip: text;" not in voice_html
     assert "|_|  |_|\\__,_|_|  \\__,_| |___/</pre>" in voice_html
-    assert " ___|_      _(_) |_ ___| |__ | |__   ___   __ _ _ __ __| |" in voice_html
+    assert " ____          _ _       _     _                         _" in voice_html
+    assert "/ ___|_      _(_) |_ ___| |__ | |__   ___   __ _ _ __ __| |" in voice_html
     assert "|____/ \\_/\\_/ |_|\\__\\___|_| |_|_.__/ \\___/ \\__,_|_|  \\__,_|</pre>" in voice_html
     assert '<a id="setup-link" href="./setup">setup</a>' in voice_html
-    assert '<div id="version">v0.1 <span class="alpha">ALPHA</span></div>' in voice_html
-    assert '<div id="shortcut-command">space / ctrl+alt+shift+a hold to talk</div>' in voice_html
+    assert 'id="version"' not in voice_html
+    assert 'id="shortcut-command"' not in voice_html
+    assert "space / ctrl+alt+shift+a hold to talk" not in voice_html
     assert '<button id="interrupt-btn" class="mini-btn" type="button">interrupt</button>' in voice_html
     assert '<button id="mute-btn" class="mini-btn" type="button">mute</button>' in voice_html
     assert "let muted = true;" in voice_html
@@ -87,11 +90,7 @@ def test_voice_html_has_mute_button_and_mic_gate():
     assert "const INTERRUPT_MODE_STORAGE_KEY = 'maras-switchboard.voice.interrupt-mode.v1';" in voice_html
     assert "function voiceInterruptDisabled() {" in voice_html
     assert "function setInterruptMode(nextMode) {" in voice_html
-    assert "function pauseButtonLabel() {" in voice_html
-    assert "if (state === 'thinking') {" in voice_html
-    assert "return 'thinking';" in voice_html
-    assert "if (state === 'speaking') {" in voice_html
-    assert "return 'speaking';" in voice_html
+    assert "function pauseButtonLabel() {" not in voice_html
     assert "function commitBufferedTurnNow() {" in voice_html
     assert "async function beginHoldToTalk() {" in voice_html
     assert "function endHoldToTalk() {" in voice_html
@@ -106,24 +105,20 @@ def test_voice_html_has_mute_button_and_mic_gate():
     assert "window.__marasSwitchboardHoldToTalkEnd = endHoldToTalk;" in voice_html
 
 
-def test_voice_html_has_browser_keyboard_shortcuts():
+def test_voice_html_removes_broken_browser_keyboard_shortcuts():
     voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
 
-    assert "let browserHoldToTalkShortcutActive = false;" in voice_html
-    assert "function keyboardEventIsHoldToTalkShortcut(event) {" in voice_html
-    assert "event.code === 'Space'" in voice_html
-    assert "event.code === 'KeyA' && event.ctrlKey && event.altKey && event.shiftKey" in voice_html
-    assert "void beginHoldToTalk();" in voice_html
-    assert "endHoldToTalk();" in voice_html
-    assert "function bindBrowserKeyboardShortcuts() {" in voice_html
-    assert "document.addEventListener('keydown', handleBrowserShortcutKeyDown);" in voice_html
-    assert "document.addEventListener('keyup', handleBrowserShortcutKeyUp);" in voice_html
-    assert "window.addEventListener('blur', endBrowserHoldToTalkShortcut);" in voice_html
-    assert "if (event.code === 'KeyP') {" in voice_html
-    assert "if (event.code === 'KeyM') {" in voice_html
-    assert "if (event.code === 'Escape' || event.code === 'KeyI') {" in voice_html
-    assert "if (event.code === 'KeyB') {" in voice_html
-    assert "bindBrowserKeyboardShortcuts();" in voice_html
+    assert "browserHoldToTalkShortcut" not in voice_html
+    assert "keyboardEventIsHoldToTalkShortcut" not in voice_html
+    assert "event.code === 'Space'" not in voice_html
+    assert "event.code === 'KeyA' && event.ctrlKey && event.altKey && event.shiftKey" not in voice_html
+    assert "function bindBrowserKeyboardShortcuts() {" not in voice_html
+    assert "document.addEventListener('keydown', handleBrowserShortcutKeyDown);" not in voice_html
+    assert "document.addEventListener('keyup', handleBrowserShortcutKeyUp);" not in voice_html
+    assert "if (event.code === 'KeyP') {" not in voice_html
+    assert "if (event.code === 'KeyM') {" not in voice_html
+    assert "if (event.code === 'Escape' || event.code === 'KeyI') {" not in voice_html
+    assert "if (event.code === 'KeyB') {" not in voice_html
 
 
 def test_voice_html_uses_root_app_base_so_trailing_slash_urls_do_not_404():
@@ -146,8 +141,18 @@ def test_voice_html_uses_pixel_meter_visual_instead_of_avatar_assets():
     assert 'id="transcript-caption"' in voice_html
     assert 'id="transcript-log"' in voice_html
     assert 'class="visual-caption-label">conversation</div>' in voice_html
-    assert "overflow-y: auto;" in voice_html
+    assert "grid-template-rows: auto 1fr;" in voice_html
+    assert "height: clamp(5.6rem, 18dvh, 15rem);" in voice_html
+    assert "overflow-y: hidden;" in voice_html
     assert "-webkit-line-clamp" not in voice_html
+    assert '<form id="text-turn-form" class="text-turn-form" autocomplete="off">' in voice_html
+    assert 'id="text-turn-input"' in voice_html
+    assert "height: clamp(2.55rem, 8dvh, 7rem);" in voice_html
+    assert "resize: none;" in voice_html
+    assert "async function sendTypedTurn(text) {" in voice_html
+    assert "ws.send(JSON.stringify({ type: 'text-input', text: typedText }));" in voice_html
+    assert "function configureTextTurnInput() {" in voice_html
+    assert "form.requestSubmit();" in voice_html
     assert "const STATE_VISUAL_WIDTH = 520;" in voice_html
     assert "const STATE_VISUAL_HEIGHT = 312;" in voice_html
     assert "const MAX_BUFFERED_TURN_MS = 12000;" in voice_html
@@ -161,10 +166,14 @@ def test_voice_html_uses_pixel_meter_visual_instead_of_avatar_assets():
     assert "function replaceSpokenReply(text) {" in voice_html
     assert "let transcriptLogEntries = [];" in voice_html
     assert "let activeReplyEntryId = '';" in voice_html
-    assert "transcriptLog.scrollTop = transcriptLog.scrollHeight;" in voice_html
+    assert "let transcriptScrollAnimationId = 0;" in voice_html
+    assert "transcriptLogEntries = [entry];" in voice_html
+    assert "cancelAnimationFrame(transcriptScrollAnimationId);" in voice_html
+    assert "const maxScroll = Math.max(0, transcriptLog.scrollHeight - transcriptLog.clientHeight);" in voice_html
+    assert "transcriptLog.scrollTop = maxScroll * eased;" in voice_html
     assert "transcriptCaption.classList.toggle('empty', transcriptLogEntries.length === 0);" in voice_html
-    assert "pushTranscriptEntry('heard', heardTranscriptText);" in voice_html
-    assert "const entry = pushTranscriptEntry('reply', nextText);" in voice_html
+    assert "pushTranscriptEntry('user - heard', heardTranscriptText);" in voice_html
+    assert "const entry = pushTranscriptEntry('assistant', nextText);" in voice_html
     assert "const STATE_VISUAL_RENDER_SCALE = 0.58;" in voice_html
     assert "const STATE_VISUAL_BANDS = 22;" in voice_html
     assert "const ASCII_ART_URL = new URL('/media/ascii-art.txt', window.location.href).toString();" in voice_html
@@ -284,8 +293,32 @@ def test_voice_html_uses_db_threshold_and_wait_after_speak_slider():
     voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
 
     assert 'id="top-bar"' in voice_html
-    assert '<button id="pause-btn" class="control-btn" type="button">paused</button>' in voice_html
-    assert '<div id="status-hint" class="hidden"></div>' in voice_html
+    assert '<button id="pause-btn" class="power-toggle" type="button"' in voice_html
+    assert '<span class="power-label power-label-off">OFF</span>' in voice_html
+    assert '<span class="power-label power-label-on">ON</span>' in voice_html
+    assert 'id="corner-controls"' in voice_html
+    assert 'class="profile-btn" type="button" data-profile="juergen"' in voice_html
+    assert 'class="profile-btn" type="button" data-profile="nadia"' in voice_html
+    assert 'class="profile-btn" type="button" data-profile="mara"' in voice_html
+    assert "/static/media/profile-juergen-pixel.png" in voice_html
+    assert "api/runtime/profile" in voice_html
+    assert "ws.close(1000, 'profile switch');" in voice_html
+    assert "await setPausedState(false, { forceInterrupt: true });" in voice_html
+    assert ".profile-btn.active.thinking::before" in voice_html
+    assert ".profile-btn.active img" in voice_html
+    assert "drop-shadow(0 0 10px rgba(109,226,255,0.68));" in voice_html
+    assert "@keyframes profileThinkingBubbles" in voice_html
+    assert ".profile-btn.active.speaking::after" in voice_html
+    assert "button.classList.add(currentState);" in voice_html
+    assert "const DEFAULT_VOICE_PROFILE = 'mara';" in voice_html
+    assert 'id="thinking-timer"' not in voice_html
+    assert "formatThinkingElapsed" not in voice_html
+    assert "#state-visual-shell {\n    display: none;" in voice_html
+    assert 'id="status-hint"' not in voice_html
+    assert 'id="version"' not in voice_html
+    assert "#pause-btn {\n    position: fixed;" in voice_html
+    assert "right: 18px;" in voice_html
+    assert "pauseButtonLabel" not in voice_html
     assert '<div id="status">listening</div>' not in voice_html
     assert '#status {' not in voice_html
     assert '#setup-link {' in voice_html
@@ -322,8 +355,8 @@ def test_voice_html_uses_db_threshold_and_wait_after_speak_slider():
     assert "function applyRuntimeShortcuts" not in voice_html
     assert "function formatShortcutHint" not in voice_html
     assert "windowsClientShortcuts" not in voice_html
-    assert "pauseBtn.textContent = pauseButtonLabel();" in voice_html
     assert "pauseBtn.classList.toggle('active', !paused);" in voice_html
+    assert "pauseBtn.setAttribute('aria-label', paused ? 'voice off' : 'voice on');" in voice_html
     assert "pushToTalk" not in voice_html
     assert "function renderInterruptControls() {" in voice_html
     assert "applyRuntimeShortcuts(runtimeState.windows_client);" not in voice_html

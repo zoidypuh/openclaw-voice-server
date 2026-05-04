@@ -2,9 +2,9 @@
 
 ![Mara's Switchboard voice runtime screenshot](image.png)
 
-`maras-switchboard` is a local voice frontend for text agents. It gives you a browser setup page at `/setup`, a voice UI at `/voice`, local or remote STT, multiple TTS backends, and an optional Windows tray client.
+`maras-switchboard` is a local voice frontend for text agents. It gives you a browser setup page at `/setup`, a voice UI at `/voice`, local or remote STT, multiple TTS backends, per-profile voice routing, typed fallback input, and an optional Windows tray client.
 
-Current version: `0.1`. This repo is still alpha. The main path works, but rough edges still exist.
+Current version: `0.1`. The main voice-chat path is working and has been tested on desktop browsers, macOS, iOS, and the Windows tray client. Not every STT/TTS provider combination has been tested equally.
 
 ## What This Repo Does
 
@@ -12,6 +12,8 @@ Current version: `0.1`. This repo is still alpha. The main path works, but rough
 - sends speech to the Python server for transcription
 - sends the transcript to your configured conversation backend
 - optionally speaks the reply with TTS
+- lets you type a turn directly when STT mishears a word
+- can switch between configured voice profiles from the voice page
 - can run in text-only mode with TTS disabled
 - exposes a setup page so you can validate each step before launch
 
@@ -29,9 +31,15 @@ The currently tested path is:
 
 - backend on Linux, macOS, or WSL
 - browser UI at `http://127.0.0.1:8765`
+- iOS and macOS browsers when served through a secure origin for microphone access
 - optional Windows tray client from `clients/windows`
 
-Treat iOS, macOS Safari, and random remote mobile browser paths as unsupported unless you personally verify them.
+Current recommended provider pair:
+
+- `xAI STT` for fast transcription
+- `Supertonic` for very low-latency local TTS
+
+Remote/mobile browser paths still depend on your network and HTTPS setup. iPhone/iPad browsers need a trusted `https://` URL for microphone capture.
 
 Install missing base tools:
 
@@ -91,6 +99,8 @@ http://127.0.0.1:8765/setup
 - validate the conversation backend
 - open the voice app
 
+For the fastest currently tested speech loop, start with `xAI STT` and `Supertonic`.
+
 The setup page saves the selected provider settings to `config.json` and writes required secrets to `.env` when you validate a step. You only need to create or edit `.env` manually for unusual headless setup or when you intentionally want to pre-seed values before opening `/setup`.
 
 7. Open the voice UI.
@@ -116,13 +126,15 @@ That removes TTS from the first-run debugging path.
 
 - Browser and Windows client windows use the title `Mara's Switchboard`.
 - The voice UI starts with a shaded ASCII `Mara's` over `Switchboard` title.
+- The profile portraits select which configured agent/persona receives the next voice or typed turn.
+- The selected profile glows; thinking and speaking states animate on the portrait.
 - The voice UI starts muted. Click `mute` to unmute for normal freehand conversation; click it again to mute.
-- The only global keyboard shortcut is `Ctrl+Alt+Shift+A`: hold it to record, release it to send the captured speech, then the client returns to mute.
-- The shortcut is shown above the ASCII title in small text.
+- The small text box below the conversation panel sends typed turns with `Enter`. Use it when STT keeps mishearing a word.
+- The Windows tray client supports `Ctrl+Alt+Shift+A`: hold it to record, release it to send the captured speech, then the client returns to mute.
 - The `interrupt` button toggles between inactive and `barge in`. There is no separate interrupt mode panel.
 - The `mute` button keeps the same label and uses its active state to show whether mute is enabled.
 - The sliders button opens the two live tuning controls: voice threshold and wait-after-speak.
-- The state display uses a lower-resolution pixel spectrum renderer with cached ASCII backdrop art so it costs less per frame than the older high-resolution visual.
+- The conversation panel shows only the latest user or assistant text. Long messages scroll upward so the newest visible text moves through the panel instead of appearing only at the end.
 
 ## Important Runtime Rule
 
@@ -213,6 +225,8 @@ The setup page has presets for the common STT paths:
 
 The OpenAI-compatible endpoint support is for STT only. Core TTS does not currently include a generic OpenAI-compatible TTS endpoint provider.
 
+Whisper-compatible STT remains useful, especially for local or free deployments, but some models can hallucinate filler text on silence or short noisy captures. The current voice agent prompt and runtime checks try to handle that carefully. For the lowest-latency tested path today, prefer `xAI STT`.
+
 ## TTS Backends
 
 Currently supported:
@@ -222,6 +236,20 @@ Currently supported:
 - Supertonic
 - Chatterbox Turbo from a dedicated Python environment with `chatterbox-tts` installed
 - `Disabled (text only)`
+
+Supertonic is the recommended low-latency TTS path when available. The other providers are still useful for portability, fallback, or different voices.
+
+## Conversation Backends
+
+The conversation backend can be Hermes or a direct OpenAI-compatible chat completions endpoint. In practice, that means the voice UI can talk to many local or remote LLMs as long as they expose a compatible endpoint and produce short, spoken replies.
+
+For a free or local talk-to-your-agent setup, combine:
+
+- a local or remote OpenAI-compatible LLM endpoint
+- Whisper-compatible STT or another configured STT backend
+- Supertonic, Edge TTS, or `Disabled (text only)`
+
+Quality still depends on latency, endpoint behavior, and how well the model follows the voice-chat prompt.
 
 Chatterbox Turbo setup notes:
 
@@ -252,7 +280,7 @@ Important:
 - the browser URL and the conversation backend URL are not the same thing
 - use your local gateway URL inside setup, not the public browser URL
 - iPhone/iPad browsers will not show the microphone permission prompt for plain `http://<lan-ip>:8765`; use a trusted `https://` URL such as Tailscale HTTPS or another reverse proxy
-- remote browser reachability does not mean every browser engine will work correctly
+- iOS and macOS browser testing has passed for the current voice UI, but remote browser reachability does not mean every proxy/browser/network combination will work correctly
 
 ## Windows Client
 

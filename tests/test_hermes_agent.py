@@ -3,6 +3,118 @@ import asyncio
 from maras_switchboard.agents import hermes as hermes_module
 
 
+def test_mara_delegation_parser_matches_explicit_routes_only():
+    assert hermes_module._parse_mara_delegation("ask Mara: summarize this").prompt == "summarize this"
+    assert hermes_module._parse_mara_delegation("ask Mara to search Qwen models").prompt == "search Qwen models"
+    assert hermes_module._parse_mara_delegation("tell Mara to dim the lights").prompt == "dim the lights"
+    assert hermes_module._parse_mara_delegation("please ask Mara to search this").prompt == "search this"
+    assert hermes_module._parse_mara_delegation("Mara, quote this exactly: $(bad)").prompt == "quote this exactly: $(bad)"
+    assert hermes_module._parse_mara_delegation("Nadia, ask Mara: what changed?").prompt == "what changed?"
+    assert hermes_module._parse_mara_delegation("ask Mara:").prompt == ""
+
+    assert not hermes_module._parse_mara_delegation("I talked to Mara, summarize this").matched
+    assert not hermes_module._parse_mara_delegation("what would Mara think?").matched
+    assert not hermes_module._parse_mara_delegation("Mara thinks this is weird").matched
+
+
+def test_voice_system_prompt_preserves_profile_identity_instead_of_hardcoding_mara():
+    prompt = hermes_module._VOICE_SYSTEM_PROMPT
+
+    assert "SOUL" in prompt
+    assert "Name, Alter" in prompt
+    assert "Teenager" in prompt
+    assert "ENGLISH ONLY" in prompt
+    assert "Never answer in German" in prompt
+    assert "Du bist Mara" not in prompt
+    assert "[pause]" not in prompt
+    assert "keine eckigen TTS-Tags" in prompt
+
+
+async def _collect_reply(agent, text):
+    return [chunk async for chunk in agent.stream_reply(text, asyncio.Event())]
+
+
+def test_default_mara_profile_uses_cli_arg_array_without_profile(monkeypatch):
+    captured = {}
+
+    class FakeProcess:
+        returncode = 0
+
+        async def communicate(self):
+            return b"Mara CLI answer\n", b""
+
+    async def fake_create_subprocess_exec(*args, stdout, stderr):
+        captured["args"] = args
+        captured["stdout"] = stdout
+        captured["stderr"] = stderr
+        return FakeProcess()
+
+    monkeypatch.setattr(hermes_module.asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    reply = asyncio.run(hermes_module._ask_default_mara_profile("quote this exactly: $(bad)"))
+
+    assert reply == "Mara CLI answer"
+    assert captured["args"] == ("hermes", "chat", "-Q", "-q", "quote this exactly: $(bad)")
+    assert "--profile" not in captured["args"]
+    assert captured["stdout"] is hermes_module.asyncio.subprocess.PIPE
+    assert captured["stderr"] is hermes_module.asyncio.subprocess.PIPE
+
+
+def test_hermes_conversation_agent_routes_explicit_mara_request_without_nadia_chat(monkeypatch):
+    instances = []
+    delegated_prompts = []
+
+    class FakeSession:
+        def __init__(self, **kwargs):
+            self.prompts = []
+            instances.append(self)
+
+        async def ask(self, prompt):
+            self.prompts.append(prompt)
+            raise AssertionError("explicit Mara delegation should bypass the Nadia session chat")
+
+        async def ask_once(self, prompt):
+            raise AssertionError("sanity check should not run for explicit Mara delegation")
+
+        def replace_last_assistant_reply(self, text):
+            raise AssertionError("delegated replies should not rewrite Nadia session history")
+
+    async def fake_ask_default_mara_profile(prompt):
+        delegated_prompts.append(prompt)
+        return "Mara CLI answer"
+
+    monkeypatch.setattr(hermes_module, "_HermesAgentSession", FakeSession)
+    monkeypatch.setattr(hermes_module, "_ask_default_mara_profile", fake_ask_default_mara_profile)
+
+    agent = hermes_module.HermesConversationAgent(project_root="/tmp/hermes-agent", reply_sanity_check=False)
+    chunks = asyncio.run(_collect_reply(agent, "Mara, quote this exactly: $(bad)"))
+
+    assert chunks == ["Mara CLI answer"]
+    assert delegated_prompts == ["quote this exactly: $(bad)"]
+    assert len(instances) == 1
+    assert instances[0].prompts == []
+
+
+def test_hermes_conversation_agent_asks_for_missing_mara_prompt_without_cli(monkeypatch):
+    class FakeSession:
+        def __init__(self, **kwargs):
+            pass
+
+        async def ask(self, prompt):
+            raise AssertionError("missing delegated prompt should not call Nadia chat")
+
+    async def fake_ask_default_mara_profile(prompt):
+        raise AssertionError("missing delegated prompt should not call Mara CLI")
+
+    monkeypatch.setattr(hermes_module, "_HermesAgentSession", FakeSession)
+    monkeypatch.setattr(hermes_module, "_ask_default_mara_profile", fake_ask_default_mara_profile)
+
+    agent = hermes_module.HermesConversationAgent(project_root="/tmp/hermes-agent", reply_sanity_check=False)
+    chunks = asyncio.run(_collect_reply(agent, "ask Mara:"))
+
+    assert chunks == ["Prompt?"]
+
+
 def test_reply_sanity_system_prompt_handles_random_subtitles_and_invented_people():
     prompt = hermes_module._REPLY_SANITY_SYSTEM_PROMPT.lower()
 
@@ -79,7 +191,7 @@ def test_hermes_conversation_agent_replaces_incoherent_reply_with_huh(monkeypatc
             self.use_memory = use_memory
             self.prompts = []
             self.replace_calls = []
-            self.main_session = system_prompt.startswith("Du bist Mara")
+            self.main_session = system_prompt == hermes_module._VOICE_SYSTEM_PROMPT
             instances.append(self)
 
         async def ask(self, prompt):
@@ -140,7 +252,7 @@ def test_hermes_conversation_agent_asks_for_clarification_on_random_person_or_na
             self.system_prompt = system_prompt
             self.prompts = []
             self.replace_calls = []
-            self.main_session = system_prompt.startswith("Du bist Mara")
+            self.main_session = system_prompt == hermes_module._VOICE_SYSTEM_PROMPT
             instances.append(self)
 
         async def ask(self, prompt):
@@ -199,7 +311,7 @@ def test_hermes_conversation_agent_skips_sanity_check_for_backend_error_reply(mo
             self.system_prompt = system_prompt
             self.prompts = []
             self.replace_calls = []
-            self.main_session = system_prompt.startswith("Du bist Mara")
+            self.main_session = system_prompt == hermes_module._VOICE_SYSTEM_PROMPT
             instances.append(self)
 
         async def ask(self, prompt):
@@ -257,7 +369,7 @@ def test_hermes_conversation_agent_sanity_prompt_uses_sliding_last_three_turns(m
             self.system_prompt = system_prompt
             self.prompts = []
             self.replace_calls = []
-            self.main_session = system_prompt.startswith("Du bist Mara")
+            self.main_session = system_prompt == hermes_module._VOICE_SYSTEM_PROMPT
             instances.append(self)
 
         async def ask(self, prompt):
