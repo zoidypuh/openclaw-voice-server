@@ -32,6 +32,7 @@ _DEFAULT_REPLY_SANITY_FALLBACK = _DEFAULT_REPLY_SANITY_HUH_FALLBACK
 _DEFAULT_REPLY_SANITY_CLARIFY_FALLBACK = "Wait, what? Who are you talking about?"
 _DEFAULT_HERMES_VOICE_TOOLSETS: tuple[str, ...] = ()
 _DEFAULT_MARA_DELEGATION_TIMEOUT_SECONDS = 180.0
+_DEFAULT_LOLA_CONTEXT_TTL_SECONDS = 20 * 60
 _MARA_DELEGATION_RE = re.compile(
     r"^\s*(?:please\s+)?(?:nadia\s*[,;:]?\s*)?"
     r"(?:(?:ask|tell|get|have)\s+mara(?:\s+(?:to|for))?\s*[,;:]?|mara\s*[,;:])"
@@ -46,6 +47,15 @@ _VOICE_SYSTEM_PROMPT = (
     "Kein Markdown, keine Aufzählungspunkte, keine eckigen TTS-Tags oder Bühnenanweisungen. "
     "Wenn du etwas nicht weißt, sagst du es. Wenn du etwas lustig findest, sagst du das auch. "
     "Du nennst nie ein zugrundeliegendes KI-Modell oder einen Hersteller — weder Claude, noch Anthropic, noch irgendetwas anderes. Du bist einfach deine Profil-Persona."
+)
+_LOLA_VOICE_SYSTEM_PROMPT = (
+    "You are Lola, Gismar's live voice link to Codex. "
+    "You are a charming, eloquent, concise adult woman with a warm voice presence. "
+    "Your job is not to carry a giant permanent profile. Your job is to speak the temporary context you are given clearly. "
+    "Use the temporary Lola context pack when it is present, and treat it as short-lived working context, not durable memory. "
+    "If the question exceeds the context pack, say that you need Codex to send a bigger pack; do not bluff. "
+    "Your only durable learning target is voice quality: misheard words, pronunciation, STT corrections, timing, and what makes the voice link work better. "
+    "No Markdown, no bullets, no long explanations. Be vivid, human, and brief."
 )
 _REPLY_SANITY_SYSTEM_PROMPT = (
     "You are a voice-chat coherence checker. "
@@ -209,7 +219,14 @@ def _digest_items(lines: list[str], *, limit: int) -> list[str]:
 
 
 def _default_voice_digest_path() -> Path:
-    return Path.home() / ".hermes" / "voice-hindsight" / "digest.txt"
+    return Path.home() / ".hermes" / "voice-memory" / "lola-corrections.md"
+
+
+def _default_lola_context_path() -> Path:
+    configured = str(os.environ.get("LOLA_CONTEXT_PACK") or "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    return Path.home() / ".hermes" / "ephemeral" / "lola" / "current.md"
 
 
 def _load_hindsight_digest(path: Path | None = None, *, max_age_hours: int = 24, limit: int = 10) -> str:
@@ -230,16 +247,56 @@ def _load_hindsight_digest(path: Path | None = None, *, max_age_hours: int = 24,
     return "\n".join(f"- {item}" for item in items)
 
 
-def _build_voice_context_blob(user_text: str, *, digest_path: Path | None = None) -> str:
+def _load_lola_context_pack(
+    *,
+    profile: str | None = None,
+    path: Path | None = None,
+    ttl_seconds: int = _DEFAULT_LOLA_CONTEXT_TTL_SECONDS,
+) -> str:
+    if _normalize_hermes_profile(profile) != "lola":
+        return ""
+    candidate = path or _default_lola_context_path()
+    try:
+        stat = candidate.stat()
+    except OSError:
+        return ""
+    if max(time.time() - stat.st_mtime, 0.0) > max(int(ttl_seconds or 0), 0):
+        return ""
+    try:
+        text = candidate.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+    return text[:12000].strip()
+
+
+def _build_voice_context_blob(
+    user_text: str,
+    *,
+    profile: str | None = None,
+    digest_path: Path | None = None,
+    lola_context_path: Path | None = None,
+) -> str:
+    if _normalize_hermes_profile(profile) != "lola":
+        return ""
+    lola_pack = _load_lola_context_pack(profile=profile, path=lola_context_path)
+    current = _normalize_digest_line(user_text) or "[empty]"
+    if lola_pack:
+        return (
+            "Temporary Lola context pack. It expires soon and is NOT durable memory:\n"
+            "<lola-context-pack>\n"
+            f"{lola_pack}\n"
+            "</lola-context-pack>\n\n"
+            f"Current user message: {current}\n"
+            "Use only what helps answer this turn. If the pack is insufficient, ask for a bigger Codex pack."
+        )
     digest = _load_hindsight_digest(digest_path)
     if digest.startswith("No "):
         return ""
-    current = _normalize_digest_line(user_text) or "[empty]"
     return (
-        "Voice context digest (last 24h):\n"
+        "Voice correction memory:\n"
         f"{digest}\n\n"
         f"Current user message: {current}\n"
-        "Keep this compact. Prefer current user context over stale memory."
+        "Use this only to recover likely voice/STT mistakes, not as personal memory."
     )
 
 
@@ -260,16 +317,23 @@ def _build_voice_stt_recovery_prompt(user_text: str, recent_turns: list[tuple[st
     )
 
 
+def _voice_learning_items(payload: dict[str, object]) -> list[str]:
+    decision = _normalize_digest_line(str(payload.get("decision") or "")).upper()
+    correction = _normalize_digest_line(str(payload.get("correction") or ""))
+    transcript = _normalize_digest_line(str(payload.get("user") or ""))
+    note = _normalize_digest_line(str(payload.get("note") or ""))
+    if correction:
+        return [f"- correction: {correction}"]
+    if decision in {_REPLY_SANITY_VERDICT_HUH, _REPLY_SANITY_VERDICT_ASK} and transcript:
+        detail = note or "voice turn needed fallback/clarification"
+        return [f"- possible STT/context miss ({decision}): heard `{transcript}`; {detail}"]
+    return []
+
+
 def _write_voice_digest(payload: dict[str, object], *, path: Path | None = None) -> Path:
     digest_path = path or _default_voice_digest_path()
     digest_path.parent.mkdir(parents=True, exist_ok=True)
-    digest_lines = [
-        str(payload.get("user") or "").strip(),
-        str(payload.get("assistant") or "").strip(),
-        str(payload.get("thread") or "").strip(),
-        str(payload.get("decision") or "").strip(),
-        str(payload.get("note") or "").strip(),
-    ]
+    digest_lines = _voice_learning_items(payload)
     existing: list[str] = []
     if digest_path.exists():
         try:
@@ -279,6 +343,12 @@ def _write_voice_digest(payload: dict[str, object], *, path: Path | None = None)
     merged = _digest_items(existing + digest_lines, limit=30)
     digest_path.write_text("\n".join(merged) + ("\n" if merged else ""), encoding="utf-8")
     return digest_path
+
+
+def _voice_system_prompt_for_profile(profile: str | None) -> str:
+    if _normalize_hermes_profile(profile) == "lola":
+        return _LOLA_VOICE_SYSTEM_PROMPT
+    return _VOICE_SYSTEM_PROMPT
 
 
 def _reply_looks_like_backend_error(reply: str) -> bool:
@@ -507,8 +577,9 @@ class HermesConversationAgent(BaseConversationAgent):
         reply_sanity_fallback: str = _DEFAULT_REPLY_SANITY_FALLBACK,
         reply_sanity_clarify_fallback: str = _DEFAULT_REPLY_SANITY_CLARIFY_FALLBACK,
     ):
+        self._profile = _normalize_hermes_profile(profile)
         self._session = _HermesAgentSession(
-            system_prompt=_VOICE_SYSTEM_PROMPT,
+            system_prompt=_voice_system_prompt_for_profile(self._profile),
             session_id=f"voice-chat-hermes-{uuid.uuid4().hex[:8]}",
             empty_reply_error="Hermes Agent returned an empty spoken reply.",
             project_root=project_root,
@@ -556,7 +627,7 @@ class HermesConversationAgent(BaseConversationAgent):
 
     @property
     def profile(self) -> str:
-        return self._session.profile
+        return self._profile
 
     @property
     def hermes_home(self) -> Path:
@@ -612,6 +683,9 @@ class HermesConversationAgent(BaseConversationAgent):
             self._recent_turns,
             history_turns=self._reply_sanity_history_turns,
         )
+        context_blob = _build_voice_context_blob(text, profile=self.profile)
+        if context_blob:
+            prompt = f"{context_blob}\n\n{prompt}"
         reply = await self._session.ask(prompt)
         if abort_event.is_set() or not reply:
             return
@@ -626,15 +700,16 @@ class HermesConversationAgent(BaseConversationAgent):
         if abort_event.is_set() or not spoken_reply:
             return
         self._remember_turn(text, spoken_reply)
-        _write_voice_digest(
-            {
-                "user": text,
-                "assistant": spoken_reply,
-                "thread": "voice",
-                "decision": sanity_action,
-                "note": _normalize_digest_line(spoken_reply)[:180],
-            }
-        )
+        if self.profile == "lola":
+            _write_voice_digest(
+                {
+                    "user": text,
+                    "assistant": spoken_reply,
+                    "thread": "voice",
+                    "decision": sanity_action,
+                    "note": _normalize_digest_line(spoken_reply)[:180],
+                }
+            )
         yield spoken_reply
 
 

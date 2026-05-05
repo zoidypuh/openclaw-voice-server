@@ -297,10 +297,9 @@ def test_voice_html_uses_db_threshold_and_wait_after_speak_slider():
     assert '<span class="power-label power-label-off">OFF</span>' in voice_html
     assert '<span class="power-label power-label-on">ON</span>' in voice_html
     assert 'id="corner-controls"' in voice_html
-    assert 'class="profile-btn" type="button" data-profile="juergen"' in voice_html
-    assert 'class="profile-btn" type="button" data-profile="nadia"' in voice_html
+    assert 'class="profile-btn" type="button" data-profile="lola"' in voice_html
     assert 'class="profile-btn" type="button" data-profile="mara"' in voice_html
-    assert "/static/media/profile-juergen-pixel.png" in voice_html
+    assert "/static/media/profile-nadia-pixel.png" in voice_html
     assert "api/runtime/profile" in voice_html
     assert "ws.close(1000, 'profile switch');" in voice_html
     assert "await setPausedState(false, { forceInterrupt: true });" in voice_html
@@ -310,7 +309,7 @@ def test_voice_html_uses_db_threshold_and_wait_after_speak_slider():
     assert "@keyframes profileThinkingBubbles" in voice_html
     assert ".profile-btn.active.speaking::after" in voice_html
     assert "button.classList.add(currentState);" in voice_html
-    assert "const DEFAULT_VOICE_PROFILE = 'mara';" in voice_html
+    assert "const DEFAULT_VOICE_PROFILE = 'lola';" in voice_html
     assert 'id="thinking-timer"' not in voice_html
     assert "formatThinkingElapsed" not in voice_html
     assert "#state-visual-shell {\n    display: none;" in voice_html

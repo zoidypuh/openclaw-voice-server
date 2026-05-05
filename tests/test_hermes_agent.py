@@ -208,7 +208,7 @@ def test_hermes_conversation_agent_replaces_incoherent_reply_with_huh(monkeypatc
             self.replace_calls.append(text)
 
     monkeypatch.setattr(hermes_module, "_HermesAgentSession", FakeSession)
-    monkeypatch.setattr(hermes_module, "_build_voice_context_blob", lambda text: "")
+    monkeypatch.setattr(hermes_module, "_build_voice_context_blob", lambda text, **kwargs: "")
 
     async def scenario():
         agent = hermes_module.HermesConversationAgent(project_root="/tmp/hermes-agent")
@@ -269,7 +269,7 @@ def test_hermes_conversation_agent_asks_for_clarification_on_random_person_or_na
             self.replace_calls.append(text)
 
     monkeypatch.setattr(hermes_module, "_HermesAgentSession", FakeSession)
-    monkeypatch.setattr(hermes_module, "_build_voice_context_blob", lambda text: "")
+    monkeypatch.setattr(hermes_module, "_build_voice_context_blob", lambda text, **kwargs: "")
 
     async def scenario():
         agent = hermes_module.HermesConversationAgent(project_root="/tmp/hermes-agent")
@@ -326,7 +326,7 @@ def test_hermes_conversation_agent_skips_sanity_check_for_backend_error_reply(mo
             self.replace_calls.append(text)
 
     monkeypatch.setattr(hermes_module, "_HermesAgentSession", FakeSession)
-    monkeypatch.setattr(hermes_module, "_build_voice_context_blob", lambda text: "")
+    monkeypatch.setattr(hermes_module, "_build_voice_context_blob", lambda text, **kwargs: "")
 
     async def scenario():
         agent = hermes_module.HermesConversationAgent(project_root="/tmp/hermes-agent")
@@ -434,15 +434,36 @@ def test_voice_context_blob_includes_fresh_digest(tmp_path):
         encoding="utf-8",
     )
 
-    blob = hermes_module._build_voice_context_blob("hello mara", digest_path=digest_path)
+    blob = hermes_module._build_voice_context_blob(
+        "hello mara",
+        profile="lola",
+        digest_path=digest_path,
+        lola_context_path=tmp_path / "missing.md",
+    )
 
-    assert "Voice context digest (last 24h):" in blob
+    assert "Voice correction memory:" in blob
     assert blob.count("current thread") == 1
     assert "stable preference" in blob
     assert "Current user message: hello mara" in blob
 
 
-def test_write_voice_digest_deduplicates_and_persists(tmp_path):
+def test_voice_context_blob_includes_fresh_lola_context_pack(tmp_path):
+    context_path = tmp_path / "current.md"
+    context_path.write_text("Explain the current repo migration only.", encoding="utf-8")
+
+    blob = hermes_module._build_voice_context_blob(
+        "what is happening?",
+        profile="lola",
+        lola_context_path=context_path,
+    )
+
+    assert "Temporary Lola context pack" in blob
+    assert "Explain the current repo migration only." in blob
+    assert "Current user message: what is happening?" in blob
+    assert "not durable memory" in blob.lower()
+
+
+def test_write_voice_digest_keeps_only_voice_learning_notes(tmp_path):
     digest_path = tmp_path / "digest.txt"
     digest_path.write_text("alpha\n", encoding="utf-8")
 
@@ -459,7 +480,23 @@ def test_write_voice_digest_deduplicates_and_persists(tmp_path):
 
     assert written == digest_path
     text = digest_path.read_text(encoding="utf-8")
-    assert text.splitlines() == ["alpha", "beta", "ASK"]
+    assert text.splitlines() == ["alpha", "- possible STT/context miss (ASK): heard `alpha`; beta"]
+
+
+def test_write_voice_digest_ignores_plain_ok_turns(tmp_path):
+    digest_path = tmp_path / "digest.txt"
+
+    hermes_module._write_voice_digest(
+        {
+            "user": "just talking",
+            "assistant": "sure",
+            "decision": "OK",
+            "note": "sure",
+        },
+        path=digest_path,
+    )
+
+    assert digest_path.read_text(encoding="utf-8") == ""
 
 
 def test_hermes_session_posts_to_api_and_reads_reply(monkeypatch, tmp_path):

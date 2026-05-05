@@ -64,7 +64,34 @@ def test_legacy_setup_prefixed_setup_state_route_still_works_for_stale_tabs():
     assert '"status"' in body
 
 
-def test_runtime_profile_route_maps_mara_to_slim_voice_mara_gateway(tmp_path, monkeypatch):
+def test_runtime_profile_route_maps_lola_to_single_live_hermes_gateway(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.json"
+    env_path = tmp_path / ".env"
+    monkeypatch.setenv("MARAS_SWITCHBOARD_CONFIG_FILE", str(config_path))
+    monkeypatch.setenv("MARAS_SWITCHBOARD_ENV_FILE", str(env_path))
+
+    status, _, body = asyncio.run(
+        _request(
+            "/api/runtime/profile",
+            method="POST",
+            json_payload={"profile": "lola"},
+        )
+    )
+    state_status, _, state_body = asyncio.run(_fetch("/api/runtime/state"))
+
+    assert status == 200
+    written = config_path.read_text(encoding="utf-8")
+    env_text = env_path.read_text(encoding="utf-8")
+    assert '"hermes_profile": "lola"' in written
+    assert '"hermes_api_url": "http://127.0.0.1:8642/v1"' in written
+    assert '"hermes_api_model": "hermes-agent"' in written
+    assert "MARAS_SWITCHBOARD_HERMES_API_KEY=local-hermes-key" in env_text
+    assert '"id": "lola"' in body
+    assert state_status == 200
+    assert '"active": "lola"' in state_body
+
+
+def test_runtime_profile_route_maps_mara_to_single_live_hermes_gateway(tmp_path, monkeypatch):
     config_path = tmp_path / "config.json"
     env_path = tmp_path / ".env"
     monkeypatch.setenv("MARAS_SWITCHBOARD_CONFIG_FILE", str(config_path))
@@ -77,43 +104,16 @@ def test_runtime_profile_route_maps_mara_to_slim_voice_mara_gateway(tmp_path, mo
             json_payload={"profile": "mara"},
         )
     )
-    state_status, _, state_body = asyncio.run(_fetch("/api/runtime/state"))
+    written = config_path.read_text(encoding="utf-8")
 
     assert status == 200
-    written = config_path.read_text(encoding="utf-8")
-    env_text = env_path.read_text(encoding="utf-8")
     assert '"hermes_profile": "voice-mara"' in written
-    assert '"hermes_api_url": "http://127.0.0.1:8644/v1"' in written
-    assert '"hermes_api_model": "voice-mara"' in written
-    assert "MARAS_SWITCHBOARD_HERMES_API_KEY=local-hermes-key" in env_text
+    assert '"hermes_api_url": "http://127.0.0.1:8642/v1"' in written
+    assert '"hermes_api_model": "hermes-agent"' in written
     assert '"id": "mara"' in body
-    assert state_status == 200
-    assert '"active": "mara"' in state_body
 
 
-def test_runtime_profile_route_maps_nadia_to_dedicated_venice_gateway(tmp_path, monkeypatch):
-    config_path = tmp_path / "config.json"
-    env_path = tmp_path / ".env"
-    monkeypatch.setenv("MARAS_SWITCHBOARD_CONFIG_FILE", str(config_path))
-    monkeypatch.setenv("MARAS_SWITCHBOARD_ENV_FILE", str(env_path))
-
-    status, _, body = asyncio.run(
-        _request(
-            "/api/runtime/profile",
-            method="POST",
-            json_payload={"profile": "nadia"},
-        )
-    )
-    written = config_path.read_text(encoding="utf-8")
-
-    assert status == 200
-    assert '"hermes_profile": "nadia"' in written
-    assert '"hermes_api_url": "http://127.0.0.1:8645/v1"' in written
-    assert '"hermes_api_model": "nadia"' in written
-    assert '"id": "nadia"' in body
-
-
-def test_runtime_profile_route_maps_default_to_mara(tmp_path, monkeypatch):
+def test_runtime_profile_route_maps_default_to_lola(tmp_path, monkeypatch):
     config_path = tmp_path / "config.json"
     env_path = tmp_path / ".env"
     monkeypatch.setenv("MARAS_SWITCHBOARD_CONFIG_FILE", str(config_path))
@@ -129,7 +129,7 @@ def test_runtime_profile_route_maps_default_to_mara(tmp_path, monkeypatch):
     written = config_path.read_text(encoding="utf-8")
 
     assert status == 200
-    assert '"hermes_profile": "voice-mara"' in written
-    assert '"hermes_api_url": "http://127.0.0.1:8644/v1"' in written
-    assert '"hermes_api_model": "voice-mara"' in written
-    assert '"id": "mara"' in body
+    assert '"hermes_profile": "lola"' in written
+    assert '"hermes_api_url": "http://127.0.0.1:8642/v1"' in written
+    assert '"hermes_api_model": "hermes-agent"' in written
+    assert '"id": "lola"' in body

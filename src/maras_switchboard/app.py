@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import NoReturn
@@ -16,34 +19,37 @@ from .windows_client_state import WindowsClientStateStore
 
 
 LOGGER = logging.getLogger(__name__)
+MARA_MEMORY_SENTINEL = os.environ.get(
+    "MARA_MEMORY_SENTINEL", "/home/gismar/bin/mara-memory-sentinel"
+)
+MARA_MEMORY_STATUS_FILE = Path(
+    os.environ.get(
+        "MARA_MEMORY_STATUS_FILE",
+        "/home/gismar/.hermes/status/mara-memory-status.json",
+    )
+)
 QWEN_VOICE_MODEL = "gpu/qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive"
 VENICE_VOICE_MODEL = "venice/venice-uncensored-1-2"
 DEFAULT_HERMES_VOICE_API_URL = "http://127.0.0.1:8643/v1"
 NADIA_VOICE_API_URL = "http://127.0.0.1:8645/v1"
 MARA_VOICE_API_URL = "http://127.0.0.1:8644/v1"
+LOLA_VOICE_API_URL = "http://127.0.0.1:8642/v1"
 LOCAL_HERMES_API_KEY = "local-hermes-key"
-DEFAULT_VOICE_PROFILE_ID = "mara"
+DEFAULT_VOICE_PROFILE_ID = "lola"
 VOICE_PROFILE_CHOICES = (
     {
-        "id": "juergen",
-        "label": "Juergen",
-        "hermes_profile": "juergen",
-        "hermes_api_url": DEFAULT_HERMES_VOICE_API_URL,
-        "hermes_model": QWEN_VOICE_MODEL,
-    },
-    {
-        "id": "nadia",
-        "label": "Nadia",
-        "hermes_profile": "nadia",
-        "hermes_api_url": NADIA_VOICE_API_URL,
-        "hermes_model": "nadia",
+        "id": "lola",
+        "label": "Lola",
+        "hermes_profile": "lola",
+        "hermes_api_url": LOLA_VOICE_API_URL,
+        "hermes_model": "hermes-agent",
     },
     {
         "id": "mara",
         "label": "Mara",
         "hermes_profile": "voice-mara",
-        "hermes_api_url": MARA_VOICE_API_URL,
-        "hermes_model": "voice-mara",
+        "hermes_api_url": LOLA_VOICE_API_URL,
+        "hermes_model": "hermes-agent",
     },
 )
 
@@ -73,6 +79,89 @@ def _media_dir() -> Path:
     if repo_media.is_dir():
         return repo_media
     return _static_dir() / "media"
+
+
+def _read_mara_memory_status() -> dict[str, object]:
+    if not MARA_MEMORY_STATUS_FILE.is_file():
+        return {"available": False, "status_file": str(MARA_MEMORY_STATUS_FILE)}
+    try:
+        data = json.loads(MARA_MEMORY_STATUS_FILE.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        return {
+            "available": False,
+            "status_file": str(MARA_MEMORY_STATUS_FILE),
+            "error": str(exc),
+        }
+    if isinstance(data, dict):
+        data.setdefault("available", True)
+        return data
+    return {
+        "available": False,
+        "status_file": str(MARA_MEMORY_STATUS_FILE),
+        "error": "status JSON is not an object",
+    }
+
+
+async def _run_mara_memory_sentinel_on_startup(app: web.Application) -> None:
+    sentinel = Path(MARA_MEMORY_SENTINEL)
+    if not sentinel.is_file():
+        LOGGER.warning("Mara memory sentinel missing: %s", sentinel)
+        app["mara_memory_startup"] = {
+            "status": "missing",
+            "sentinel": str(sentinel),
+        }
+        return
+    if not os.access(sentinel, os.X_OK):
+        LOGGER.warning("Mara memory sentinel is not executable: %s", sentinel)
+        app["mara_memory_startup"] = {
+            "status": "not_executable",
+            "sentinel": str(sentinel),
+        }
+        return
+
+    env = os.environ.copy()
+    path_parts = [
+        "/home/linuxbrew/.linuxbrew/bin",
+        "/usr/local/bin",
+        "/usr/bin",
+        "/bin",
+        "/usr/sbin",
+        "/sbin",
+    ]
+    existing_path = env.get("PATH")
+    if existing_path:
+        path_parts.append(existing_path)
+    env["PATH"] = ":".join(path_parts)
+
+    proc = await asyncio.create_subprocess_exec(
+        str(sentinel),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+        env=env,
+    )
+    try:
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=45)
+    except TimeoutError:
+        proc.kill()
+        await proc.wait()
+        LOGGER.warning("Mara memory sentinel timed out during Switchboard startup")
+        app["mara_memory_startup"] = {
+            "status": "timeout",
+            "sentinel": str(sentinel),
+        }
+        return
+
+    output = stdout.decode(errors="replace")[-2000:] if stdout else ""
+    app["mara_memory_startup"] = {
+        "status": "ok" if proc.returncode == 0 else "fail",
+        "exit_code": proc.returncode,
+        "sentinel": str(sentinel),
+        "output_tail": output,
+    }
+    if proc.returncode == 0:
+        LOGGER.info("Mara memory sentinel OK during Switchboard startup")
+    else:
+        LOGGER.warning("Mara memory sentinel failed during startup: %s", output)
 
 
 def _default_avatar_preset(saved: dict[str, object]) -> str:
@@ -175,6 +264,8 @@ def create_app() -> web.Application:
                 "runtime_ready": state["status"]["runtime_ready"],
                 "config_path": state["saved"]["config_path"],
                 "env_path": state["saved"]["env_path"],
+                "mara_memory": _read_mara_memory_status(),
+                "mara_memory_startup": request.app.get("mara_memory_startup"),
             }
         )
 
@@ -330,6 +421,7 @@ def create_app() -> web.Application:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
 
     app = web.Application(middlewares=[error_middleware])
+    app.on_startup.append(_run_mara_memory_sentinel_on_startup)
     add_route("GET", "/", root)
     add_route("GET", "/setup", setup_page)
     add_route("GET", "/setup/", setup_page_slash)
