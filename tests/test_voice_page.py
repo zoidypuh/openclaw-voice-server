@@ -305,14 +305,18 @@ def test_voice_html_uses_db_threshold_and_wait_after_speak_slider():
     assert '<span class="power-label power-label-on">ON</span>' in voice_html
     assert 'id="corner-controls"' in voice_html
     assert 'class="profile-btn" type="button" data-profile="lola"' in voice_html
-    assert 'class="profile-btn" type="button" data-profile="mara"' in voice_html
+    assert 'class="profile-btn" type="button" data-profile="mara"' not in voice_html
     assert "/static/media/profile-nadia-pixel.png" in voice_html
+    assert "/static/media/profile-mara-pixel.png" not in voice_html
     assert "api/runtime/profile" in voice_html
     assert "ws.close(1000, 'profile switch');" in voice_html
     assert "await setPausedState(false, { forceInterrupt: true });" in voice_html
+    assert ".profile-btn.active.thinking {" in voice_html
+    assert "animation: profileWorkingGlow 760ms ease-in-out infinite;" in voice_html
     assert ".profile-btn.active.thinking::before" in voice_html
     assert ".profile-btn.active img" in voice_html
     assert "drop-shadow(0 0 10px rgba(109,226,255,0.68));" in voice_html
+    assert "@keyframes profileWorkingGlow" in voice_html
     assert "@keyframes profileThinkingBubbles" in voice_html
     assert ".profile-btn.active.speaking::after" in voice_html
     assert "button.classList.add(currentState);" in voice_html

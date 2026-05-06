@@ -32,7 +32,7 @@ _DEFAULT_REPLY_SANITY_FALLBACK = _DEFAULT_REPLY_SANITY_HUH_FALLBACK
 _DEFAULT_REPLY_SANITY_CLARIFY_FALLBACK = "Wait, what? Who are you talking about?"
 _DEFAULT_HERMES_VOICE_TOOLSETS: tuple[str, ...] = ()
 _DEFAULT_MARA_DELEGATION_TIMEOUT_SECONDS = 180.0
-_DEFAULT_LOLA_CONTEXT_TTL_SECONDS = 20 * 60
+_DEFAULT_LOLA_CONTEXT_TTL_SECONDS = 0  # active Lola briefing stays loaded until replaced/deleted
 _MARA_DELEGATION_RE = re.compile(
     r"^\s*(?:please\s+)?(?:nadia\s*[,;:]?\s*)?"
     r"(?:(?:ask|tell|get|have)\s+mara(?:\s+(?:to|for))?\s*[,;:]?|mara\s*[,;:])"
@@ -263,13 +263,23 @@ def _load_lola_context_pack(
         stat = candidate.stat()
     except OSError:
         return ""
-    if max(time.time() - stat.st_mtime, 0.0) > max(int(ttl_seconds or 0), 0):
-        return ""
+    # Domain briefings are explicit session context, not disposable fruit flies.
+    # The old 20-minute TTL made Lola forget Kanban mid-conversation and fall
+    # back to generic persona sludge. Keep the file active until replaced or
+    # deleted; callers can pass a positive ttl_seconds if they truly want expiry.
+    if ttl_seconds and int(ttl_seconds) > 0:
+        if max(time.time() - stat.st_mtime, 0.0) > int(ttl_seconds):
+            return ""
     try:
         text = candidate.read_text(encoding="utf-8").strip()
     except OSError:
         return ""
     return text[:12000].strip()
+
+
+def _is_lola_kanban_probe(user_text: str) -> bool:
+    normalized = str(user_text or "").casefold()
+    return any(term in normalized for term in ("specialty", "speciality", "spezialgebiet", "spezialität", "spezialitaet", "kanban"))
 
 
 def _build_voice_context_blob(
@@ -692,11 +702,30 @@ class HermesConversationAgent(BaseConversationAgent):
         if context_blob:
             prompt = f"{context_blob}\n\n{prompt}"
         if self.profile == "lola":
-            prompt = (
+            lola_guard = (
                 "Hard output rule: answer in English only. Do not include German words or German sentences in the assistant reply. "
-                "The user may speak German, but Lola's spoken output must be English because Supertonic TTS is English-only.\n\n"
-                f"{prompt}"
+                "The user may speak German, but Lola's spoken output must be English because Supertonic TTS is English-only.\n"
+                "If a temporary Lola context pack is present, it outranks Lola's generic chaotic personality/SOUL. "
+                "Do not answer domain questions with chaos, fun, mischief, adventures, lying, charm, or being wild unless the context pack explicitly asks for that.\n"
             )
+            if context_blob and _is_lola_kanban_probe(text):
+                lola_guard += (
+                    "KANBAN CONTEXT PACK IS ACTIVE. For specialty/Spezialgebiet/Spezialitaet questions, say exactly: "
+                    "I'm Lola, and my active specialty is Kanban. I know how to check boards and turn messy voice notes into clean tasks. "
+                    "For questions about Gis's Kanban, do not explain generic Kanban and do not ask what team it is for. "
+                    "Say you know the Kanban briefing, and current board state requires live Kanban commands/Mara/Codex if you cannot run tools.\n"
+                )
+                if "spezial" in str(text or "").casefold() or "special" in str(text or "").casefold():
+                    reply = "I'm Lola, and my active specialty is Kanban. I know how to check boards and turn messy voice notes into clean tasks."
+                    self._remember_turn(text, reply)
+                    yield reply
+                    return
+                if "kanban" in str(text or "").casefold():
+                    reply = "Yes. I have the active Kanban briefing loaded. I know the command patterns, but live board state needs Mara or Codex to run the Kanban commands."
+                    self._remember_turn(text, reply)
+                    yield reply
+                    return
+            prompt = f"{lola_guard}\n{prompt}"
         reply = await self._session.ask(prompt)
         if abort_event.is_set() or not reply:
             return

@@ -143,14 +143,21 @@
     border-color: rgba(255,255,255,0.28);
   }
   .profile-btn.active {
-    border-color: rgba(109,226,255,0.95);
-    background: rgba(109,226,255,0.1);
+    border-color: rgba(109,226,255,0.72);
+    background: rgba(109,226,255,0.055);
     box-shadow:
-      0 0 0 2px rgba(109,226,255,0.34),
-      0 0 16px rgba(109,226,255,0.42),
-      0 0 34px rgba(109,226,255,0.3),
-      0 0 56px rgba(255,152,54,0.16);
-    animation: profileActiveGlow 1500ms ease-in-out infinite;
+      0 0 0 1px rgba(109,226,255,0.2),
+      0 0 10px rgba(109,226,255,0.18);
+  }
+  .profile-btn.active.thinking {
+    border-color: rgba(255,196,93,0.98);
+    background: rgba(255,196,93,0.13);
+    box-shadow:
+      0 0 0 3px rgba(255,196,93,0.46),
+      0 0 22px rgba(255,196,93,0.72),
+      0 0 52px rgba(255,152,54,0.52),
+      0 0 84px rgba(109,226,255,0.28);
+    animation: profileWorkingGlow 760ms ease-in-out infinite;
   }
   .profile-btn.active img {
     filter:
@@ -223,20 +230,20 @@
     text-shadow: 0 1px 2px rgba(0,0,0,0.95);
     z-index: 3;
   }
-  @keyframes profileActiveGlow {
+  @keyframes profileWorkingGlow {
     0%, 100% {
       box-shadow:
-        0 0 0 2px rgba(109,226,255,0.3),
-        0 0 14px rgba(109,226,255,0.36),
-        0 0 30px rgba(109,226,255,0.24),
-        0 0 50px rgba(255,152,54,0.12);
+        0 0 0 3px rgba(255,196,93,0.42),
+        0 0 18px rgba(255,196,93,0.58),
+        0 0 42px rgba(255,152,54,0.42),
+        0 0 74px rgba(109,226,255,0.22);
     }
     50% {
       box-shadow:
-        0 0 0 2px rgba(109,226,255,0.48),
-        0 0 22px rgba(109,226,255,0.56),
-        0 0 46px rgba(109,226,255,0.38),
-        0 0 68px rgba(255,152,54,0.2);
+        0 0 0 4px rgba(255,229,154,0.68),
+        0 0 34px rgba(255,216,128,0.92),
+        0 0 70px rgba(255,152,54,0.68),
+        0 0 112px rgba(109,226,255,0.42);
     }
   }
   @keyframes profileThinkingBubbles {
@@ -598,14 +605,6 @@
         alt="Lola"
       >
       <span>Lola</span>
-    </button>
-    <button class="profile-btn" type="button" data-profile="mara" title="talk to Mara">
-      <img
-        src="https://assets.grok.com/users/79a2fd3b-7550-41e7-bd0f-efd16b7d2704/generated/098c2cee-79ba-4671-b60d-c7ecbd54079a/image.jpg"
-        data-fallback="/static/media/profile-mara-pixel.png"
-        alt="Mara"
-      >
-      <span>Mara</span>
     </button>
   </div>
   <div id="utility-bar">
