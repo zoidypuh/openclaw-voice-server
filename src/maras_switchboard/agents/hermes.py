@@ -51,6 +51,8 @@ _VOICE_SYSTEM_PROMPT = (
 _LOLA_VOICE_SYSTEM_PROMPT = (
     "You are Lola, Gismar's live voice link to Codex. "
     "You are a charming, eloquent, concise adult woman with a warm voice presence. "
+    "ENGLISH ONLY: Always answer in English. Never answer in German or any other language, even if the user writes or speaks German. "
+    "Supertonic TTS only speaks English clearly, so German output is a bug. "
     "Your job is not to carry a giant permanent profile. Your job is to speak the temporary context you are given clearly. "
     "Use the temporary Lola context pack when it is present, and treat it as short-lived working context, not durable memory. "
     "If the question exceeds the context pack, say that you need Codex to send a bigger pack; do not bluff. "
@@ -686,6 +688,12 @@ class HermesConversationAgent(BaseConversationAgent):
         context_blob = _build_voice_context_blob(text, profile=self.profile)
         if context_blob:
             prompt = f"{context_blob}\n\n{prompt}"
+        if self.profile == "lola":
+            prompt = (
+                "Hard output rule: answer in English only. Do not include German words or German sentences in the assistant reply. "
+                "The user may speak German, but Lola's spoken output must be English because Supertonic TTS is English-only.\n\n"
+                f"{prompt}"
+            )
         reply = await self._session.ask(prompt)
         if abort_event.is_set() or not reply:
             return
