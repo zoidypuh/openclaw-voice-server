@@ -303,6 +303,14 @@
     border-color: rgba(134,200,255,0.3);
     background: rgba(134,200,255,0.08);
   }
+  #talk-toggle-btn {
+    min-width: 5.2rem;
+  }
+  #talk-toggle-btn.active {
+    color: #ffd39a;
+    border-color: rgba(255,152,54,0.42);
+    background: rgba(255,152,54,0.12);
+  }
   #pause-btn {
     position: fixed;
     top: 16px;
@@ -602,6 +610,7 @@
   </div>
   <div id="utility-bar">
     <button id="interrupt-btn" class="mini-btn" type="button">interrupt</button>
+    <button id="talk-toggle-btn" class="mini-btn" type="button" aria-pressed="false">talk</button>
     <button id="mute-btn" class="mini-btn" type="button">mute</button>
     <button id="play-reply-btn" class="mini-btn hidden" type="button">play reply</button>
     <button id="sliders-toggle" class="mini-btn active" type="button">threshold</button>
@@ -867,6 +876,8 @@ const LEVEL_PEAK_HOLD_MS = 5000;
 const WAIT_AFTER_SPEAK_MIN_MS = 500;
 const WAIT_AFTER_SPEAK_MAX_MS = 2500;
 const MAX_BUFFERED_TURN_MS = 12000;
+const HOLD_TO_TALK_INPUT_THRESHOLD_DB = -58;
+const HOLD_TO_TALK_WAIT_AFTER_SPEAK_MS = MAX_BUFFERED_TURN_MS;
 const TARGET_CAPTURE_SAMPLE_RATE = 16000;
 const SPEECH_ZCR_MIN = 0.008;
 const SPEECH_ZCR_MAX = 0.24;
@@ -1330,6 +1341,9 @@ function formatWaitAfterSpeak(ms) {
 }
 
 function resolveWaitAfterSpeakMs() {
+  if (isHoldToTalkActive()) {
+    return HOLD_TO_TALK_WAIT_AFTER_SPEAK_MS;
+  }
   return clampNumber(
     tuning.waitAfterSpeakMs,
     WAIT_AFTER_SPEAK_MIN_MS,
@@ -1357,6 +1371,13 @@ function clearStatusHint() {
 
 function isHoldToTalkActive() {
   return holdToTalkActive;
+}
+
+function resolveTurnInputThresholdDb() {
+  if (isHoldToTalkActive()) {
+    return HOLD_TO_TALK_INPUT_THRESHOLD_DB;
+  }
+  return tuning.inputThresholdDb;
 }
 
 function queuePendingTurn(audioBuffer, { commitMeta = null } = {}) {
@@ -1556,9 +1577,14 @@ function scheduleListeningStatusRestore() {
 function updateControlStates() {
   const pauseBtn = document.getElementById('pause-btn');
   const muteBtn = document.getElementById('mute-btn');
+  const talkToggleBtn = document.getElementById('talk-toggle-btn');
   pauseBtn.classList.toggle('active', !paused);
   pauseBtn.setAttribute('aria-pressed', paused ? 'false' : 'true');
   pauseBtn.setAttribute('aria-label', paused ? 'voice off' : 'voice on');
+  talkToggleBtn.textContent = holdToTalkActive ? 'send' : 'talk';
+  talkToggleBtn.classList.toggle('active', holdToTalkActive);
+  talkToggleBtn.setAttribute('aria-pressed', holdToTalkActive ? 'true' : 'false');
+  talkToggleBtn.setAttribute('aria-label', holdToTalkActive ? 'stop speaking and send' : 'start speaking');
   muteBtn.textContent = 'mute';
   muteBtn.classList.toggle('active', muted);
   renderInterruptControls();
@@ -1574,7 +1600,7 @@ function applyMicMuteState() {
   }
 }
 
-function commitBufferedTurnNow() {
+function commitBufferedTurnNow({ reason = 'manual-release' } = {}) {
   if (
     !hasSpeech
     || audioChunks.length === 0
@@ -1586,15 +1612,25 @@ function commitBufferedTurnNow() {
   ) {
     return false;
   }
-  sendBufferedTurn(flattenAudio(audioChunks));
+  const speechDuration = speechStart ? performance.now() - speechStart : 0;
+  sendBufferedTurn(flattenAudio(audioChunks), {
+    commitMeta: {
+      reason,
+      speechMs: speechDuration,
+      silenceMs: 0,
+      thresholdDb: resolveTurnInputThresholdDb(),
+      levelDb: currentLevelDb,
+      waitAfterSpeakMs: 0,
+    },
+  });
   resetCaptureBuffer();
   return true;
 }
 
-function setMutedState(nextMuted, { commitOnMute = true } = {}) {
+function setMutedState(nextMuted, { commitOnMute = true, resetBuffer = true } = {}) {
   muted = Boolean(nextMuted);
   applyMicMuteState();
-  if (!muted || !commitOnMute || !commitBufferedTurnNow()) {
+  if (resetBuffer && (!muted || !commitOnMute || !commitBufferedTurnNow())) {
     resetCaptureBuffer();
   }
   resetInterruptSpeechDetection();
@@ -2993,13 +3029,11 @@ async function beginHoldToTalk() {
     return;
   }
   holdToTalkActive = true;
+  updateControlStates();
+  resetCaptureBuffer();
   setMutedState(false, { commitOnMute: false });
   if (paused) {
     await setPausedState(false);
-  }
-  if (busy || replyActive || currentAudio || audioQueue.length > 0 || currentState === 'speaking' || currentState === 'thinking') {
-    requestInterrupt({ keepPaused: false, preservePendingInput: true });
-    return;
   }
   if (!interruptPending) {
     pendingIdle = false;
@@ -3011,9 +3045,13 @@ function endHoldToTalk() {
   if (!holdToTalkActive) {
     return false;
   }
-  const sent = commitBufferedTurnNow();
+  setMutedState(true, { commitOnMute: false, resetBuffer: false });
+  const sent = commitBufferedTurnNow({ reason: 'hold-release' });
   holdToTalkActive = false;
-  setMutedState(true, { commitOnMute: false });
+  updateControlStates();
+  if (!sent) {
+    resetCaptureBuffer();
+  }
   if (sent) {
     return true;
   }
@@ -3022,6 +3060,14 @@ function endHoldToTalk() {
     setState('listening');
   }
   return false;
+}
+
+async function toggleHoldToTalk() {
+  if (holdToTalkActive) {
+    endHoldToTalk();
+    return;
+  }
+  await beginHoldToTalk();
 }
 
 async function setPausedState(nextPaused, { forceInterrupt = false } = {}) {
@@ -3390,7 +3436,7 @@ function onAudioProcess(event) {
   if (!isHoldToTalkActive() && (busy || currentAudio || audioQueue.length > 0 || currentState === 'speaking')) {
     return;
   }
-  const turnThresholdDb = tuning.inputThresholdDb;
+  const turnThresholdDb = resolveTurnInputThresholdDb();
   const turnAboveThreshold = baseLevel > turnThresholdDb;
   if (turnAboveThreshold) {
     if (!speechStart) speechStart = now;
@@ -3524,6 +3570,10 @@ document.getElementById('mute-btn').addEventListener('click', () => {
   if (!nextMuted && paused) {
     void setPausedState(false);
   }
+});
+
+document.getElementById('talk-toggle-btn').addEventListener('click', () => {
+  void toggleHoldToTalk();
 });
 
 document.getElementById('play-reply-btn').addEventListener('click', () => {

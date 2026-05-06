@@ -479,11 +479,10 @@ class SetupService:
                 (settings.get("agent") or {}).get("hermes_api_url") or DEFAULT_HERMES_API_URL
             ).strip()
             or DEFAULT_HERMES_API_URL,
-            "hermes_api_model": str(
-                (settings.get("agent") or {}).get("hermes_api_model") or DEFAULT_HERMES_API_MODEL
-            ).strip()
-            or DEFAULT_HERMES_API_MODEL,
         }
+        hermes_api_model = str((settings.get("agent") or {}).get("hermes_api_model") or "").strip()
+        if hermes_api_model:
+            hermes_snapshot["hermes_api_model"] = hermes_api_model
         hermes_ready = bool(
             self._validated_config_matches(hermes_snapshot, validation["hermes"])
             and hermes_api_key_fingerprint == str(validation["hermes"].get("api_key_fingerprint") or "")
@@ -644,24 +643,19 @@ class SetupService:
             hermes_api_url = normalize_gateway_url(
                 str(payload.get("hermes_api_url") or agent_settings.get("hermes_api_url") or DEFAULT_HERMES_API_URL).strip()
             )
-            hermes_api_model = (
-                str(payload.get("hermes_api_model") or agent_settings.get("hermes_api_model") or DEFAULT_HERMES_API_MODEL).strip()
-                or DEFAULT_HERMES_API_MODEL
-            )
+            hermes_api_model = str(payload.get("hermes_api_model") or agent_settings.get("hermes_api_model") or "").strip()
             if "hermes_api_key" in payload:
                 hermes_api_key = str(payload.get("hermes_api_key") or "").strip()
             else:
                 hermes_api_key = str(settings["secrets"].get("hermes_api_key") or "").strip()
             if not hermes_api_url:
                 raise ValidationError("Enter the Hermes Agent API endpoint.")
-            if not hermes_api_model:
-                raise ValidationError("Enter the Hermes Agent model.")
             result = await validate_hermes_connection(
                 project_root=hermes_root,
                 profile=hermes_profile,
                 api_url=hermes_api_url,
                 api_key=hermes_api_key,
-                api_model=hermes_api_model,
+                api_model=hermes_api_model or None,
             )
             resolved_root = str(result["project_root"])
             resolved_api_url = str(result.get("api_url") or hermes_api_url)
@@ -669,8 +663,9 @@ class SetupService:
                 "hermes_root": resolved_root,
                 "hermes_profile": hermes_profile,
                 "hermes_api_url": resolved_api_url,
-                "hermes_api_model": hermes_api_model,
             }
+            if hermes_api_model:
+                hermes_config["hermes_api_model"] = hermes_api_model
             self.store.update_config(
                 {
                     "agent": {

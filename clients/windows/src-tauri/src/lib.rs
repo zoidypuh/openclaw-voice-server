@@ -27,7 +27,7 @@ const MENU_QUIT: &str = "quit";
 const VOICE_URL: &str = "http://127.0.0.1:8765/voice";
 const STATUS_URL: &str = "http://127.0.0.1:8765/api/windows-client/status";
 const STATUS_POLL_INTERVAL: Duration = Duration::from_millis(1200);
-const HOLD_TO_TALK_SHORTCUT: &str = "Ctrl+Alt+Shift+A";
+const HOLD_TO_TALK_SHORTCUT: &str = "Alt+Shift+A";
 const APP_WINDOW_TITLE: &str = "Mara's Switchboard";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

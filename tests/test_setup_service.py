@@ -952,13 +952,12 @@ def test_runtime_ready_accepts_hermes_live_config(tmp_path, monkeypatch):
                 },
                 "hermes": {
                     "config_hash": service._config_hash(
-                        {
-                            "hermes_root": str(hermes_root.resolve()),
-                            "hermes_profile": "voice",
-                            "hermes_api_url": "http://127.0.0.1:8642/v1/chat/completions",
-                            "hermes_api_model": "hermes-agent",
-                        }
-                    ),
+                            {
+                                "hermes_root": str(hermes_root.resolve()),
+                                "hermes_profile": "voice",
+                                "hermes_api_url": "http://127.0.0.1:8646/v1/chat/completions",
+                            }
+                        ),
                     "api_key_fingerprint": "",
                 },
             },

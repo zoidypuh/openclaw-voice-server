@@ -130,7 +130,7 @@ That removes TTS from the first-run debugging path.
 - The selected profile glows; thinking and speaking states animate on the portrait.
 - The voice UI starts muted. Click `mute` to unmute for normal freehand conversation; click it again to mute.
 - The small text box below the conversation panel sends typed turns with `Enter`. Use it when STT keeps mishearing a word.
-- The Windows tray client supports `Ctrl+Alt+Shift+A`: hold it to record, release it to send the captured speech, then the client returns to mute.
+- The Windows tray client supports `Alt+Shift+A`: hold it to record, release it to send the captured speech, then the client returns to mute.
 - The `interrupt` button toggles between inactive and `barge in`. There is no separate interrupt mode panel.
 - The `mute` button keeps the same label and uses its active state to show whether mute is enabled.
 - The sliders button opens the two live tuning controls: voice threshold and wait-after-speak.

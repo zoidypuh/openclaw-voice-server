@@ -83,8 +83,8 @@ def test_runtime_profile_route_maps_lola_to_single_live_hermes_gateway(tmp_path,
     written = config_path.read_text(encoding="utf-8")
     env_text = env_path.read_text(encoding="utf-8")
     assert '"hermes_profile": "lola"' in written
-    assert '"hermes_api_url": "http://127.0.0.1:8642/v1"' in written
-    assert '"hermes_api_model": "hermes-agent"' in written
+    assert '"hermes_api_url": "http://127.0.0.1:8646/v1"' in written
+    assert '"hermes_api_model"' not in written
     assert "MARAS_SWITCHBOARD_HERMES_API_KEY=local-hermes-key" in env_text
     assert '"id": "lola"' in body
     assert state_status == 200
@@ -108,8 +108,8 @@ def test_runtime_profile_route_maps_mara_to_single_live_hermes_gateway(tmp_path,
 
     assert status == 200
     assert '"hermes_profile": "voice-mara"' in written
-    assert '"hermes_api_url": "http://127.0.0.1:8642/v1"' in written
-    assert '"hermes_api_model": "hermes-agent"' in written
+    assert '"hermes_api_url": "http://127.0.0.1:8646/v1"' in written
+    assert '"hermes_api_model"' not in written
     assert '"id": "mara"' in body
 
 
@@ -130,6 +130,6 @@ def test_runtime_profile_route_maps_default_to_lola(tmp_path, monkeypatch):
 
     assert status == 200
     assert '"hermes_profile": "lola"' in written
-    assert '"hermes_api_url": "http://127.0.0.1:8642/v1"' in written
-    assert '"hermes_api_model": "hermes-agent"' in written
+    assert '"hermes_api_url": "http://127.0.0.1:8646/v1"' in written
+    assert '"hermes_api_model"' not in written
     assert '"id": "lola"' in body

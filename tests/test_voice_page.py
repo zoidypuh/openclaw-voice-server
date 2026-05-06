@@ -84,6 +84,7 @@ def test_voice_html_has_mute_button_and_mic_gate():
     assert 'id="shortcut-command"' not in voice_html
     assert "space / ctrl+alt+shift+a hold to talk" not in voice_html
     assert '<button id="interrupt-btn" class="mini-btn" type="button">interrupt</button>' in voice_html
+    assert '<button id="talk-toggle-btn" class="mini-btn" type="button" aria-pressed="false">talk</button>' in voice_html
     assert '<button id="mute-btn" class="mini-btn" type="button">mute</button>' in voice_html
     assert "let muted = true;" in voice_html
     assert "let interruptMode = 'off';" in voice_html
@@ -91,14 +92,20 @@ def test_voice_html_has_mute_button_and_mic_gate():
     assert "function voiceInterruptDisabled() {" in voice_html
     assert "function setInterruptMode(nextMode) {" in voice_html
     assert "function pauseButtonLabel() {" not in voice_html
-    assert "function commitBufferedTurnNow() {" in voice_html
+    assert "function commitBufferedTurnNow({ reason = 'manual-release' } = {}) {" in voice_html
     assert "async function beginHoldToTalk() {" in voice_html
     assert "function endHoldToTalk() {" in voice_html
-    assert "function setMutedState(nextMuted, { commitOnMute = true } = {}) {" in voice_html
-    assert "if (!muted || !commitOnMute || !commitBufferedTurnNow()) {" in voice_html
+    assert "function setMutedState(nextMuted, { commitOnMute = true, resetBuffer = true } = {}) {" in voice_html
+    assert "if (resetBuffer && (!muted || !commitOnMute || !commitBufferedTurnNow())) {" in voice_html
+    assert "waitAfterSpeakMs: 0," in voice_html
+    assert "setMutedState(true, { commitOnMute: false, resetBuffer: false });" in voice_html
+    assert "const sent = commitBufferedTurnNow({ reason: 'hold-release' });" in voice_html
     assert "track.enabled = micEnabled;" in voice_html
     assert "if (muted) {" in voice_html
     assert "document.getElementById('interrupt-btn').addEventListener('click', () => {" in voice_html
+    assert "document.getElementById('talk-toggle-btn').addEventListener('click', () => {" in voice_html
+    assert "async function toggleHoldToTalk() {" in voice_html
+    assert "talkToggleBtn.textContent = holdToTalkActive ? 'send' : 'talk';" in voice_html
     assert "document.getElementById('mute-btn').addEventListener('click', () => {" in voice_html
     assert "muteBtn.textContent = 'mute';" in voice_html
     assert "window.__marasSwitchboardHoldToTalkStart = beginHoldToTalk;" in voice_html
@@ -373,7 +380,12 @@ def test_voice_html_uses_db_threshold_and_wait_after_speak_slider():
     assert "tuning.waitAfterSpeakMs" in voice_html
     assert "manualFinish" not in voice_html
     assert "type: 'turn-commit'" in voice_html
-    assert "const turnThresholdDb = tuning.inputThresholdDb;" in voice_html
+    assert "const HOLD_TO_TALK_INPUT_THRESHOLD_DB = -58;" in voice_html
+    assert "const HOLD_TO_TALK_WAIT_AFTER_SPEAK_MS = MAX_BUFFERED_TURN_MS;" in voice_html
+    assert "function resolveTurnInputThresholdDb() {" in voice_html
+    assert "return HOLD_TO_TALK_INPUT_THRESHOLD_DB;" in voice_html
+    assert "return HOLD_TO_TALK_WAIT_AFTER_SPEAK_MS;" in voice_html
+    assert "const turnThresholdDb = resolveTurnInputThresholdDb();" in voice_html
     assert "const turnAboveThreshold = baseLevel > turnThresholdDb;" in voice_html
     assert "const WAIT_AFTER_SPEAK_STORAGE_LOCK_KEY = 'waitAfterSpeakMsLocked';" in voice_html
     assert "const waitAfterSpeakLocked = parsed[WAIT_AFTER_SPEAK_STORAGE_LOCK_KEY] === true;" in voice_html

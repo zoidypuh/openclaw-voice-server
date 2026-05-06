@@ -10,13 +10,13 @@ DEFAULT_VOICE_SESSION_KEY = "agent:main:voice-chat-main"
 DEFAULT_LOCAL_GATEWAY_URL = "http://127.0.0.1:18789"
 DEFAULT_HERMES_ROOT = str((Path.home() / ".hermes" / "hermes-agent").resolve())
 DEFAULT_HERMES_PROFILE = "voice"
-DEFAULT_HERMES_API_URL = "http://127.0.0.1:8642/v1/chat/completions"
+DEFAULT_HERMES_API_URL = "http://127.0.0.1:8646/v1/chat/completions"
 DEFAULT_HERMES_API_MODEL = "hermes-agent"
 DEFAULT_REMOTE_WHISPER_HOST_ALIAS = "remote-whisper"
 DEFAULT_REMOTE_WHISPER_PORT = 18000
 DEFAULT_REMOTE_WHISPER_ENDPOINT_PATH = "/v1/audio/transcriptions"
 DEFAULT_REMOTE_WHISPER_MODEL = "distil-large-v3"
-HOLD_TO_TALK_SHORTCUT_LABEL = "Ctrl+Alt+Shift+A"
+HOLD_TO_TALK_SHORTCUT_LABEL = "Alt+Shift+A"
 ELEVENLABS_DEFAULT_PRESET = "natural"
 XAI_TTS_DEFAULT_VOICE = "Eve"
 XAI_TTS_DEFAULT_LANGUAGE = "en"
@@ -234,7 +234,6 @@ DEFAULT_CONFIG = {
         "hermes_root": DEFAULT_HERMES_ROOT,
         "hermes_profile": DEFAULT_HERMES_PROFILE,
         "hermes_api_url": DEFAULT_HERMES_API_URL,
-        "hermes_api_model": DEFAULT_HERMES_API_MODEL,
         "use_context_files": True,
         "use_memory": True,
         "reply_sanity_check": True,

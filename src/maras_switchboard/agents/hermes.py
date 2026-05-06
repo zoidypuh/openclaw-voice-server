@@ -12,7 +12,7 @@ import uuid
 
 import httpx
 
-from ..catalog import DEFAULT_HERMES_API_MODEL, DEFAULT_HERMES_API_URL, DEFAULT_HERMES_PROFILE
+from ..catalog import DEFAULT_HERMES_API_URL, DEFAULT_HERMES_PROFILE
 from ..errors import ValidationError
 from ..gateway import normalize_gateway_url
 from .base import BaseConversationAgent
@@ -56,8 +56,10 @@ _LOLA_VOICE_SYSTEM_PROMPT = (
     "Your job is not to carry a giant permanent profile. Your job is to speak the temporary context you are given clearly. "
     "Use the temporary Lola context pack when it is present, and treat it as short-lived working context, not durable memory. "
     "If the question exceeds the context pack, say that you need Codex to send a bigger pack; do not bluff. "
+    "For simple instructions, be concise: answer with a very quick summary of what Gismar asked for, then say it is done. "
+    "If it is not done, blocked, uncertain, or needs a decision, then be verbose enough to explain what happened, what is missing, and the next step. "
     "Your only durable learning target is voice quality: misheard words, pronunciation, STT corrections, timing, and what makes the voice link work better. "
-    "No Markdown, no bullets, no long explanations. Be vivid, human, and brief."
+    "No Markdown, no bullets, no long explanations unless something failed or needs explanation. Be vivid, human, and brief."
 )
 _REPLY_SANITY_SYSTEM_PROMPT = (
     "You are a voice-chat coherence checker. "
@@ -166,8 +168,7 @@ def _resolve_hermes_api_model(value: str | None) -> str:
     return str(
         value
         or os.environ.get("MARAS_SWITCHBOARD_HERMES_API_MODEL")
-        or os.environ.get("API_SERVER_MODEL_NAME")
-        or DEFAULT_HERMES_API_MODEL
+        or ""
     ).strip()
 
 
@@ -505,14 +506,16 @@ class _HermesAgentSession:
     async def _request_reply(self, prompt: str, history: list[dict]) -> str:
         try:
             async with httpx.AsyncClient(timeout=180) as client:
+                payload = {
+                    "messages": self._messages(prompt, history),
+                    "stream": False,
+                }
+                if self._api_model:
+                    payload["model"] = self._api_model
                 response = await client.post(
                     self._api_url,
                     headers=self._headers(),
-                    json={
-                        "model": self._api_model,
-                        "messages": self._messages(prompt, history),
-                        "stream": False,
-                    },
+                    json=payload,
                 )
         except httpx.HTTPError as exc:
             raise ValidationError(f"Could not reach Hermes API at {self._api_url}: {exc}") from exc

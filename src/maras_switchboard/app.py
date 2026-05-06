@@ -33,7 +33,7 @@ VENICE_VOICE_MODEL = "venice/venice-uncensored-1-2"
 DEFAULT_HERMES_VOICE_API_URL = "http://127.0.0.1:8643/v1"
 NADIA_VOICE_API_URL = "http://127.0.0.1:8645/v1"
 MARA_VOICE_API_URL = "http://127.0.0.1:8644/v1"
-LOLA_VOICE_API_URL = "http://127.0.0.1:8642/v1"
+LOLA_VOICE_API_URL = "http://127.0.0.1:8646/v1"
 LOCAL_HERMES_API_KEY = "local-hermes-key"
 DEFAULT_VOICE_PROFILE_ID = "lola"
 VOICE_PROFILE_CHOICES = (
@@ -42,14 +42,12 @@ VOICE_PROFILE_CHOICES = (
         "label": "Lola",
         "hermes_profile": "lola",
         "hermes_api_url": LOLA_VOICE_API_URL,
-        "hermes_model": "hermes-agent",
     },
     {
         "id": "mara",
         "label": "Mara",
         "hermes_profile": "voice-mara",
         "hermes_api_url": LOLA_VOICE_API_URL,
-        "hermes_model": "hermes-agent",
     },
 )
 
@@ -208,7 +206,6 @@ def _public_voice_profile(profile: dict[str, str]) -> dict[str, str]:
         "label": profile["label"],
         "hermes_profile": profile["hermes_profile"],
         "hermes_api_url": profile["hermes_api_url"],
-        "hermes_model": profile["hermes_model"],
     }
 
 
@@ -281,16 +278,8 @@ def create_app() -> web.Application:
                 profile["id"]
                 for profile in VOICE_PROFILE_CHOICES
                 if profile["hermes_profile"] == current_profile
-                and profile["hermes_model"] == str(agent.get("hermes_api_model") or "").strip()
             ),
-            next(
-                (
-                    profile["id"]
-                    for profile in VOICE_PROFILE_CHOICES
-                    if profile["hermes_profile"] == current_profile
-                ),
-                _default_voice_profile()["id"],
-            ),
+            _default_voice_profile()["id"],
         )
         return web.json_response(
             {
@@ -318,7 +307,6 @@ def create_app() -> web.Application:
                     "backend": "hermes",
                     "hermes_profile": selected["hermes_profile"],
                     "hermes_api_url": selected["hermes_api_url"],
-                    "hermes_api_model": selected["hermes_model"],
                 }
             }
         )

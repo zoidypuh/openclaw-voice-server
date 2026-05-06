@@ -6,7 +6,7 @@ It does not replace the Python backend. It opens the existing voice runtime at `
 
 ## Keyboard Shortcut
 
-- `Ctrl+Alt+Shift+A`: hold to record, release to send the captured speech to the Python backend, then return to mute.
+- `Alt+Shift+A`: hold to record, release to send the captured speech to the Python backend, then return to mute.
 
 There are no configurable keyboard shortcuts in the setup UI.
 
@@ -170,6 +170,6 @@ When testing voice behavior, verify all of these cases explicitly:
 
 - the UI starts muted.
 - clicking `mute` un-mutes the mic for normal freehand conversation.
-- holding `Ctrl+Alt+Shift+A` captures a held turn and releasing it sends immediately, then returns the UI to mute.
+- holding `Alt+Shift+A` captures a held turn and releasing it sends immediately, then returns the UI to mute.
 - Tray `Interrupt Now` interrupts immediately while the agent is speaking.
 - no spoken command phrases are interpreted by the backend.
