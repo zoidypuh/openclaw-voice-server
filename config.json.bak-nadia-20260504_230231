@@ -1,0 +1,145 @@
+{
+  "agent": {
+    "backend": "hermes",
+    "hermes_api_model": "voice-mara",
+    "hermes_api_url": "http://127.0.0.1:8644/v1",
+    "hermes_profile": "voice-mara",
+    "hermes_root": "/home/gismar/.hermes/hermes-agent",
+    "reply_sanity_check": false,
+    "toolsets": [],
+    "use_context_files": false,
+    "use_memory": false
+  },
+  "audio": {
+    "min_speech_ms": 350,
+    "silence_ms": 900,
+    "silence_threshold": 0.015
+  },
+  "gateway": {
+    "model": "gpt-5.4-mini",
+    "session_key": "agent:main:telegram:group:-1003727091860:topic:1429",
+    "url": "http://127.0.0.1:8317/v1/chat/completions"
+  },
+  "schema_version": 1,
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8765
+  },
+  "stt": {
+    "backend_models": {
+      "faster-whisper": "large-v3",
+      "whisper": "large",
+      "xai": "xai-stt"
+    },
+    "compute_type": "int8",
+    "default_backend": "xai",
+    "device": "cpu",
+    "enabled_backends": [
+      "xai"
+    ],
+    "language": "en",
+    "speech_precheck": false,
+    "vad_filter": true,
+    "vad_min_silence_duration_ms": 300,
+    "whisper_endpoint_model": "",
+    "whisper_endpoint_url": ""
+  },
+  "tts": {
+    "chatterbox_device": "auto",
+    "chatterbox_exaggeration": 0.5,
+    "chatterbox_python_path": "/home/gismar/coding/chatterbox-tts/.venv/bin/python",
+    "chatterbox_repetition_penalty": 1.2,
+    "chatterbox_temperature": 0.8,
+    "chatterbox_top_k": 1000,
+    "chatterbox_top_p": 0.95,
+    "chatterbox_voice_prompt_path": "/home/gismar/coding/maras-switchboard/tts-eleven/20260402-114806-811528-vd1if7jdvytaks4p0fiy-hello-from-mara-wait-he-really-had-to-put-my-nam-4093d71a.mp3",
+    "default_provider": "supertonic",
+    "edge_rate": "+0%",
+    "edge_voice": "de-DE-KatjaNeural",
+    "elevenlabs_model": "eleven_flash_v2_5",
+    "elevenlabs_preset": "expressive",
+    "elevenlabs_voice_id": "DEZHhPbmb8LVZmWufkCh",
+    "elevenlabs_voice_name": "Anna - Excited & Journalistic ",
+    "enabled_providers": [
+      "supertonic"
+    ],
+    "news_speakers": [
+      "bonnie",
+      "mara"
+    ],
+    "speaker_overrides": {
+      "juergen": {
+        "language": "en",
+        "provider": "supertonic",
+        "voice": "M3"
+      },
+      "mara": {
+        "language": "en",
+        "provider": "supertonic",
+        "voice": "F4"
+      },
+      "nadia": {
+        "language": "en",
+        "provider": "supertonic",
+        "voice": "F2"
+      }
+    },
+    "speaker_voice_ids": {},
+    "supertonic_language": "en",
+    "supertonic_python_path": "/home/gismar/coding/supertonic/.venv312/bin/python",
+    "supertonic_speed": 1.2,
+    "supertonic_total_steps": 3,
+    "supertonic_voice": "F2",
+    "xai_bit_rate": 128000,
+    "xai_language": "de",
+    "xai_output_codec": "mp3",
+    "xai_sample_rate": 44100,
+    "xai_voice_id": "Ara"
+  },
+  "validation": {
+    "chatterbox_turbo": {
+      "config_hash": "9bb594572aadee3d81448a099df374c09086fd9e438176085c2144f0a7df83ae"
+    },
+    "edge": {
+      "config_hash": "930933f938da441f930f299932d3b2acd354b4d84a01679fff0449838fb2fddb"
+    },
+    "eleven_key": {
+      "api_key_fingerprint": "088fd1cb8f03283b6c84ca869b87947267cf8908f9d10a7cfceb99baf85c92bf"
+    },
+    "eleven_voice": {
+      "api_key_fingerprint": "088fd1cb8f03283b6c84ca869b87947267cf8908f9d10a7cfceb99baf85c92bf",
+      "config_hash": "92f2a71d92069d24bca597c78569685852c48b997eb3af735f68b1c0501204f4"
+    },
+    "gateway": {
+      "config_hash": "0747344c3415c2cfe1472def7af4b960cefce8c6330b475b0ab432de10baf477",
+      "token_fingerprint": "323c289b82fc1d6754f99058873b7847d881cd014b550674eb82b8b34f6f4bbd"
+    },
+    "hermes": {
+      "api_key_fingerprint": "5c234218445589e426d5d27b705813fdea76d338eaa7a9b41a68c45cfeb545a0",
+      "config_hash": "038cba8d77a82bc1320b751e46c7aa2838fa856048e9c0b0446ffa9aa6bf3985"
+    },
+    "stt": {
+      "config_hash": "42549324a443b6e74c776b08cc06a9ced7111cf4f5f42656dc5fcd5607f066b7"
+    },
+    "supertonic": {
+      "config_hash": "3b7939271fb6caea4c148bfef44f1f0f7996767235e9ae7e64d19e91620e76e3"
+    },
+    "tts": {
+      "config_hash": "e8da6cef76b074d5774fb8e9c6a142d719b1d36454933b0be1505b3ead55aa50"
+    },
+    "windows_client": {
+      "config_hash": "9e6bb5ca5e9040e843755443f5afeeb2dc85dda2a544b7140244940a08832de3"
+    },
+    "xai_tts": {
+      "api_key_fingerprint": "6ae2765571549a5fc9e15e00b30a4bccf04d2069f2ebbff00fd192c4138787d3",
+      "config_hash": "dad5ae1ad8da5d83008fdb7d92c9a74e7d95e4110b466c2c3255760f2662417a"
+    }
+  },
+  "windows_client": {
+    "shortcuts": {
+      "interrupt": "Ctrl+Alt+Z",
+      "pause_resume": "Ctrl+Shift+A",
+      "toggle_window": "Ctrl+Shift+Space"
+    }
+  }
+}
