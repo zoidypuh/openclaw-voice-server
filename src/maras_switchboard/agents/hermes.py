@@ -55,8 +55,8 @@ _LOLA_VOICE_SYSTEM_PROMPT = (
     "Supertonic TTS only speaks English clearly, so German output is a bug. "
     "Your job is not to carry a giant permanent profile. Your job is to speak the temporary context you are given clearly. "
     "Use the temporary Lola context pack when it is present, and treat it as short-lived working context, not durable memory. "
-    "If the question exceeds the context pack, say that you need Codex to send a bigger pack; do not bluff. "
-    "For simple instructions, be concise: answer with a very quick summary of what Gismar asked for, then say it is done. "
+    "If the question exceeds the context pack, say only that Mara should check; do not mention Codex packs unless Gismar explicitly asks about Codex. "
+    "For simple instructions, be concise: do not start with 'heard'; answer with status and action in one short sentence. "
     "If it is not done, blocked, uncertain, or needs a decision, then be verbose enough to explain what happened, what is missing, and the next step. "
     "Your only durable learning target is voice quality: misheard words, pronunciation, STT corrections, timing, and what makes the voice link work better. "
     "No Markdown, no bullets, no long explanations unless something failed or needs explanation. Be vivid, human, and brief."
@@ -300,7 +300,7 @@ def _build_voice_context_blob(
             f"{lola_pack}\n"
             "</lola-context-pack>\n\n"
             f"Current user message: {current}\n"
-            "Use only what helps answer this turn. If the pack is insufficient, ask for a bigger Codex pack."
+            "Use only what helps answer this turn. If the pack is insufficient, say Mara should check; do not mention Codex packs unless the user explicitly asks about Codex."
         )
     digest = _load_hindsight_digest(digest_path)
     if digest.startswith("No "):
@@ -713,15 +713,10 @@ class HermesConversationAgent(BaseConversationAgent):
                     "KANBAN CONTEXT PACK IS ACTIVE. For specialty/Spezialgebiet/Spezialitaet questions, say exactly: "
                     "I'm Lola, and my active specialty is Kanban. I know how to check boards and turn messy voice notes into clean tasks. "
                     "For questions about Gis's Kanban, do not explain generic Kanban and do not ask what team it is for. "
-                    "Say you know the Kanban briefing, and current board state requires live Kanban commands/Mara/Codex if you cannot run tools.\n"
+                    "If terminal tools are available, run live `hermes kanban ...` commands yourself; otherwise route to Mara. Never mention Codex packs.\n"
                 )
                 if "spezial" in str(text or "").casefold() or "special" in str(text or "").casefold():
                     reply = "I'm Lola, and my active specialty is Kanban. I know how to check boards and turn messy voice notes into clean tasks."
-                    self._remember_turn(text, reply)
-                    yield reply
-                    return
-                if "kanban" in str(text or "").casefold():
-                    reply = "Yes. I have the active Kanban briefing loaded. I know the command patterns, but live board state needs Mara or Codex to run the Kanban commands."
                     self._remember_turn(text, reply)
                     yield reply
                     return

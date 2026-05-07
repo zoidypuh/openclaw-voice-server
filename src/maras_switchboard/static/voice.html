@@ -3436,6 +3436,7 @@ function onAudioProcess(event) {
     return;
   }
   const turnThresholdDb = resolveTurnInputThresholdDb();
+  const allowAutomaticTurnCommit = !isHoldToTalkActive();
   const turnAboveThreshold = baseLevel > turnThresholdDb;
   if (turnAboveThreshold) {
     if (!speechStart) speechStart = now;
@@ -3446,7 +3447,8 @@ function onAudioProcess(event) {
     const minSpeechDuration = Math.max(settings.min_speech_ms, TURN_COMMIT_MIN_SPEECH_MS);
     const turnEndSilenceMs = resolveWaitAfterSpeakMs();
     if (
-      speechDuration >= minSpeechDuration
+      allowAutomaticTurnCommit
+      && speechDuration >= minSpeechDuration
       && speechDuration >= MAX_BUFFERED_TURN_MS
     ) {
       sendBufferedTurn(flattenAudio(audioChunks), {
@@ -3478,7 +3480,8 @@ function onAudioProcess(event) {
   const minSpeechDuration = Math.max(settings.min_speech_ms, TURN_COMMIT_MIN_SPEECH_MS);
   const turnEndSilenceMs = resolveWaitAfterSpeakMs();
   if (
-    speechDuration >= minSpeechDuration
+    allowAutomaticTurnCommit
+    && speechDuration >= minSpeechDuration
     && (
       silenceDuration >= turnEndSilenceMs
       || speechDuration >= MAX_BUFFERED_TURN_MS

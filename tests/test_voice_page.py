@@ -95,6 +95,9 @@ def test_voice_html_has_mute_button_and_mic_gate():
     assert "function commitBufferedTurnNow({ reason = 'manual-release' } = {}) {" in voice_html
     assert "async function beginHoldToTalk() {" in voice_html
     assert "function endHoldToTalk() {" in voice_html
+    assert "const allowAutomaticTurnCommit = !isHoldToTalkActive();" in voice_html
+    assert "allowAutomaticTurnCommit\n      && speechDuration >= minSpeechDuration\n      && speechDuration >= MAX_BUFFERED_TURN_MS" in voice_html
+    assert "allowAutomaticTurnCommit\n    && speechDuration >= minSpeechDuration\n    && (" in voice_html
     assert "function setMutedState(nextMuted, { commitOnMute = true, resetBuffer = true } = {}) {" in voice_html
     assert "if (resetBuffer && (!muted || !commitOnMute || !commitBufferedTurnNow())) {" in voice_html
     assert "waitAfterSpeakMs: 0," in voice_html
