@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 from maras_switchboard.agents import hermes as hermes_module
 
@@ -10,6 +11,7 @@ def test_mara_delegation_parser_matches_explicit_routes_only():
     assert hermes_module._parse_mara_delegation("please ask Mara to search this").prompt == "search this"
     assert hermes_module._parse_mara_delegation("Mara, quote this exactly: $(bad)").prompt == "quote this exactly: $(bad)"
     assert hermes_module._parse_mara_delegation("Nadia, ask Mara: what changed?").prompt == "what changed?"
+    assert hermes_module._parse_mara_delegation("Lola, ask Mara for a joke").prompt == "a joke"
     assert hermes_module._parse_mara_delegation("ask Mara:").prompt == ""
 
     assert not hermes_module._parse_mara_delegation("I talked to Mara, summarize this").matched
@@ -36,6 +38,7 @@ async def _collect_reply(agent, text):
 
 def test_default_mara_profile_uses_cli_arg_array_without_profile(monkeypatch):
     captured = {}
+    monkeypatch.setenv("HERMES_CLI", "hermes")
 
     class FakeProcess:
         returncode = 0
@@ -58,6 +61,12 @@ def test_default_mara_profile_uses_cli_arg_array_without_profile(monkeypatch):
     assert "--profile" not in captured["args"]
     assert captured["stdout"] is hermes_module.asyncio.subprocess.PIPE
     assert captured["stderr"] is hermes_module.asyncio.subprocess.PIPE
+
+
+def test_resolve_hermes_cli_can_use_explicit_env_path(monkeypatch):
+    monkeypatch.setenv("HERMES_CLI", "/custom/bin/hermes")
+
+    assert hermes_module._resolve_hermes_cli() == "/custom/bin/hermes"
 
 
 def test_hermes_conversation_agent_routes_explicit_mara_request_without_nadia_chat(monkeypatch):
@@ -93,6 +102,46 @@ def test_hermes_conversation_agent_routes_explicit_mara_request_without_nadia_ch
     assert delegated_prompts == ["quote this exactly: $(bad)"]
     assert len(instances) == 1
     assert instances[0].prompts == []
+
+
+def test_lola_prefixed_mara_joke_request_waits_for_mara_reply(monkeypatch):
+    delegated_prompts = []
+    joke = (
+        "Why did the kanban goblin cross the board? "
+        "To move from triage to done without starting a small paperwork apocalypse."
+    )
+
+    class FakeSession:
+        def __init__(self, **kwargs):
+            pass
+
+        async def ask(self, prompt):
+            raise AssertionError("Lola-prefixed Mara requests should delegate synchronously")
+
+        async def ask_once(self, prompt):
+            raise AssertionError("sanity check should not run for delegated Mara reply")
+
+    async def fake_ask_default_mara_profile(prompt):
+        delegated_prompts.append(prompt)
+        return joke
+
+    monkeypatch.setattr(hermes_module, "_HermesAgentSession", FakeSession)
+    monkeypatch.setattr(hermes_module, "_ask_default_mara_profile", fake_ask_default_mara_profile)
+
+    agent = hermes_module.HermesConversationAgent(
+        project_root="/tmp/hermes-agent",
+        profile="lola",
+        reply_sanity_check=False,
+    )
+    chunks = asyncio.run(
+        _collect_reply(
+            agent,
+            f"Lola, ask Mara for this exact joke and wait for Mara's answer: {joke}",
+        )
+    )
+
+    assert chunks == [joke]
+    assert delegated_prompts == [f"this exact joke and wait for Mara's answer: {joke}"]
 
 
 def test_hermes_conversation_agent_asks_for_missing_mara_prompt_without_cli(monkeypatch):
@@ -137,6 +186,168 @@ def test_reply_looks_like_backend_error_detects_retry_error_text():
 def test_empty_enabled_toolsets_stays_empty_for_low_latency_voice_chat():
     assert hermes_module._normalize_enabled_toolsets([]) == []
     assert hermes_module._normalize_enabled_toolsets(None) == []
+
+
+def test_lola_kanban_board_query_uses_live_cli_results(monkeypatch):
+    calls = []
+
+    class FakeSession:
+        def __init__(self, **kwargs):
+            pass
+
+        async def ask(self, prompt):
+            raise AssertionError("Lola Kanban board queries should use live CLI results, not model guesses")
+
+    async def fake_run_hermes_kanban(args, *, timeout=30.0):
+        calls.append(args)
+        assert args == ["boards", "list", "--json"]
+        return json.dumps(
+            [
+                {"slug": "default", "name": "Default", "is_current": False, "counts": {}},
+                {
+                    "slug": "youtube-windows-client",
+                    "name": "youtube-windows-client",
+                    "is_current": True,
+                    "counts": {"done": 1, "archived": 7},
+                },
+            ]
+        )
+
+    monkeypatch.setattr(hermes_module, "_HermesAgentSession", FakeSession)
+    monkeypatch.setattr(hermes_module, "_run_hermes_kanban", fake_run_hermes_kanban)
+    monkeypatch.setattr(hermes_module, "_write_voice_digest", lambda *args, **kwargs: None)
+
+    agent = hermes_module.HermesConversationAgent(
+        project_root="/tmp/hermes-agent",
+        profile="lola",
+        reply_sanity_check=False,
+    )
+    chunks = asyncio.run(_collect_reply(agent, "What Kanban boards do I have?"))
+
+    assert calls == [["boards", "list", "--json"]]
+    assert chunks == [
+        "Current board is youtube-windows-client. Real boards: default (empty); youtube-windows-client (done 1, archived 7)."
+    ]
+
+
+def test_lola_kanban_task_query_reads_real_task_names_by_status(monkeypatch):
+    calls = []
+
+    class FakeSession:
+        def __init__(self, **kwargs):
+            pass
+
+        async def ask(self, prompt):
+            raise AssertionError("Lola Kanban task queries should use live CLI results, not model guesses")
+
+    async def fake_run_hermes_kanban(args, *, timeout=30.0):
+        calls.append(args)
+        if args == ["boards", "list", "--json"]:
+            return json.dumps(
+                [
+                    {
+                        "slug": "youtube-windows-client",
+                        "name": "youtube-windows-client",
+                        "is_current": True,
+                        "counts": {"done": 1},
+                    }
+                ]
+            )
+        if args == ["--board", "youtube-windows-client", "list", "--status", "done", "--json"]:
+            return json.dumps(
+                [
+                    {
+                        "id": "t_58a71a74",
+                        "title": "YT Music client: clean up player/search behavior",
+                        "status": "done",
+                    }
+                ]
+            )
+        return "[]"
+
+    monkeypatch.setattr(hermes_module, "_HermesAgentSession", FakeSession)
+    monkeypatch.setattr(hermes_module, "_run_hermes_kanban", fake_run_hermes_kanban)
+    monkeypatch.setattr(hermes_module, "_write_voice_digest", lambda *args, **kwargs: None)
+
+    agent = hermes_module.HermesConversationAgent(
+        project_root="/tmp/hermes-agent",
+        profile="lola",
+        reply_sanity_check=False,
+    )
+    chunks = asyncio.run(
+        _collect_reply(agent, "List the done Kanban tasks on youtube-windows-client with task names.")
+    )
+
+    assert ["--board", "youtube-windows-client", "list", "--status", "done", "--json"] in calls
+    assert chunks == [
+        "Live Kanban tasks on youtube-windows-client: done: t_58a71a74: YT Music client: clean up player/search behavior."
+    ]
+
+
+def test_lola_kanban_create_requires_clear_quoted_title_and_uses_cli(monkeypatch):
+    calls = []
+
+    class FakeSession:
+        def __init__(self, **kwargs):
+            pass
+
+        async def ask(self, prompt):
+            raise AssertionError("Lola Kanban create requests should use live CLI results")
+
+    async def fake_run_hermes_kanban(args, *, timeout=30.0):
+        calls.append(args)
+        if args == ["boards", "list", "--json"]:
+            return json.dumps(
+                [
+                    {
+                        "slug": "maras-switchboard",
+                        "name": "maras-switchboard",
+                        "is_current": False,
+                        "counts": {},
+                    }
+                ]
+            )
+        assert args == [
+            "--board",
+            "maras-switchboard",
+            "create",
+            "Lola smoke test",
+            "--priority",
+            "1",
+            "--created-by",
+            "Lola",
+            "--json",
+            "--body",
+            "safe body",
+            "--assignee",
+            "mara",
+        ]
+        return json.dumps(
+            {
+                "id": "t_test1234",
+                "title": "Lola smoke test",
+                "status": "ready",
+            }
+        )
+
+    monkeypatch.setattr(hermes_module, "_HermesAgentSession", FakeSession)
+    monkeypatch.setattr(hermes_module, "_run_hermes_kanban", fake_run_hermes_kanban)
+    monkeypatch.setattr(hermes_module, "_write_voice_digest", lambda *args, **kwargs: None)
+
+    agent = hermes_module.HermesConversationAgent(
+        project_root="/tmp/hermes-agent",
+        profile="lola",
+        reply_sanity_check=False,
+    )
+    chunks = asyncio.run(
+        _collect_reply(
+            agent,
+            'Create a Kanban task on maras-switchboard called "Lola smoke test" "safe body" assignee mara priority 1.',
+        )
+    )
+
+    assert calls[0] == ["boards", "list", "--json"]
+    assert chunks == ["Created live Kanban task t_test1234 on maras-switchboard: Lola smoke test. Status is ready."]
 
 
 def test_format_recent_voice_turns_keeps_only_last_three():

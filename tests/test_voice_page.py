@@ -140,6 +140,14 @@ def test_voice_html_uses_root_app_base_so_trailing_slash_urls_do_not_404():
     assert "return new URL('/', window.location.href);" in voice_html
 
 
+def test_voice_html_keeps_server_speak_idle_from_finishing_agent_turn():
+    voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
+
+    assert "if (data.source === 'server_speak') {" in voice_html
+    assert "if (!busy) {\n          pendingIdle = !paused && !isHoldToTalkActive();\n          maybeReturnToListening();\n        }" in voice_html
+    assert "updateControlStates();\n        syncShellState();\n        return;\n      }\n    }\n    if (data.status === 'thinking')" in voice_html
+
+
 def test_voice_html_uses_pixel_meter_visual_instead_of_avatar_assets():
     voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
 

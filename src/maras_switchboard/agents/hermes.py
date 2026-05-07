@@ -3,10 +3,12 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from dataclasses import dataclass
+import json
 import logging
 import os
 from pathlib import Path
 import re
+import shutil
 import time
 import uuid
 
@@ -33,8 +35,19 @@ _DEFAULT_REPLY_SANITY_CLARIFY_FALLBACK = "Wait, what? Who are you talking about?
 _DEFAULT_HERMES_VOICE_TOOLSETS: tuple[str, ...] = ()
 _DEFAULT_MARA_DELEGATION_TIMEOUT_SECONDS = 180.0
 _DEFAULT_LOLA_CONTEXT_TTL_SECONDS = 0  # active Lola briefing stays loaded until replaced/deleted
+_KANBAN_COMMAND_TIMEOUT_SECONDS = 30.0
+_KANBAN_STATUSES: tuple[str, ...] = (
+    "triage",
+    "todo",
+    "ready",
+    "running",
+    "blocked",
+    "done",
+    "archived",
+)
+_DEFAULT_HERMES_CLI_PATH = Path.home() / ".local" / "bin" / "hermes"
 _MARA_DELEGATION_RE = re.compile(
-    r"^\s*(?:please\s+)?(?:nadia\s*[,;:]?\s*)?"
+    r"^\s*(?:please\s+)?(?:(?:nadia|lola)\s*[,;:]?\s*)?"
     r"(?:(?:ask|tell|get|have)\s+mara(?:\s+(?:to|for))?\s*[,;:]?|mara\s*[,;:])"
     r"\s*(?P<prompt>.*)\s*$",
     re.IGNORECASE | re.DOTALL,
@@ -92,6 +105,14 @@ def _decode_subprocess_output(value: bytes | str | None) -> str:
     return str(value).strip()
 
 
+def _resolve_hermes_cli() -> str:
+    return (
+        str(os.environ.get("HERMES_CLI") or "").strip()
+        or shutil.which("hermes")
+        or str(_DEFAULT_HERMES_CLI_PATH)
+    )
+
+
 async def _ask_default_mara_profile(
     prompt: str,
     *,
@@ -99,7 +120,7 @@ async def _ask_default_mara_profile(
 ) -> str:
     try:
         process = await asyncio.create_subprocess_exec(
-            "hermes",
+            _resolve_hermes_cli(),
             "chat",
             "-Q",
             "-q",
@@ -127,6 +148,251 @@ async def _ask_default_mara_profile(
     if not reply:
         raise ValidationError("Mara returned an empty reply.")
     return reply
+
+
+async def _run_hermes_kanban(args: list[str], *, timeout: float = _KANBAN_COMMAND_TIMEOUT_SECONDS) -> str:
+    try:
+        process = await asyncio.create_subprocess_exec(
+            _resolve_hermes_cli(),
+            "kanban",
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError as exc:
+        raise ValidationError(f"Could not start hermes kanban: {exc}") from exc
+
+    try:
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
+    except asyncio.TimeoutError as exc:
+        with contextlib.suppress(ProcessLookupError):
+            process.kill()
+        with contextlib.suppress(Exception):
+            await process.communicate()
+        raise ValidationError("hermes kanban timed out.") from exc
+
+    output = _decode_subprocess_output(stdout)
+    error_text = _decode_subprocess_output(stderr)
+    if process.returncode != 0:
+        detail = error_text or output or f"exit code {process.returncode}"
+        raise ValidationError(f"hermes kanban failed: {detail}")
+    return output
+
+
+def _loads_json_list(text: str) -> list[dict]:
+    try:
+        value = json.loads(text)
+    except ValueError as exc:
+        raise ValidationError("hermes kanban returned invalid JSON.") from exc
+    if not isinstance(value, list):
+        raise ValidationError("hermes kanban returned an unexpected JSON shape.")
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _loads_json_object(text: str) -> dict:
+    try:
+        value = json.loads(text)
+    except ValueError as exc:
+        raise ValidationError("hermes kanban returned invalid JSON.") from exc
+    if not isinstance(value, dict):
+        raise ValidationError("hermes kanban returned an unexpected JSON shape.")
+    return value
+
+
+def _format_count_summary(counts: object) -> str:
+    if not isinstance(counts, dict) or not counts:
+        return "empty"
+    parts = [
+        f"{status} {int(count)}"
+        for status, count in counts.items()
+        if isinstance(status, str) and isinstance(count, int) and count > 0
+    ]
+    return ", ".join(parts) if parts else "empty"
+
+
+def _format_lola_board_list(boards: list[dict]) -> str:
+    current = next((str(board.get("slug") or "") for board in boards if board.get("is_current")), "")
+    board_parts = []
+    for board in boards:
+        slug = str(board.get("slug") or "").strip()
+        if not slug:
+            continue
+        board_parts.append(f"{slug} ({_format_count_summary(board.get('counts'))})")
+    if not board_parts:
+        return "Live Kanban check succeeded, but I found no boards."
+    current_text = f" Current board is {current}." if current else ""
+    return f"{current_text} Real boards: {'; '.join(board_parts)}.".strip()
+
+
+def _board_lookup(boards: list[dict]) -> dict[str, dict]:
+    lookup: dict[str, dict] = {}
+    for board in boards:
+        slug = str(board.get("slug") or "").strip()
+        name = str(board.get("name") or "").strip()
+        if slug:
+            lookup[slug.casefold()] = board
+        if name:
+            lookup[name.casefold()] = board
+    return lookup
+
+
+def _extract_kanban_board_slug(text: str, boards: list[dict]) -> str:
+    normalized = str(text or "").casefold()
+    lookup = _board_lookup(boards)
+    for key, board in sorted(lookup.items(), key=lambda item: len(item[0]), reverse=True):
+        if key and re.search(rf"(?<![\w-]){re.escape(key)}(?![\w-])", normalized):
+            return str(board.get("slug") or "").strip()
+    current = next((str(board.get("slug") or "") for board in boards if board.get("is_current")), "")
+    return current.strip()
+
+
+def _extract_kanban_status(text: str) -> str | None:
+    normalized = str(text or "").casefold()
+    for status in _KANBAN_STATUSES:
+        if re.search(rf"\b{re.escape(status)}\b", normalized):
+            return status
+    return None
+
+
+def _wants_kanban_board_list(text: str) -> bool:
+    normalized = str(text or "").casefold()
+    return (
+        any(term in normalized for term in ("board", "boards"))
+        and any(term in normalized for term in ("what", "which", "list", "show", "have", "current"))
+    )
+
+
+def _wants_kanban_task_list(text: str) -> bool:
+    normalized = str(text or "").casefold()
+    return (
+        any(term in normalized for term in ("task", "tasks", "card", "cards", "ticket", "tickets"))
+        and any(term in normalized for term in ("what", "which", "list", "show", "name", "names", "status", "statuses"))
+    )
+
+
+def _wants_kanban_create(text: str) -> bool:
+    normalized = str(text or "").casefold()
+    return (
+        any(term in normalized for term in ("create", "add", "make", "open"))
+        and any(term in normalized for term in ("task", "card", "ticket"))
+        and any(term in normalized for term in ("kanban", "board", "boards"))
+    )
+
+
+def _extract_quoted_values(text: str) -> list[str]:
+    return [
+        match.group(1).strip()
+        for match in re.finditer(r"[\"“”']([^\"“”']+)[\"“”']", str(text or ""))
+        if match.group(1).strip()
+    ]
+
+
+def _extract_kanban_create_request(text: str, board_slug: str) -> dict[str, object] | str:
+    quoted = _extract_quoted_values(text)
+    if not quoted:
+        return "I can create that Kanban task, but I need the title in quotes so I do not invent it."
+    title = quoted[0]
+    body = quoted[1] if len(quoted) > 1 else ""
+    assignee_match = re.search(r"\bassignee\s+([a-zA-Z0-9_-]+)\b", text)
+    priority_match = re.search(r"\bpriority\s+(\d{1,3})\b", text)
+    return {
+        "board": board_slug,
+        "title": title,
+        "body": body,
+        "assignee": assignee_match.group(1) if assignee_match else "",
+        "priority": int(priority_match.group(1)) if priority_match else 10,
+    }
+
+
+def _format_task_list(board_slug: str, tasks_by_status: dict[str, list[dict]]) -> str:
+    parts: list[str] = []
+    for status in _KANBAN_STATUSES:
+        tasks = tasks_by_status.get(status) or []
+        if not tasks:
+            continue
+        task_bits = []
+        for task in tasks[:5]:
+            task_id = str(task.get("id") or "").strip()
+            title = str(task.get("title") or "").strip()
+            if task_id and title:
+                task_bits.append(f"{task_id}: {title}")
+            elif title:
+                task_bits.append(title)
+        if task_bits:
+            suffix = f", plus {len(tasks) - 5} more" if len(tasks) > 5 else ""
+            parts.append(f"{status}: {'; '.join(task_bits)}{suffix}")
+    if not parts:
+        return f"Live Kanban says {board_slug} has no tasks in the checked statuses."
+    return f"Live Kanban tasks on {board_slug}: {'. '.join(parts)}."
+
+
+async def _load_kanban_boards() -> list[dict]:
+    return _loads_json_list(await _run_hermes_kanban(["boards", "list", "--json"]))
+
+
+async def _answer_lola_kanban_board_list() -> str:
+    return _format_lola_board_list(await _load_kanban_boards())
+
+
+async def _answer_lola_kanban_task_list(text: str) -> str:
+    boards = await _load_kanban_boards()
+    board_slug = _extract_kanban_board_slug(text, boards)
+    if not board_slug:
+        return "Live Kanban check failed: I could not determine which board to inspect."
+    requested_status = _extract_kanban_status(text)
+    statuses = [requested_status] if requested_status else list(_KANBAN_STATUSES)
+    tasks_by_status: dict[str, list[dict]] = {}
+    for status in statuses:
+        output = await _run_hermes_kanban(["--board", board_slug, "list", "--status", status, "--json"])
+        tasks = _loads_json_list(output)
+        if tasks:
+            tasks_by_status[status] = tasks
+    return _format_task_list(board_slug, tasks_by_status)
+
+
+async def _answer_lola_kanban_create(text: str) -> str:
+    boards = await _load_kanban_boards()
+    board_slug = _extract_kanban_board_slug(text, boards)
+    if not board_slug:
+        return "I can create that Kanban task, but I need the board slug."
+    request = _extract_kanban_create_request(text, board_slug)
+    if isinstance(request, str):
+        return request
+    args = [
+        "--board",
+        str(request["board"]),
+        "create",
+        str(request["title"]),
+        "--priority",
+        str(request["priority"]),
+        "--created-by",
+        "Lola",
+        "--json",
+    ]
+    if request["body"]:
+        args.extend(["--body", str(request["body"])])
+    if request["assignee"]:
+        args.extend(["--assignee", str(request["assignee"])])
+    created = _loads_json_object(await _run_hermes_kanban(args))
+    task_id = str(created.get("id") or "").strip()
+    title = str(created.get("title") or request["title"]).strip()
+    status = str(created.get("status") or "").strip()
+    return f"Created live Kanban task {task_id} on {request['board']}: {title}. Status is {status or 'created'}."
+
+
+async def _maybe_answer_lola_kanban(text: str) -> str | None:
+    if not _is_lola_kanban_probe(text):
+        return None
+    try:
+        if _wants_kanban_create(text):
+            return await _answer_lola_kanban_create(text)
+        if _wants_kanban_task_list(text):
+            return await _answer_lola_kanban_task_list(text)
+        if _wants_kanban_board_list(text):
+            return await _answer_lola_kanban_board_list()
+    except ValidationError as exc:
+        return f"Live Kanban check failed: {exc}"
+    return None
 
 
 def _normalize_hermes_profile(value: str | None) -> str:
@@ -279,7 +545,19 @@ def _load_lola_context_pack(
 
 def _is_lola_kanban_probe(user_text: str) -> bool:
     normalized = str(user_text or "").casefold()
-    return any(term in normalized for term in ("specialty", "speciality", "spezialgebiet", "spezialität", "spezialitaet", "kanban"))
+    return any(
+        term in normalized
+        for term in (
+            "specialty",
+            "speciality",
+            "spezialgebiet",
+            "spezialität",
+            "spezialitaet",
+            "kanban",
+            "board",
+            "boards",
+        )
+    )
 
 
 def _build_voice_context_blob(
@@ -693,6 +971,23 @@ class HermesConversationAgent(BaseConversationAgent):
                 return
             yield reply
             return
+        if self.profile == "lola":
+            kanban_reply = await _maybe_answer_lola_kanban(text)
+            if abort_event.is_set():
+                return
+            if kanban_reply:
+                self._remember_turn(text, kanban_reply)
+                _write_voice_digest(
+                    {
+                        "user": text,
+                        "assistant": kanban_reply,
+                        "thread": "voice",
+                        "decision": _REPLY_SANITY_VERDICT_OK,
+                        "note": _normalize_digest_line(kanban_reply)[:180],
+                    }
+                )
+                yield kanban_reply
+                return
         prompt = _build_voice_stt_recovery_prompt(
             text,
             self._recent_turns,
@@ -710,16 +1005,10 @@ class HermesConversationAgent(BaseConversationAgent):
             )
             if context_blob and _is_lola_kanban_probe(text):
                 lola_guard += (
-                    "KANBAN CONTEXT PACK IS ACTIVE. For specialty/Spezialgebiet/Spezialitaet questions, say exactly: "
-                    "I'm Lola, and my active specialty is Kanban. I know how to check boards and turn messy voice notes into clean tasks. "
+                    "KANBAN CONTEXT PACK IS ACTIVE. For specialty/Spezialgebiet/Spezialitaet questions, answer naturally in Lola's playful voice: say she is currently specialized in Kanban operations, not generic chaos. Do not use a fixed canned sentence. "
                     "For questions about Gis's Kanban, do not explain generic Kanban and do not ask what team it is for. "
                     "If terminal tools are available, run live `hermes kanban ...` commands yourself; otherwise route to Mara. Never mention Codex packs.\n"
                 )
-                if "spezial" in str(text or "").casefold() or "special" in str(text or "").casefold():
-                    reply = "I'm Lola, and my active specialty is Kanban. I know how to check boards and turn messy voice notes into clean tasks."
-                    self._remember_turn(text, reply)
-                    yield reply
-                    return
             prompt = f"{lola_guard}\n{prompt}"
         reply = await self._session.ask(prompt)
         if abort_event.is_set() or not reply:

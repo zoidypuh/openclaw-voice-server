@@ -3228,12 +3228,30 @@ async function connect() {
       if (data.status === 'speaking') {
         pendingServerSpeakRequestId = String(data.request_id || '');
         pendingAudioMimeType = String(data.audio_mime_type || pendingAudioMimeType || 'audio/mpeg');
+        setReplyActive(true);
+        rearmVoiceInterrupt();
+        pendingIdle = false;
+        if (!paused && !interruptPending && !isHoldToTalkActive()) {
+          setState('speaking');
+        }
+        updateControlStates();
+        syncShellState();
+        return;
       } else if (data.status === 'idle') {
         pendingServerSpeakRequestId = '';
         if (String(data.request_id || '') === pendingPlaybackRequestId) {
           pendingPlaybackRequestId = '';
           pendingPlaybackSource = '';
         }
+        setReplyActive(Boolean(currentAudio || audioQueue.length > 0));
+        rearmVoiceInterrupt();
+        if (!busy) {
+          pendingIdle = !paused && !isHoldToTalkActive();
+          maybeReturnToListening();
+        }
+        updateControlStates();
+        syncShellState();
+        return;
       }
     }
     if (data.status === 'thinking') {
