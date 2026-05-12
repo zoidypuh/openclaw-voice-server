@@ -28,7 +28,7 @@ def test_voice_html_resumes_audio_before_fetching_runtime_state_for_safari():
     assert "await unlockPlaybackAudio();" in voice_html
     assert "playbackAudio = new Audio();" in voice_html
     assert "handleResumeFailure(error);" in voice_html
-    assert "updateControlStates();\n    void ensurePlaybackReady().catch(() => {});\n    syncShellState({ force: true });" in voice_html
+    assert "updateControlStates();\n    void ensurePlaybackReady().catch(() => {});\n    void refreshVoiceClientStatus();\n    syncShellState({ force: true });" in voice_html
 
 
 def test_voice_html_uses_echo_controls_and_apple_specific_barge_in_guard():
@@ -44,6 +44,8 @@ def test_voice_html_uses_echo_controls_and_apple_specific_barge_in_guard():
     assert "let bargeInConfidence = 0;" in voice_html
     assert "let bargeInConfidenceQualified = false;" in voice_html
     assert "function allowsFreeformBargeIn()" in voice_html
+    assert "return interruptMode === 'hotkey-only';" in voice_html
+    assert "&& allowsFreeformBargeIn()" in voice_html
     assert "function updateBargeInConfidence(displayedLevel, speechLike, thresholdDb, frameMs) {" in voice_html
     assert "bargeInConfidenceQualified = true;" in voice_html
     assert "if (!bargeInPending && confidence >= BARGE_IN_ARM_CONFIDENCE) {" in voice_html
@@ -83,17 +85,25 @@ def test_voice_html_has_mute_button_and_mic_gate():
     assert 'id="version"' not in voice_html
     assert 'id="shortcut-command"' not in voice_html
     assert "space / ctrl+alt+shift+a hold to talk" not in voice_html
-    assert '<button id="interrupt-btn" class="mini-btn" type="button">interrupt</button>' in voice_html
+    assert '<button id="interrupt-btn" class="mini-btn hidden" type="button" aria-hidden="true" tabindex="-1">interrupt</button>' in voice_html
     assert '<button id="talk-toggle-btn" class="mini-btn" type="button" aria-pressed="false">talk</button>' in voice_html
+    assert '<select id="tmux-target-select" aria-label="tmux target"></select>' in voice_html
+    assert '<button id="tmux-text-btn" class="mini-btn" type="button">text</button>' in voice_html
     assert '<button id="mute-btn" class="mini-btn" type="button">mute</button>' in voice_html
     assert "let muted = true;" in voice_html
-    assert "let interruptMode = 'off';" in voice_html
+    assert "let interruptMode = 'hotkey-only';" in voice_html
     assert "const INTERRUPT_MODE_STORAGE_KEY = 'maras-switchboard.voice.interrupt-mode.v1';" in voice_html
+    assert "function defaultInterruptMode() {\n  return 'hotkey-only';\n}" in voice_html
+    assert "if (mode === 'explicit') {\n    return 'hotkey-only';\n  }" in voice_html
     assert "function voiceInterruptDisabled() {" in voice_html
     assert "function setInterruptMode(nextMode) {" in voice_html
     assert "function pauseButtonLabel() {" not in voice_html
     assert "function commitBufferedTurnNow({ reason = 'manual-release' } = {}) {" in voice_html
-    assert "async function beginHoldToTalk() {" in voice_html
+    assert "async function beginHoldToTalk({ tmuxOnly = false } = {}) {" in voice_html
+    assert "beginUserTurn({ tmuxOnly });" in voice_html
+    assert "const shouldInterruptSpeech = Boolean(" not in voice_html
+    assert "function manualInterrupt() {\n  if (paused || isUserTurnActive()) {\n    return;\n  }" in voice_html
+    assert "setInterruptMode('barge-in');\n    requestInterrupt({ keepPaused: false });" not in voice_html
     assert "function endHoldToTalk() {" in voice_html
     assert "const allowAutomaticTurnCommit = !isHoldToTalkActive();" in voice_html
     assert "allowAutomaticTurnCommit\n      && speechDuration >= minSpeechDuration\n      && speechDuration >= MAX_BUFFERED_TURN_MS" in voice_html
@@ -101,18 +111,25 @@ def test_voice_html_has_mute_button_and_mic_gate():
     assert "function setMutedState(nextMuted, { commitOnMute = true, resetBuffer = true } = {}) {" in voice_html
     assert "if (resetBuffer && (!muted || !commitOnMute || !commitBufferedTurnNow())) {" in voice_html
     assert "waitAfterSpeakMs: 0," in voice_html
+    assert "tmuxTarget: isTmuxTalkActive() ? selectedTmuxTarget : ''," in voice_html
     assert "setMutedState(true, { commitOnMute: false, resetBuffer: false });" in voice_html
-    assert "const sent = commitBufferedTurnNow({ reason: 'hold-release' });" in voice_html
+    assert "const sent = commitBufferedTurnNow({ reason: tmuxTalkActive ? 'tmux-release' : 'hold-release' });" in voice_html
     assert "track.enabled = micEnabled;" in voice_html
     assert "if (muted) {" in voice_html
     assert "document.getElementById('interrupt-btn').addEventListener('click', () => {" in voice_html
+    assert "window.__marasSwitchboardManualInterrupt = manualInterrupt;" in voice_html
     assert "document.getElementById('talk-toggle-btn').addEventListener('click', () => {" in voice_html
-    assert "async function toggleHoldToTalk() {" in voice_html
+    assert "async function toggleHoldToTalk({ tmuxOnly = false } = {}) {" in voice_html
     assert "talkToggleBtn.textContent = holdToTalkActive ? 'send' : 'talk';" in voice_html
     assert "document.getElementById('mute-btn').addEventListener('click', () => {" in voice_html
     assert "muteBtn.textContent = 'mute';" in voice_html
     assert "window.__marasSwitchboardHoldToTalkStart = beginHoldToTalk;" in voice_html
+    assert "window.__marasSwitchboardTmuxHoldToTalkStart = () => beginHoldToTalk({ tmuxOnly: true });" in voice_html
+    assert "window.__marasSwitchboardTmuxHoldToTalkEnd = () => endHoldToTalk();" in voice_html
+    assert "window.__marasSwitchboardTmuxHoldToTalkToggle = () => toggleHoldToTalk({ tmuxOnly: true });" in voice_html
     assert "window.__marasSwitchboardHoldToTalkEnd = endHoldToTalk;" in voice_html
+    assert "function applyTmuxTargetState(runtimeState) {" in voice_html
+    assert "applyTmuxTargetState(runtimeState);" in voice_html
 
 
 def test_voice_html_removes_broken_browser_keyboard_shortcuts():
@@ -144,7 +161,7 @@ def test_voice_html_keeps_server_speak_idle_from_finishing_agent_turn():
     voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
 
     assert "if (data.source === 'server_speak') {" in voice_html
-    assert "if (!busy) {\n          pendingIdle = !paused && !isHoldToTalkActive();\n          maybeReturnToListening();\n        }" in voice_html
+    assert "if (!busy) {\n          pendingIdle = !paused && !isUserTurnActive();\n          maybeReturnToListening();\n        }" in voice_html
     assert "updateControlStates();\n        syncShellState();\n        return;\n      }\n    }\n    if (data.status === 'thinking')" in voice_html
 
 
@@ -167,8 +184,8 @@ def test_voice_html_uses_pixel_meter_visual_instead_of_avatar_assets():
     assert 'id="text-turn-input"' in voice_html
     assert "height: clamp(2.55rem, 8dvh, 7rem);" in voice_html
     assert "resize: none;" in voice_html
-    assert "async function sendTypedTurn(text) {" in voice_html
-    assert "ws.send(JSON.stringify({ type: 'text-input', text: typedText }));" in voice_html
+    assert "async function sendTypedTurn(text, { tmuxTarget = '' } = {}) {" in voice_html
+    assert "type: 'text-input',\n    text: typedText,\n    tmux_target: String(tmuxTarget || '').trim()," in voice_html
     assert "function configureTextTurnInput() {" in voice_html
     assert "form.requestSubmit();" in voice_html
     assert "const STATE_VISUAL_WIDTH = 520;" in voice_html
@@ -259,20 +276,44 @@ def test_voice_html_preserves_unlocked_playback_audio_for_retry_paths():
     assert "audio startup was interrupted, tap resume again" in voice_html
 
 
-def test_voice_html_only_accepts_server_playback_after_browser_play_starts():
+def test_voice_html_accepts_deferred_server_speak_after_browser_queues_it():
     voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
 
     assert "function sendClientReady() {" in voice_html
     assert "type: 'client-ready'," in voice_html
     assert "playback_accept: true," in voice_html
+    assert "playback_unlocked: playbackUnlocked," in voice_html
+    assert "page_visible: !document.hidden," in voice_html
     assert "sendClientReady();" in voice_html
     assert "const requestId = item && typeof item === 'object' && 'requestId' in item ? item.requestId : '';" in voice_html
-    assert "playAudioBufferWithWebAudio(nextBuffer.slice(0), {\n      onStart: () => sendPlaybackAcceptance(requestId)," in voice_html
-    assert "currentAudio.play().then(() => {\n    sendPlaybackAcceptance(requestId);" in voice_html
-    assert "if (item?.requestId) {\n    sendPlaybackRejection(item.requestId, describePlaybackError(error));\n  }" in voice_html
+    assert "const playbackAccepted = Boolean(item && typeof item === 'object' && item.playbackAccepted);" in voice_html
+    assert "if (!playbackAccepted) {\n          sendPlaybackAcceptance(requestId);\n        }\n        startPlaybackSession();" in voice_html
+    assert "if (!playbackAccepted) {\n      sendPlaybackAcceptance(requestId);\n    }\n    startPlaybackSession();" in voice_html
+    assert "if (item?.requestId && !item?.playbackAccepted) {\n    sendPlaybackRejection(item.requestId, describePlaybackError(error));\n  }" in voice_html
     assert "requestId: playbackRequestId," in voice_html
     assert "pendingPlaybackRequestId = String(data.request_id || '');" in voice_html
-    assert "if (serverSpeakRequestId) {\n        sendPlaybackAcceptance(serverSpeakRequestId);\n      }" not in voice_html
+    assert "const acceptQueuedServerSpeak = playbackSource === 'server_speak';" in voice_html
+    assert "if (acceptQueuedServerSpeak && playbackRequestId) {\n        sendPlaybackAcceptance(playbackRequestId);\n      }" in voice_html
+    assert "playbackAccepted: acceptQueuedServerSpeak," in voice_html
+
+
+def test_voice_html_rechecks_voice_client_registration_after_reconnect():
+    voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
+
+    assert 'id="client-status" class="client-status reconnecting"' in voice_html
+    assert "const VOICE_CLIENT_WATCHDOG_INTERVAL_MS = 2500;" in voice_html
+    assert "async function refreshVoiceClientStatus() {" in voice_html
+    assert "fetch(appUrl('api/runtime/state'), { cache: 'no-store' })" in voice_html
+    assert "const voiceClient = runtimeState?.voice_client || {};" in voice_html
+    assert "const clientStatus = String(voiceClient.client_status || '');" in voice_html
+    assert "client: connected, playback ready" in voice_html
+    assert "client: page connected, audio locked" in voice_html
+    assert "client: playback acceptance pending" in voice_html
+    assert "client: playback accept timed out; refocusing" in voice_html
+    assert "client: registering playback acceptance" in voice_html
+    assert "client: server lost browser registration" in voice_html
+    assert "ws.close(4000, 'server lost voice client registration');" in voice_html
+    assert "startVoiceClientWatchdog();" in voice_html
 
 
 def test_voice_html_has_audio_recovery_hooks_and_watchdog():
@@ -335,7 +376,8 @@ def test_voice_html_uses_db_threshold_and_wait_after_speak_slider():
     assert 'id="thinking-timer"' not in voice_html
     assert "formatThinkingElapsed" not in voice_html
     assert "#state-visual-shell {\n    display: none;" in voice_html
-    assert 'id="status-hint"' not in voice_html
+    assert 'id="client-status"' in voice_html
+    assert 'id="status-hint"' in voice_html
     assert 'id="version"' not in voice_html
     assert "#pause-btn {\n    position: fixed;" in voice_html
     assert "right: 18px;" in voice_html
@@ -372,6 +414,8 @@ def test_voice_html_uses_db_threshold_and_wait_after_speak_slider():
     assert "function setLevelDb(levelDb, { updatePeak = true } = {}) {" in voice_html
     assert "function sendBufferedTurn(audioBuffer, { commitMeta = null } = {}) {" in voice_html
     assert "function isHoldToTalkActive() {" in voice_html
+    assert "function isUserTurnActive() {" in voice_html
+    assert "return userTurnActive || userInputPending || holdToTalkActive;" in voice_html
     assert "function clearStatusHint() {" in voice_html
     assert "function applyRuntimeShortcuts" not in voice_html
     assert "function formatShortcutHint" not in voice_html
@@ -381,16 +425,19 @@ def test_voice_html_uses_db_threshold_and_wait_after_speak_slider():
     assert "pushToTalk" not in voice_html
     assert "function renderInterruptControls() {" in voice_html
     assert "applyRuntimeShortcuts(runtimeState.windows_client);" not in voice_html
-    assert "interruptBtn.textContent = interruptMode === 'barge-in' ? 'barge in' : 'interrupt';" in voice_html
+    assert "interruptBtn.textContent = 'hotkey only';" in voice_html
+    assert "interruptBtn.setAttribute('aria-label', 'Barge-in: hotkey only');" in voice_html
+    assert "interruptBtn.textContent = 'normal';" in voice_html
     assert "interruptBtn.classList.toggle('active', interruptMode === 'barge-in');" in voice_html
     assert "function shouldListenForBargeInWhileMuted() {" in voice_html
     assert "const micEnabled = !muted || shouldListenForBargeInWhileMuted();" in voice_html
     assert "const mutedBargeIn = shouldListenForBargeInWhileMuted();" in voice_html
     assert "requestInterrupt({ keepPaused: false, preservePendingInput: true });" in voice_html
     assert "if (isInterruptibleAudioState() || currentState === 'thinking' || busy) {" in voice_html
-    assert "setInterruptMode(interruptMode === 'barge-in' ? 'off' : 'barge-in');" in voice_html
-    assert "return mode === 'barge-in' ? 'barge-in' : 'off';" in voice_html
-    assert "&& !voiceInterruptDisabled()" in voice_html
+    assert "setInterruptMode(nextInterruptMode(interruptMode));" in voice_html
+    assert "function nextInterruptMode(mode) {" in voice_html
+    assert "return 'hotkey-only';" in voice_html
+    assert "&& !voiceInterruptDisabled()\n    && allowsFreeformBargeIn()" in voice_html
     assert "tuning.inputThresholdDb" in voice_html
     assert "tuning.waitAfterSpeakMs" in voice_html
     assert "manualFinish" not in voice_html
@@ -413,3 +460,51 @@ def test_voice_html_uses_db_threshold_and_wait_after_speak_slider():
     assert "live tuning" not in voice_html
     assert 'id="tuning-close"' not in voice_html
     assert '<span>voice threshold</span>' not in voice_html
+
+
+def test_voice_html_has_stt_only_tmux_button():
+    voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
+
+    assert '<button id="tmux-talk-btn" class="mini-btn" type="button" aria-pressed="false">tmux</button>' in voice_html
+    assert "let tmuxTalkActive = false;" in voice_html
+    assert "function isTmuxTalkActive() {" in voice_html
+    assert "tmux_only: meta.tmuxOnly === true," in voice_html
+    assert "tmuxOnly: isTmuxTalkActive()," in voice_html
+    assert "void toggleHoldToTalk({ tmuxOnly: true });" in voice_html
+    assert "if (event.code === 'KeyA') {" in voice_html
+    assert "void beginHoldToTalk({ tmuxOnly: true });" in voice_html
+    assert "if (event.code === 'KeyW') {" in voice_html
+    assert "document.addEventListener('keyup', (event) => {" in voice_html
+    assert "event.code === 'KeyA' && !event.ctrlKey && !event.metaKey" in voice_html
+    assert "if (data.type === 'tmux-sent') {" in voice_html
+
+
+def test_voice_html_gates_ptt_interrupts_and_defers_playback_until_user_turn_finishes():
+    voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
+
+    assert "let userTurnActive = false;" in voice_html
+    assert "let userInputPending = false;" in voice_html
+    assert "let userInputPendingTmuxOnly = false;" in voice_html
+    assert "function pausePlaybackForUserTurn() {" in voice_html
+    assert "currentAudio.pause();" in voice_html
+    assert "function finishUserTurn({ sent = false, reason = '' } = {}) {" in voice_html
+    assert "userInputPending = Boolean(sent);" in voice_html
+    assert "function clearUserInputPending(reason = '') {" in voice_html
+    assert "if (!userInputPendingTmuxOnly) {\n        clearUserInputPending('transcript');\n      }" in voice_html
+    assert "clearUserInputPending('tmux-sent');" in voice_html
+    assert "playNextAudio();" in voice_html
+    assert "if (isUserTurnActive()) {\n    if (currentAudio || audioQueue.length > 0) {" in voice_html
+    assert "requestInterrupt({ keepPaused: false });\n  }\n\nasync function beginHoldToTalk" not in voice_html
+
+
+def test_voice_html_tracks_playback_lifecycle_before_showing_speaking():
+    voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
+
+    assert "let playbackLifecycleState = 'idle';" in voice_html
+    assert "function setPlaybackLifecycleState(nextState, item = null, reason = '') {" in voice_html
+    assert "setPlaybackLifecycleState('queued', { requestId: playbackRequestId, source: playbackSource }, 'audio-received');" in voice_html
+    assert "setPlaybackLifecycleState('accepted', item, manual ? 'manual-play' : 'dequeued');" in voice_html
+    assert "setPlaybackLifecycleState('playing', item, 'audio-play');" in voice_html
+    assert "setPlaybackLifecycleState('ended', null, 'playback-ended');" in voice_html
+    assert "setPlaybackLifecycleState('failed', item, describePlaybackError(error));" in voice_html
+    assert "if (!playbackSoftPaused) {\n        setState('speaking');\n      }" not in voice_html

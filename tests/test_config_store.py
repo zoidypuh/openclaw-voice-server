@@ -114,6 +114,30 @@ def test_config_store_reads_hermes_root_from_env(tmp_path):
     assert settings["agent"]["hermes_profile"] == "voice"
 
 
+def test_public_setup_state_includes_tmux_config(tmp_path):
+    config_path = tmp_path / "config.json"
+    env_path = tmp_path / ".env"
+    config_path.write_text(
+        json.dumps(
+            {
+                "tmux": {
+                    "selected_target": "main-codex",
+                    "targets": {
+                        "main-codex": {"label": "Main Codex", "target": "codex1:0.0", "prefix": ""},
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    store = ConfigStore(config_path=config_path, env_path=env_path)
+    public = store.public_setup_state()
+
+    assert public["tmux"]["selected_target"] == "main-codex"
+    assert public["tmux"]["targets"]["main-codex"]["target"] == "codex1:0.0"
+
+
 def test_config_store_accepts_agentic_env_aliases(tmp_path):
     config_path = tmp_path / "config.json"
     env_path = tmp_path / ".env"

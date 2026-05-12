@@ -8,6 +8,7 @@ from .errors import ValidationError
 
 ALLOWED_WINDOWS_CLIENT_STATES = {
     "listening",
+    "talking",
     "thinking",
     "speaking",
     "reconnecting",

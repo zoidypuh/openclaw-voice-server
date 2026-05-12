@@ -13,7 +13,7 @@ from aiohttp import web
 from .catalog import APP_VERSION_LABEL, normalize_agent_backend
 from .config_store import ConfigStore
 from .errors import ValidationError
-from .runtime import VoiceRuntime
+from .runtime import VoiceRuntime, public_tmux_targets
 from .setup_service import SetupService
 from .windows_client_state import WindowsClientStateStore
 
@@ -252,6 +252,12 @@ def create_app() -> web.Application:
     async def voice_page_slash(request: web.Request) -> NoReturn:
         canonical_path_redirect("/voice")
 
+    async def speech_to_agent_page(request: web.Request) -> web.StreamResponse:
+        return _html_file_response(static_dir / "speech-to-agent.html")
+
+    async def speech_to_agent_page_slash(request: web.Request) -> NoReturn:
+        canonical_path_redirect("/speech-to-agent")
+
     async def health(request: web.Request) -> web.Response:
         state = setup_service.state()
         return web.json_response(
@@ -291,10 +297,12 @@ def create_app() -> web.Application:
                     "active": active_profile,
                     "choices": [_public_voice_profile(profile) for profile in VOICE_PROFILE_CHOICES],
                 },
+                "tmux": public_tmux_targets(state["saved"]),
                 "avatar": {
                     "default_preset": _default_avatar_preset(state["saved"]),
                 },
                 "windows_client": state["saved"]["windows_client"],
+                "voice_client": await runtime.playback_status(),
             }
         )
 
@@ -415,6 +423,8 @@ def create_app() -> web.Application:
     add_route("GET", "/setup/", setup_page_slash)
     add_route("GET", "/voice", voice_page)
     add_route("GET", "/voice/", voice_page_slash)
+    add_route("GET", "/speech-to-agent", speech_to_agent_page)
+    add_route("GET", "/speech-to-agent/", speech_to_agent_page_slash)
     add_route("GET", "/health", health)
     add_route("GET", "/api/setup/state", setup_state)
     add_route("GET", "/api/runtime/state", runtime_state)

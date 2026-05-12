@@ -20,9 +20,12 @@ def test_windows_client_state_store_tracks_and_expires_status():
     assert updated["known"] is True
     assert updated["stale"] is False
 
+    talking = store.update("shell-1", "talking")
+    assert talking["state"] == "talking"
+
     now = 103.0
     fresh = store.snapshot("shell-1")
-    assert fresh["state"] == "thinking"
+    assert fresh["state"] == "talking"
     assert fresh["stale"] is False
 
     now = 106.5

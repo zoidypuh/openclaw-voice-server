@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import logging
 import os
 import wave
 
@@ -11,6 +12,7 @@ from .base import BaseTranscriber, TranscriptionResult
 
 
 DEFAULT_XAI_STT_ENDPOINT_URL = "https://api.x.ai/v1/stt"
+LOGGER = logging.getLogger(__name__)
 
 
 def _extract_error_detail(payload: object) -> str:
@@ -20,6 +22,15 @@ def _extract_error_detail(payload: object) -> str:
             return str(error.get("message") or error.get("detail") or error).strip()
         return str(payload.get("detail") or error or payload.get("message") or "").strip()
     return ""
+
+
+def _summarize_text(text: str, *, limit: int = 240) -> str:
+    normalized = " ".join(str(text or "").split())
+    if not normalized:
+        return "[empty]"
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[: limit - 3].rstrip()}..."
 
 
 class XAITranscriber(BaseTranscriber):
@@ -76,6 +87,14 @@ class XAITranscriber(BaseTranscriber):
         }
         data = {"format": "true"}
         data["language"] = self.language or "en"
+        LOGGER.info(
+            "xAI STT request backend=xai model=%s language=%s format=%s endpoint=%s audio_seconds=%.2f",
+            self.model_name,
+            data["language"],
+            data["format"],
+            self.endpoint_url,
+            duration,
+        )
 
         try:
             assert self._client is not None
@@ -104,4 +123,14 @@ class XAITranscriber(BaseTranscriber):
             raise ValidationError("xAI STT returned invalid JSON.") from exc
 
         text = str(payload.get("text") or "").strip() if isinstance(payload, dict) else ""
+        response_language = ""
+        if isinstance(payload, dict):
+            response_language = str(payload.get("language") or payload.get("detected_language") or "").strip()
+        LOGGER.info(
+            "xAI STT result backend=xai model=%s request_language=%s response_language=%s text=%r",
+            self.model_name,
+            data["language"],
+            response_language or "-",
+            _summarize_text(text),
+        )
         return TranscriptionResult(text=text, duration_seconds=duration)

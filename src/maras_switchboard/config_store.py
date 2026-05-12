@@ -248,5 +248,6 @@ class ConfigStore:
                 "xai_api_key_present": bool(settings["secrets"]["xai_api_key"]),
             },
             "audio": settings["audio"],
+            "tmux": settings.get("tmux", {}),
             "windows_client": settings["windows_client"],
         }

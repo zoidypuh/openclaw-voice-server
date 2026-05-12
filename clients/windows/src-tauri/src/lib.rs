@@ -26,13 +26,15 @@ const MENU_INTERRUPT: &str = "interrupt-now";
 const MENU_QUIT: &str = "quit";
 const VOICE_URL: &str = "http://127.0.0.1:8765/voice";
 const STATUS_URL: &str = "http://127.0.0.1:8765/api/windows-client/status";
-const STATUS_POLL_INTERVAL: Duration = Duration::from_millis(1200);
+const STATUS_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const HOLD_TO_TALK_SHORTCUT: &str = "Alt+Shift+A";
+const TOGGLE_TMUX_TALK_SHORTCUT: &str = "Alt+Shift+W";
 const APP_WINDOW_TITLE: &str = "Mara's Switchboard";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum TrayState {
     Listening,
+    Talking,
     Thinking,
     Speaking,
     Reconnecting,
@@ -42,27 +44,19 @@ enum TrayState {
 impl TrayState {
     fn label(self) -> &'static str {
         match self {
-            Self::Listening => "listening",
-            Self::Thinking => "thinking",
-            Self::Speaking => "speaking",
+            Self::Listening => "idle - not recording",
+            Self::Talking => "RECORDING - PTT active",
+            Self::Thinking => "processing",
+            Self::Speaking => "playing reply",
             Self::Reconnecting => "reconnecting",
-            Self::Paused => "paused",
-        }
-    }
-
-    fn accent(self) -> [u8; 4] {
-        match self {
-            Self::Listening => [78, 146, 255, 255],
-            Self::Thinking => [245, 185, 66, 255],
-            Self::Speaking => [77, 204, 113, 255],
-            Self::Reconnecting => [240, 108, 91, 255],
-            Self::Paused => [140, 146, 156, 255],
+            Self::Paused => "voice off",
         }
     }
 
     fn from_wire(value: &str) -> Self {
         match value {
             "listening" => Self::Listening,
+            "talking" => Self::Talking,
             "thinking" => Self::Thinking,
             "speaking" => Self::Speaking,
             "paused" => Self::Paused,
@@ -164,38 +158,57 @@ fn draw_line(rgba: &mut [u8], mut x0: i32, mut y0: i32, x1: i32, y1: i32, color:
     }
 }
 
+fn draw_mic_glyph(rgba: &mut [u8], color: [u8; 4]) {
+    draw_rect(rgba, 13, 7, 6, 11, color);
+    draw_rect(rgba, 11, 17, 10, 2, color);
+    draw_rect(rgba, 15, 19, 2, 5, color);
+    draw_rect(rgba, 12, 24, 8, 2, color);
+}
+
 fn tray_icon_for_state(state: TrayState) -> Image<'static> {
     let mut rgba = vec![0; 32 * 32 * 4];
     let white = [255, 255, 255, 255];
     let dark = [16, 18, 22, 255];
-    let accent = state.accent();
+    let neutral = [126, 132, 142, 255];
+    let red = [238, 43, 53, 255];
+    let amber = [245, 185, 66, 255];
+    let green = [77, 204, 113, 255];
 
     draw_filled_circle(&mut rgba, 16, 16, 14, dark);
-    draw_filled_circle(&mut rgba, 16, 16, 12, accent);
+    draw_filled_circle(&mut rgba, 16, 16, 12, neutral);
 
     match state {
         TrayState::Listening => {
-            draw_rect(&mut rgba, 12, 8, 8, 10, white);
-            draw_rect(&mut rgba, 10, 18, 12, 2, white);
-            draw_rect(&mut rgba, 14, 20, 4, 4, white);
+            draw_mic_glyph(&mut rgba, white);
+        }
+        TrayState::Talking => {
+            draw_mic_glyph(&mut rgba, white);
+            draw_filled_circle(&mut rgba, 23, 9, 7, white);
+            draw_filled_circle(&mut rgba, 23, 9, 5, red);
         }
         TrayState::Thinking => {
+            draw_filled_circle(&mut rgba, 16, 16, 10, amber);
             draw_filled_circle(&mut rgba, 10, 16, 2, dark);
             draw_filled_circle(&mut rgba, 16, 16, 2, dark);
             draw_filled_circle(&mut rgba, 22, 16, 2, dark);
+            draw_line(&mut rgba, 9, 9, 23, 9, white);
+            draw_line(&mut rgba, 9, 23, 23, 23, white);
         }
         TrayState::Speaking => {
+            draw_filled_circle(&mut rgba, 16, 16, 10, green);
             draw_rect(&mut rgba, 9, 11, 3, 10, white);
             draw_rect(&mut rgba, 15, 8, 3, 16, white);
             draw_rect(&mut rgba, 21, 11, 3, 10, white);
         }
         TrayState::Reconnecting => {
+            draw_filled_circle(&mut rgba, 16, 16, 10, red);
             draw_line(&mut rgba, 10, 10, 22, 22, white);
             draw_line(&mut rgba, 22, 10, 10, 22, white);
             draw_rect(&mut rgba, 15, 7, 2, 2, white);
             draw_rect(&mut rgba, 15, 23, 2, 2, white);
         }
         TrayState::Paused => {
+            draw_filled_circle(&mut rgba, 16, 16, 10, neutral);
             draw_rect(&mut rgba, 11, 9, 4, 14, dark);
             draw_rect(&mut rgba, 17, 9, 4, 14, dark);
         }
@@ -451,19 +464,30 @@ fn run_inner() -> tauri::Result<()> {
         .parse::<Shortcut>()
         .expect("fixed hold-to-talk shortcut must parse");
     let hold_to_talk_shortcut_id = hold_to_talk_shortcut.id();
+    let toggle_tmux_talk_shortcut = TOGGLE_TMUX_TALK_SHORTCUT
+        .parse::<Shortcut>()
+        .expect("fixed toggle tmux talk shortcut must parse");
+    let toggle_tmux_talk_shortcut_id = toggle_tmux_talk_shortcut.id();
 
     let shortcut_plugin = GlobalShortcutBuilder::new()
-        .with_shortcuts(vec![hold_to_talk_shortcut])
+        .with_shortcuts(vec![hold_to_talk_shortcut, toggle_tmux_talk_shortcut])
         .map_err(|error| std::io::Error::new(std::io::ErrorKind::Other, error.to_string()))?
         .with_handler(move |app, shortcut, event| {
             if shortcut.id() == hold_to_talk_shortcut_id {
                 match event.state {
                     ShortcutState::Pressed => {
-                        invoke_voice_action(app, "__marasSwitchboardHoldToTalkStart");
+                        invoke_voice_action(app, "__marasSwitchboardTmuxHoldToTalkStart");
                     }
                     ShortcutState::Released => {
-                        invoke_voice_action(app, "__marasSwitchboardHoldToTalkEnd");
+                        invoke_voice_action(app, "__marasSwitchboardTmuxHoldToTalkEnd");
                     }
+                }
+            } else if shortcut.id() == toggle_tmux_talk_shortcut_id {
+                match event.state {
+                    ShortcutState::Pressed => {
+                        invoke_voice_action(app, "__marasSwitchboardTmuxHoldToTalkToggle");
+                    }
+                    ShortcutState::Released => {}
                 }
             }
         })

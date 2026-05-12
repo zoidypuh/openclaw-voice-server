@@ -2,6 +2,7 @@ import asyncio
 import base64
 import builtins
 import json
+import logging
 import sys
 import threading
 import types
@@ -479,6 +480,45 @@ def test_validate_stt_selection_uses_xai_service(monkeypatch):
     assert install_calls == []
     assert result["results"][0]["backend"] == "xai"
     assert result["results"][0]["model"] == "xai-stt"
+
+
+def test_xai_transcriber_sends_german_language_and_logs_transcript(monkeypatch, caplog):
+    captured = {}
+
+    class FakeClient:
+        def post(self, url, headers, data, files):
+            captured["url"] = url
+            captured["headers"] = headers
+            captured["data"] = data
+            captured["files"] = files
+            return types.SimpleNamespace(
+                raise_for_status=lambda: None,
+                json=lambda: {"text": "Guten Morgen, ich spreche Deutsch.", "language": "de"},
+            )
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(xai_module.httpx, "Client", lambda timeout: FakeClient())
+    transcriber = xai_module.XAITranscriber(
+        model="xai-stt",
+        language="de",
+        device="cpu",
+        compute_type="int8",
+        api_key="xai-test",
+    )
+
+    with caplog.at_level(logging.INFO, logger=xai_module.__name__):
+        result = transcriber.transcribe((np.zeros(16000, dtype=np.int16)).tobytes())
+
+    assert result.text == "Guten Morgen, ich spreche Deutsch."
+    assert captured["url"] == "https://api.x.ai/v1/stt"
+    assert captured["headers"]["Authorization"] == "Bearer xai-test"
+    assert captured["data"] == {"format": "true", "language": "de"}
+    assert captured["files"]["file"][0] == "audio.wav"
+    assert "xAI STT request backend=xai model=xai-stt language=de" in caplog.text
+    assert "xAI STT result backend=xai model=xai-stt request_language=de response_language=de" in caplog.text
+    assert "Guten Morgen, ich spreche Deutsch." in caplog.text
 
 
 def test_xai_transcriber_requires_api_key(monkeypatch):

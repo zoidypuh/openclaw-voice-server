@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import logging
+import time
 from aiohttp import WSMsgType
 import pytest
 
@@ -48,8 +49,10 @@ class FakeWebSocketResponse:
         self.messages = asyncio.Queue()
         self.json_messages = []
         self.binary_messages = []
+        self.send_events = []
         self.auto_accept_playback = False
         self.close_payload = None
+        self.closed = False
         FakeWebSocketResponse.created.append(self)
 
     async def prepare(self, request):
@@ -61,11 +64,15 @@ class FakeWebSocketResponse:
     async def __anext__(self):
         message = await self.messages.get()
         if message is self.STOP:
+            self.closed = True
             raise StopAsyncIteration
         return message
 
     async def send_json(self, payload):
+        if self.closed:
+            raise ConnectionResetError("fake websocket is closed")
         self.json_messages.append(payload)
+        self.send_events.append(("json", payload))
         if (
             self.auto_accept_playback
             and payload.get("status") == "speaking"
@@ -80,9 +87,13 @@ class FakeWebSocketResponse:
             )
 
     async def send_bytes(self, payload):
+        if self.closed:
+            raise ConnectionResetError("fake websocket is closed")
         self.binary_messages.append(payload)
+        self.send_events.append(("bytes", payload))
 
     async def close(self, *, code=1000, message=b""):
+        self.closed = True
         self.close_payload = {"code": code, "message": message}
 
     def exception(self):
@@ -550,6 +561,372 @@ def test_speak_text_pushes_server_side_audio_to_active_client(monkeypatch):
     assert ws.binary_messages == [b"audio"]
 
 
+def test_speak_text_playback_wait_does_not_block_user_turn_processing(monkeypatch):
+    FakeWebSocketResponse.created.clear()
+    delivered = []
+
+    class FakeTranscriber:
+        def transcribe(self, audio_bytes):
+            return type("Result", (), {"text": "send this tmux turn", "duration_seconds": 1.0})()
+
+    class FakeSynthesizer:
+        async def synthesize(self, text, *, preset_name=None):
+            return b"server-audio"
+
+    class FakeGateway:
+        def __init__(self, **kwargs):
+            pass
+
+        async def stream_reply(self, text, abort_event):
+            raise AssertionError("tmux-only turn should bypass the agent")
+            yield ""
+
+    async def fake_send_transcript_to_tmux(text, settings, *, target_id=None):
+        delivered.append((text, target_id))
+        return {
+            "target_id": target_id or "mara",
+            "target": "mara:0.0",
+            "payload": f"/queue [G] {text}",
+            "pane_tail": "",
+        }
+
+    monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
+    monkeypatch.setattr(runtime_module, "build_synthesizer", lambda tts, secrets: FakeSynthesizer())
+    monkeypatch.setattr(runtime_module, "DirectGatewayClient", lambda **kwargs: FakeGateway())
+    monkeypatch.setattr(runtime_module, "_send_transcript_to_tmux", fake_send_transcript_to_tmux)
+    monkeypatch.setattr(runtime_module.web, "WebSocketResponse", FakeWebSocketResponse)
+
+    async def scenario():
+        runtime = VoiceRuntime(FakeStore())
+        handler_task = asyncio.create_task(runtime.handle_ws(object()))
+
+        while not FakeWebSocketResponse.created:
+            await asyncio.sleep(0)
+        ws = FakeWebSocketResponse.created[-1]
+        await ws.messages.put(
+            FakeMessage(
+                WSMsgType.TEXT,
+                payload={"type": "client-ready", "features": {"playback_accept": True}},
+            )
+        )
+        await asyncio.sleep(0)
+
+        speak_task = asyncio.create_task(runtime.speak_text("terminal says hello"))
+        while not ws.binary_messages:
+            await asyncio.sleep(0)
+
+        await ws.messages.put(
+            FakeMessage(
+                WSMsgType.TEXT,
+                payload={
+                    "type": "turn-commit",
+                    "reason": "tmux-release",
+                    "speech_ms": 1000,
+                    "tmux_only": True,
+                    "tmux_target": "mara",
+                },
+            )
+        )
+        await ws.messages.put(FakeMessage(WSMsgType.BINARY, data=b"x" * 3200))
+
+        async def wait_for_delivery():
+            while len(delivered) < 1:
+                await asyncio.sleep(0)
+
+        await asyncio.wait_for(wait_for_delivery(), timeout=0.5)
+
+        request_id = ws.json_messages[0]["request_id"]
+        await ws.messages.put(
+            FakeMessage(
+                WSMsgType.TEXT,
+                payload={"type": "playback-accepted", "request_id": request_id},
+            )
+        )
+        result = await speak_task
+        await ws.messages.put(FakeWebSocketResponse.STOP)
+        await handler_task
+        return result, ws
+
+    result, ws = asyncio.run(scenario())
+
+    assert delivered == [("send this tmux turn", "mara")]
+    assert result == {
+        "ok": True,
+        "speaker_name": "",
+        "spoken_text": "terminal says hello",
+        "preset_name": "",
+        "audio_bytes": 12,
+    }
+    assert ws.binary_messages == [b"server-audio"]
+
+
+def test_speak_text_uses_reconnected_voice_client_after_tts_synthesis(monkeypatch):
+    FakeWebSocketResponse.created.clear()
+    release_synthesis = asyncio.Event()
+
+    class SlowSynthesizer:
+        async def synthesize(self, text, *, preset_name=None):
+            await release_synthesis.wait()
+            return b"fresh-audio"
+
+    monkeypatch.setattr(runtime_module, "build_synthesizer", lambda tts, secrets: SlowSynthesizer())
+    monkeypatch.setattr(runtime_module.web, "WebSocketResponse", FakeWebSocketResponse)
+
+    async def start_client(runtime):
+        handler_task = asyncio.create_task(runtime.handle_ws(object()))
+        while len(FakeWebSocketResponse.created) < 1:
+            await asyncio.sleep(0)
+        ws = FakeWebSocketResponse.created[-1]
+        ws.auto_accept_playback = True
+        await ws.messages.put(
+            FakeMessage(
+                WSMsgType.TEXT,
+                payload={"type": "client-ready", "features": {"playback_accept": True}},
+            )
+        )
+        await asyncio.sleep(0)
+        return ws, handler_task
+
+    async def scenario():
+        runtime = VoiceRuntime(FakeStore())
+        stale_ws, stale_handler = await start_client(runtime)
+        speak_task = asyncio.create_task(runtime.speak_text("hello after reconnect"))
+        await asyncio.sleep(0)
+
+        await stale_ws.messages.put(FakeWebSocketResponse.STOP)
+        await stale_handler
+
+        fresh_handler = asyncio.create_task(runtime.handle_ws(object()))
+        while len(FakeWebSocketResponse.created) < 2:
+            await asyncio.sleep(0)
+        fresh_ws = FakeWebSocketResponse.created[-1]
+        fresh_ws.auto_accept_playback = True
+        await fresh_ws.messages.put(
+            FakeMessage(
+                WSMsgType.TEXT,
+                payload={"type": "client-ready", "features": {"playback_accept": True}},
+            )
+        )
+        await asyncio.sleep(0)
+
+        release_synthesis.set()
+        result = await speak_task
+
+        await fresh_ws.messages.put(FakeWebSocketResponse.STOP)
+        await fresh_handler
+        return result, stale_ws, fresh_ws
+
+    result, stale_ws, fresh_ws = asyncio.run(scenario())
+
+    assert result["ok"] is True
+    assert stale_ws.binary_messages == []
+    assert fresh_ws.binary_messages == [b"fresh-audio"]
+
+
+def test_speak_text_serializes_concurrent_playback_pushes(monkeypatch):
+    FakeWebSocketResponse.created.clear()
+
+    class FakeSynthesizer:
+        async def synthesize(self, text, *, preset_name=None):
+            await asyncio.sleep(0)
+            return f"audio:{text}".encode("utf-8")
+
+    monkeypatch.setattr(runtime_module, "build_synthesizer", lambda tts, secrets: FakeSynthesizer())
+    monkeypatch.setattr(runtime_module.web, "WebSocketResponse", FakeWebSocketResponse)
+
+    async def scenario():
+        runtime = VoiceRuntime(FakeStore())
+        handler_task = asyncio.create_task(runtime.handle_ws(object()))
+
+        while not FakeWebSocketResponse.created:
+            await asyncio.sleep(0)
+        ws = FakeWebSocketResponse.created[-1]
+        ws.auto_accept_playback = True
+        await ws.messages.put(
+            FakeMessage(
+                WSMsgType.TEXT,
+                payload={"type": "client-ready", "features": {"playback_accept": True}},
+            )
+        )
+        await asyncio.sleep(0)
+
+        first, second = await asyncio.gather(
+            runtime.speak_text("one"),
+            runtime.speak_text("two"),
+        )
+        await ws.messages.put(FakeWebSocketResponse.STOP)
+        await handler_task
+        return first, second, ws
+
+    first, second, ws = asyncio.run(scenario())
+
+    assert first["ok"] is True
+    assert second["ok"] is True
+    assert ws.binary_messages == [b"audio:one", b"audio:two"]
+    events = [
+        event
+        for event in ws.send_events
+        if event[0] == "bytes" or (event[0] == "json" and event[1].get("status") in {"speaking", "idle"})
+    ]
+    assert [event[0] for event in events] == ["json", "bytes", "json", "json", "bytes", "json"]
+    assert events[0][1]["status"] == "speaking"
+    assert events[1] == ("bytes", b"audio:one")
+    assert events[2][1]["status"] == "idle"
+    assert events[3][1]["status"] == "speaking"
+    assert events[4] == ("bytes", b"audio:two")
+    assert events[5][1]["status"] == "idle"
+
+
+def test_speak_text_ignores_stale_client_disconnect_during_new_playback(monkeypatch):
+    FakeWebSocketResponse.created.clear()
+
+    class FakeTranscriber:
+        def transcribe(self, audio_bytes):
+            return type("Result", (), {"text": "", "duration_seconds": 0.0})()
+
+    class FakeSynthesizer:
+        async def synthesize(self, text, *, preset_name=None):
+            return b"new-client-audio"
+
+    class FakeGateway:
+        def __init__(self, **kwargs):
+            pass
+
+        async def stream_reply(self, text, abort_event):
+            if False:  # pragma: no cover - keeps this as an async generator
+                yield ""
+
+    monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
+    monkeypatch.setattr(runtime_module, "build_synthesizer", lambda tts, secrets: FakeSynthesizer())
+    monkeypatch.setattr(runtime_module, "DirectGatewayClient", lambda **kwargs: FakeGateway())
+    monkeypatch.setattr(runtime_module.web, "WebSocketResponse", FakeWebSocketResponse)
+
+    async def start_client(runtime):
+        handler_task = asyncio.create_task(runtime.handle_ws(object()))
+        expected_count = len(FakeWebSocketResponse.created) + 1
+        while len(FakeWebSocketResponse.created) < expected_count:
+            await asyncio.sleep(0)
+        ws = FakeWebSocketResponse.created[-1]
+        await ws.messages.put(
+            FakeMessage(
+                WSMsgType.TEXT,
+                payload={"type": "client-ready", "features": {"playback_accept": True}},
+            )
+        )
+        await asyncio.sleep(0)
+        return ws, handler_task
+
+    async def scenario():
+        runtime = VoiceRuntime(FakeStore())
+        old_ws, old_handler_task = await start_client(runtime)
+        new_ws, new_handler_task = await start_client(runtime)
+
+        speak_task = asyncio.create_task(runtime.speak_text("hello new client"))
+        while not new_ws.binary_messages:
+            await asyncio.sleep(0)
+
+        await old_ws.messages.put(FakeWebSocketResponse.STOP)
+        await old_handler_task
+
+        assert not speak_task.done()
+        request_id = new_ws.json_messages[0]["request_id"]
+        await new_ws.messages.put(
+            FakeMessage(
+                WSMsgType.TEXT,
+                payload={"type": "playback-accepted", "request_id": request_id},
+            )
+        )
+        result = await speak_task
+        await new_ws.messages.put(FakeWebSocketResponse.STOP)
+        await new_handler_task
+        return result, old_ws, new_ws
+
+    result, old_ws, new_ws = asyncio.run(scenario())
+
+    assert result["ok"] is True
+    assert old_ws.binary_messages == []
+    assert new_ws.binary_messages == [b"new-client-audio"]
+
+
+def test_speak_text_rejects_stale_active_voice_client(monkeypatch):
+    FakeWebSocketResponse.created.clear()
+    monkeypatch.setattr(runtime_module, "build_synthesizer", lambda tts, secrets: object())
+    monkeypatch.setattr(runtime_module.web, "WebSocketResponse", FakeWebSocketResponse)
+
+    async def scenario():
+        runtime = VoiceRuntime(FakeStore())
+        handler_task = asyncio.create_task(runtime.handle_ws(object()))
+
+        while not FakeWebSocketResponse.created:
+            await asyncio.sleep(0)
+        ws = FakeWebSocketResponse.created[-1]
+        await ws.messages.put(
+            FakeMessage(
+                WSMsgType.TEXT,
+                payload={"type": "client-ready", "features": {"playback_accept": True}},
+            )
+        )
+        await asyncio.sleep(0)
+        async with runtime._active_ws_lock:
+            runtime._active_ws_client_ready_at = time.time() - runtime_module.PLAYBACK_CLIENT_READY_STALE_SECONDS - 1
+            runtime._active_ws_client_last_seen_at = runtime._active_ws_client_ready_at
+
+        status = await runtime.playback_status()
+        with pytest.raises(ValidationError, match="Active voice client is stale"):
+            await runtime.speak_text("do not synthesize")
+
+        await ws.messages.put(FakeWebSocketResponse.STOP)
+        await handler_task
+        return status, ws
+
+    status, ws = asyncio.run(scenario())
+
+    assert status["active_voice_client"] is False
+    assert status["playback_accept"] is False
+    assert status["client_status"] == "stale_websocket"
+    assert status["websocket_status"] == "stale"
+    assert ws.binary_messages == []
+
+
+def test_playback_status_reports_audio_locked_client(monkeypatch):
+    FakeWebSocketResponse.created.clear()
+    monkeypatch.setattr(runtime_module, "build_synthesizer", lambda tts, secrets: object())
+    monkeypatch.setattr(runtime_module.web, "WebSocketResponse", FakeWebSocketResponse)
+
+    async def scenario():
+        runtime = VoiceRuntime(FakeStore())
+        handler_task = asyncio.create_task(runtime.handle_ws(object()))
+
+        while not FakeWebSocketResponse.created:
+            await asyncio.sleep(0)
+        ws = FakeWebSocketResponse.created[-1]
+        await ws.messages.put(
+            FakeMessage(
+                WSMsgType.TEXT,
+                payload={
+                    "type": "client-ready",
+                    "features": {"playback_accept": True, "playback_unlocked": False},
+                },
+            )
+        )
+        await asyncio.sleep(0)
+        status = await runtime.playback_status()
+        with pytest.raises(ValidationError, match="browser audio is locked"):
+            await runtime.speak_text("audio locked")
+
+        await ws.messages.put(FakeWebSocketResponse.STOP)
+        await handler_task
+        return status, ws
+
+    status, ws = asyncio.run(scenario())
+
+    assert status["active_voice_client"] is True
+    assert status["playback_accept"] is False
+    assert status["client_status"] == "audio_locked"
+    assert status["features"]["playback_unlocked"] is False
+    assert ws.binary_messages == []
+
+
 def test_speak_text_routes_speaker_tag_to_speaker_specific_provider(monkeypatch):
     FakeWebSocketResponse.created.clear()
     synth_builds = []
@@ -992,6 +1369,115 @@ def test_handle_ws_routes_typed_text_without_stt(monkeypatch):
     assert ws.binary_messages == [b"typed-audio"]
 
 
+def test_handle_ws_queues_back_to_back_tmux_audio_turns_without_dropping_slow_first(monkeypatch):
+    FakeWebSocketResponse.created.clear()
+    delivered = []
+
+    class SlowFirstTranscriber:
+        def transcribe(self, audio_bytes):
+            if audio_bytes.startswith(b"1"):
+                time.sleep(0.05)
+                return type(
+                    "Result",
+                    (),
+                    {"text": "long first transcript with task details", "duration_seconds": 3.0},
+                )()
+            return type("Result", (), {"text": "short second transcript", "duration_seconds": 1.0})()
+
+    class FakeSynthesizer:
+        async def synthesize(self, text, *, preset_name=None):
+            raise AssertionError("tmux-only turns should bypass TTS")
+
+    class FakeConversationAgent:
+        async def stream_reply(self, text, abort_event):
+            raise AssertionError("tmux-only turns should bypass agent replies")
+            yield ""
+
+    async def fake_send_transcript_to_tmux(text, settings, *, target_id=None):
+        delivered.append((text, target_id))
+        return {
+            "target_id": target_id or "mara",
+            "target": "mara:0.0",
+            "payload": f"/queue [G] {text}",
+            "pane_tail": "",
+        }
+
+    monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: SlowFirstTranscriber())
+    monkeypatch.setattr(runtime_module, "build_synthesizer", lambda tts, secrets: FakeSynthesizer())
+    monkeypatch.setattr(runtime_module, "build_conversation_agent", lambda settings, **kwargs: FakeConversationAgent())
+    monkeypatch.setattr(runtime_module, "_send_transcript_to_tmux", fake_send_transcript_to_tmux)
+    monkeypatch.setattr(runtime_module.web, "WebSocketResponse", FakeWebSocketResponse)
+
+    async def scenario():
+        runtime = VoiceRuntime(FakeStore())
+        handler_task = asyncio.create_task(runtime.handle_ws(object()))
+
+        while not FakeWebSocketResponse.created:
+            await asyncio.sleep(0)
+        ws = FakeWebSocketResponse.created[-1]
+        await ws.messages.put(
+            FakeMessage(
+                WSMsgType.TEXT,
+                payload={
+                    "type": "turn-commit",
+                    "reason": "tmux-release",
+                    "speech_ms": 3000,
+                    "tmux_only": True,
+                    "tmux_target": "mara",
+                },
+            )
+        )
+        await ws.messages.put(FakeMessage(WSMsgType.BINARY, data=b"1" * 3200))
+        await ws.messages.put(
+            FakeMessage(
+                WSMsgType.TEXT,
+                payload={
+                    "type": "turn-commit",
+                    "reason": "tmux-release",
+                    "speech_ms": 1000,
+                    "tmux_only": True,
+                    "tmux_target": "mara",
+                },
+            )
+        )
+        await ws.messages.put(FakeMessage(WSMsgType.BINARY, data=b"2" * 3200))
+
+        while len(delivered) < 2:
+            await asyncio.sleep(0)
+        await ws.messages.put(FakeWebSocketResponse.STOP)
+        await handler_task
+        return ws
+
+    ws = asyncio.run(scenario())
+
+    assert delivered == [
+        ("long first transcript with task details", "mara"),
+        ("short second transcript", "mara"),
+    ]
+    assert [
+        message
+        for message in ws.json_messages
+        if isinstance(message, dict) and message.get("type") == "tmux-sent"
+    ] == [
+        {
+            "type": "tmux-sent",
+            "text": "/queue [G] long first transcript with task details",
+            "target_id": "mara",
+            "target": "mara:0.0",
+            "payload": "/queue [G] long first transcript with task details",
+            "pane_tail": "",
+        },
+        {
+            "type": "tmux-sent",
+            "text": "/queue [G] short second transcript",
+            "target_id": "mara",
+            "target": "mara:0.0",
+            "payload": "/queue [G] short second transcript",
+            "pane_tail": "",
+        },
+    ]
+
+
 def test_handle_ws_skips_audio_when_tts_disabled(monkeypatch):
     FakeWebSocketResponse.created.clear()
     gateway_calls = []
@@ -1121,11 +1607,10 @@ def test_handle_speak_request_times_out_when_speak_stalls(monkeypatch):
         response = await runtime.handle_speak_request(FakeRequest())
         assert response.status == 504
         payload = json.loads(response.body.decode("utf-8"))
-        assert payload == {
-            "ok": False,
-            "error": "Timed out waiting for the active voice client to accept playback.",
-            "timeout_seconds": 0.01,
-        }
+        assert payload["ok"] is False
+        assert payload["error"] == "Timed out waiting for the active voice client to accept playback."
+        assert payload["timeout_seconds"] == 0.01
+        assert payload["voice_client"]["client_status"] == "no_websocket"
 
     asyncio.run(scenario())
 
@@ -1176,11 +1661,11 @@ def test_handle_speak_request_sends_idle_when_playback_accept_times_out(monkeypa
 
     assert response.status == 504
     payload = json.loads(response.body.decode("utf-8"))
-    assert payload == {
-        "ok": False,
-        "error": "Timed out waiting for the active voice client to accept playback.",
-        "timeout_seconds": 0.01,
-    }
+    assert payload["ok"] is False
+    assert payload["error"] == "Timed out waiting for the active voice client to accept playback."
+    assert payload["timeout_seconds"] == 0.01
+    assert payload["voice_client"]["client_status"] == "accept_timed_out"
+    assert payload["voice_client"]["playback_accept"] is False
     assert ws.json_messages[0]["status"] == "speaking"
     assert ws.json_messages[0]["source"] == "server_speak"
     assert ws.json_messages[1] == {

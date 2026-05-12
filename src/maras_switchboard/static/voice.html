@@ -310,10 +310,14 @@
     border-color: rgba(134,200,255,0.3);
     background: rgba(134,200,255,0.08);
   }
-  #talk-toggle-btn {
+  #talk-toggle-btn,
+  #tmux-talk-btn,
+  #tmux-text-btn {
     min-width: 5.2rem;
   }
-  #talk-toggle-btn.active {
+  #talk-toggle-btn.active,
+  #tmux-talk-btn.active,
+  #tmux-text-btn.active {
     color: #ffd39a;
     border-color: rgba(255,152,54,0.42);
     background: rgba(255,152,54,0.12);
@@ -387,6 +391,44 @@
   }
   #mute-btn {
     min-width: 5.2rem;
+  }
+  #tmux-target-select {
+    appearance: none;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 999px;
+    background: rgba(255,255,255,0.04);
+    color: #c8c8c8;
+    padding: 0.34rem 0.72rem;
+    font: inherit;
+    font-size: 0.78rem;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    min-width: 7.2rem;
+  }
+  #tmux-target-select:disabled {
+    opacity: 0.42;
+    cursor: default;
+  }
+  .client-status,
+  .status-hint {
+    width: 100%;
+    min-height: 1rem;
+    color: #8c939d;
+    font-size: 0.72rem;
+    line-height: 1.2;
+    letter-spacing: 0.08em;
+    text-align: center;
+    text-transform: uppercase;
+  }
+  .client-status.ready {
+    color: #74d7ff;
+  }
+  .client-status.reconnecting,
+  .client-status.warn {
+    color: #ffb067;
+  }
+  .status-hint {
+    color: #d9dde2;
   }
   #level-row {
     width: 100%;
@@ -608,12 +650,17 @@
     </button>
   </div>
   <div id="utility-bar">
-    <button id="interrupt-btn" class="mini-btn" type="button">interrupt</button>
+    <button id="interrupt-btn" class="mini-btn hidden" type="button" aria-hidden="true" tabindex="-1">interrupt</button>
     <button id="talk-toggle-btn" class="mini-btn" type="button" aria-pressed="false">talk</button>
+    <select id="tmux-target-select" aria-label="tmux target"></select>
+    <button id="tmux-talk-btn" class="mini-btn" type="button" aria-pressed="false">tmux</button>
+    <button id="tmux-text-btn" class="mini-btn" type="button">text</button>
     <button id="mute-btn" class="mini-btn" type="button">mute</button>
     <button id="play-reply-btn" class="mini-btn hidden" type="button">play reply</button>
     <button id="sliders-toggle" class="mini-btn active" type="button">threshold</button>
   </div>
+  <div id="client-status" class="client-status reconnecting" aria-live="polite">client: starting</div>
+  <div id="status-hint" class="status-hint hidden" aria-live="polite"></div>
   <div id="level-row">
     <div id="level" aria-hidden="true"><div id="level-bar"></div></div>
     <div id="level-value" aria-live="off">-60 dB</div>
@@ -719,6 +766,35 @@ function applyVoiceProfileState(runtimeState) {
     || DEFAULT_VOICE_PROFILE;
   activeVoiceProfile = normalizeVoiceProfile(fromRuntime);
   renderVoiceProfileButtons();
+}
+
+function renderTmuxTargetSelector() {
+  const selector = document.getElementById('tmux-target-select');
+  if (!selector) {
+    return;
+  }
+  const choices = tmuxTargetChoices.length
+    ? tmuxTargetChoices
+    : [{ id: selectedTmuxTarget, label: selectedTmuxTarget, configured: false }];
+  selector.replaceChildren(...choices.map((choice) => {
+    const option = document.createElement('option');
+    option.value = String(choice.id || '');
+    option.textContent = String(choice.label || choice.id || '');
+    option.disabled = choice.configured === false;
+    return option;
+  }));
+  selector.value = choices.some((choice) => choice.id === selectedTmuxTarget)
+    ? selectedTmuxTarget
+    : String(choices[0]?.id || '');
+  selectedTmuxTarget = selector.value || selectedTmuxTarget;
+  selector.disabled = choices.length === 0;
+}
+
+function applyTmuxTargetState(runtimeState) {
+  const tmuxState = runtimeState?.tmux || {};
+  tmuxTargetChoices = Array.isArray(tmuxState.choices) ? tmuxState.choices : [];
+  selectedTmuxTarget = String(tmuxState.selected || selectedTmuxTarget || 'main-codex').trim() || 'main-codex';
+  renderTmuxTargetSelector();
 }
 
 function useProfileImageFallback(image) {
@@ -832,6 +908,11 @@ let bargeInGraceUntil = 0;
 let pendingBargeInAudio = null;
 let pendingBargeInCommitMeta = null;
 let holdToTalkActive = false;
+let tmuxTalkActive = false;
+let userTurnActive = false;
+let userInputPending = false;
+let userInputPendingTmuxOnly = false;
+let playbackLifecycleState = 'idle';
 let runtimeStatePromise = null;
 let playbackUnlocked = false;
 let webAudioUnlocked = false;
@@ -848,12 +929,16 @@ let audioRecoveryPromise = null;
 let audioStartupPromise = null;
 let captureWatchdogTimer = null;
 let audioRecoveryHooksBound = false;
+let voiceClientWatchdogTimer = null;
+let voiceClientRegistrationMisses = 0;
 let heardTranscriptText = '';
 let spokenReplyText = '';
 let transcriptLogEntries = [];
 let activeReplyEntryId = '';
 let transcriptEntryCounter = 0;
 let transcriptScrollAnimationId = 0;
+let selectedTmuxTarget = 'main-codex';
+let tmuxTargetChoices = [];
 let settings = {
   silence_ms: 900,
   silence_threshold: 0.015,
@@ -900,6 +985,7 @@ const APPLE_BARGE_IN_SILENCE_MS = 220;
 const APPLE_BARGE_IN_MAX_MS = 1200;
 const AUDIO_CAPTURE_STALL_MS = 2600;
 const AUDIO_WATCHDOG_INTERVAL_MS = 1000;
+const VOICE_CLIENT_WATCHDOG_INTERVAL_MS = 2500;
 const APPLE_AUDIO_STARTUP_RETRY_DELAYS_MS = [150, 350, 700];
 const SILENT_UNLOCK_WAV_DATA_URL = 'data:audio/wav;base64,UklGRhQBAABXQVZFZm10IBAAAAABAAEAwF0AAIC7AAACABAAZGF0YfAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
 let tuning = { ...DEFAULT_TUNING };
@@ -908,7 +994,38 @@ let tuningStorageState = {
   inputThresholdDb: false,
   waitAfterSpeakMs: false,
 };
-let interruptMode = 'off';
+let interruptMode = 'hotkey-only';
+
+function playHotkeyPing() {
+  try {
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) {
+      return;
+    }
+    const context = audioCtx || new Ctor();
+    if (!audioCtx) {
+      audioCtx = context;
+    }
+    if (context.state === 'suspended') {
+      void context.resume().catch(() => {});
+    }
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const now = context.currentTime;
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(880, now);
+    oscillator.frequency.exponentialRampToValueAtTime(1320, now + 0.045);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.12, now + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.075);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.085);
+  } catch (error) {
+    console.warn('hotkey ping failed', error);
+  }
+}
 
 function amplitudeToDb(amplitude) {
   return 20 * Math.log10(Math.max(Number(amplitude) || 0, 0.000001));
@@ -1040,6 +1157,113 @@ function setStatusText(text) {
   }
   hint.textContent = normalized;
   hint.classList.remove('hidden');
+}
+
+function setClientStatusText(text, state = '') {
+  const clientStatus = document.getElementById('client-status');
+  if (!clientStatus) {
+    return;
+  }
+  clientStatus.textContent = String(text || 'client: unknown');
+  clientStatus.classList.remove('ready', 'reconnecting', 'warn');
+  if (state) {
+    clientStatus.classList.add(state);
+  }
+}
+
+function websocketStatusText() {
+  if (!ws) {
+    return 'disconnected';
+  }
+  switch (ws.readyState) {
+    case WebSocket.CONNECTING:
+      return 'connecting';
+    case WebSocket.OPEN:
+      return 'open';
+    case WebSocket.CLOSING:
+      return 'closing';
+    case WebSocket.CLOSED:
+      return 'closed';
+    default:
+      return 'unknown';
+  }
+}
+
+async function refreshVoiceClientStatus() {
+  const socketState = websocketStatusText();
+  if (socketState !== 'open') {
+    voiceClientRegistrationMisses = 0;
+    if ((socketState === 'closed' || socketState === 'disconnected') && paused) {
+      setClientStatusText('client: off');
+      return;
+    }
+    setClientStatusText(`client: ${socketState}`, socketState === 'connecting' ? 'reconnecting' : 'warn');
+    if (socketState === 'closed' || socketState === 'disconnected') {
+      void connect();
+    }
+    return;
+  }
+
+  sendClientReady();
+  let runtimeState = null;
+  try {
+    const response = await fetch(appUrl('api/runtime/state'), { cache: 'no-store' });
+    if (!response.ok) {
+      throw new Error(`runtime state request failed (${response.status})`);
+    }
+    runtimeState = await response.json();
+  } catch (error) {
+    voiceClientRegistrationMisses += 1;
+    setClientStatusText('client: state check failed', 'warn');
+    console.warn('voice client status check failed', error);
+    return;
+  }
+
+  const voiceClient = runtimeState?.voice_client || {};
+  const clientStatus = String(voiceClient.client_status || '');
+  if (clientStatus === 'ready') {
+    voiceClientRegistrationMisses = 0;
+    setClientStatusText('client: connected, playback ready', 'ready');
+    return;
+  }
+
+  voiceClientRegistrationMisses += 1;
+  sendClientReady();
+  if (clientStatus === 'pending_accept_registered') {
+    setClientStatusText('client: playback acceptance pending', 'reconnecting');
+    return;
+  }
+  if (clientStatus === 'accept_timed_out') {
+    setClientStatusText('client: playback accept timed out; refocusing', 'warn');
+    return;
+  }
+  if (clientStatus === 'audio_locked') {
+    setClientStatusText('client: page connected, audio locked', 'warn');
+    void ensurePlaybackReady()
+      .then(() => sendClientReady())
+      .catch(() => {});
+    return;
+  }
+  if (clientStatus === 'connected_not_ready' || clientStatus === 'stale_websocket') {
+    setClientStatusText('client: registering playback acceptance', 'reconnecting');
+    return;
+  }
+
+  setClientStatusText('client: server lost browser registration', 'warn');
+  if (voiceClientRegistrationMisses >= 2 && ws && ws.readyState === WebSocket.OPEN) {
+    console.warn('voice websocket open locally but not registered on server; reconnecting');
+    ws.close(4000, 'server lost voice client registration');
+  }
+}
+
+function startVoiceClientWatchdog() {
+  if (voiceClientWatchdogTimer) {
+    return;
+  }
+  void refreshVoiceClientStatus();
+  voiceClientWatchdogTimer = setInterval(() => {
+    void refreshVoiceClientStatus();
+  }, VOICE_CLIENT_WATCHDOG_INTERVAL_MS);
 }
 
 function scrollTranscriptOverlayToBottom() {
@@ -1199,6 +1423,12 @@ function sendClientReady() {
     type: 'client-ready',
     features: {
       playback_accept: true,
+      playback_unlocked: playbackUnlocked,
+      web_audio_unlocked: webAudioUnlocked,
+      page_visible: !document.hidden,
+      page_focused: document.hasFocus(),
+      paused,
+      playback_state: playbackLifecycleState,
     },
   }));
 }
@@ -1215,6 +1445,8 @@ function sendTurnCommitMeta(meta) {
     threshold_db: Number.isFinite(Number(meta.thresholdDb)) ? Number(meta.thresholdDb) : null,
     level_db: Number.isFinite(Number(meta.levelDb)) ? Number(meta.levelDb) : null,
     wait_after_speak_ms: Math.max(0, Math.round(Number(meta.waitAfterSpeakMs) || 0)),
+    tmux_only: meta.tmuxOnly === true,
+    tmux_target: String(meta.tmuxTarget || '').trim(),
   }));
 }
 
@@ -1305,11 +1537,17 @@ function saveTuningPanelVisibility() {
 }
 
 function defaultInterruptMode() {
-  return 'off';
+  return 'hotkey-only';
 }
 
 function normalizeInterruptMode(mode) {
-  return mode === 'barge-in' ? 'barge-in' : 'off';
+  if (mode === 'explicit') {
+    return 'hotkey-only';
+  }
+  if (mode === 'barge-in' || mode === 'off' || mode === 'hotkey-only') {
+    return mode;
+  }
+  return defaultInterruptMode();
 }
 
 function loadInterruptMode() {
@@ -1352,11 +1590,21 @@ function resolveWaitAfterSpeakMs() {
 }
 
 function usesKeywordInterruptOnly() {
-  return false;
+  return interruptMode === 'hotkey-only';
 }
 
 function voiceInterruptDisabled() {
   return interruptMode === 'off';
+}
+
+function nextInterruptMode(mode) {
+  if (mode === 'hotkey-only') {
+    return 'barge-in';
+  }
+  if (mode === 'barge-in') {
+    return 'off';
+  }
+  return 'hotkey-only';
 }
 
 function clearStatusHint() {
@@ -1370,6 +1618,133 @@ function clearStatusHint() {
 
 function isHoldToTalkActive() {
   return holdToTalkActive;
+}
+
+function isTmuxTalkActive() {
+  return tmuxTalkActive;
+}
+
+function isUserTurnActive() {
+  return userTurnActive || userInputPending || holdToTalkActive;
+}
+
+function setPlaybackLifecycleState(nextState, item = null, reason = '') {
+  if (playbackLifecycleState === nextState && !reason) {
+    return;
+  }
+  playbackLifecycleState = nextState;
+  const requestId = String(item?.requestId || '');
+  const source = String(item?.source || '');
+  console.info('[switchboard] playback lifecycle', {
+    state: playbackLifecycleState,
+    requestId,
+    source,
+    reason,
+    queued: audioQueue.length,
+    hasCurrentAudio: Boolean(currentAudio),
+    ts: new Date().toISOString(),
+  });
+  if (nextState === 'queued') {
+    setStatusText(isUserTurnActive() ? 'reply queued until input ends' : 'reply queued');
+  } else if (nextState === 'accepted') {
+    setStatusText('reply accepted');
+  } else if (nextState === 'playing') {
+    setStatusText('playing reply');
+  } else if (nextState === 'failed') {
+    setStatusText('playback failed');
+  }
+  syncShellState();
+}
+
+function pausePlaybackForUserTurn() {
+  if (!playbackSoftPaused) {
+    playbackSoftPaused = true;
+  }
+  if (currentAudio && !currentAudio.paused) {
+    currentAudio.pause();
+  }
+  if (currentAudio || audioQueue.length > 0) {
+    setPlaybackLifecycleState('queued', null, 'user-turn-active');
+  }
+  if (!paused && !interruptPending) {
+    setState('listening');
+  }
+}
+
+function resumePlaybackAfterUserTurn(reason = '') {
+  if (isUserTurnActive()) {
+    return;
+  }
+  if (playbackSoftPaused) {
+    playbackSoftPaused = false;
+  }
+  if (paused || interruptPending) {
+    return;
+  }
+  if (currentAudio) {
+    currentAudio.play().then(() => {
+      if (!paused && !interruptPending && !isUserTurnActive()) {
+        setPlaybackLifecycleState('playing', null, reason || 'resume-user-turn');
+        setState('speaking');
+      }
+    }).catch(() => {
+      currentAudio = null;
+      playNextAudio();
+    });
+    return;
+  }
+  if (audioQueue.length > 0) {
+    playNextAudio();
+    return;
+  }
+  maybeReturnToListening();
+}
+
+function beginUserTurn({ tmuxOnly = false } = {}) {
+  userTurnActive = true;
+  userInputPending = true;
+  userInputPendingTmuxOnly = Boolean(tmuxOnly);
+  holdToTalkActive = true;
+  tmuxTalkActive = Boolean(tmuxOnly);
+  pausePlaybackForUserTurn();
+  updateControlStates();
+  syncShellState({ force: true });
+}
+
+function finishUserTurn({ sent = false, reason = '' } = {}) {
+  userTurnActive = false;
+  userInputPending = Boolean(sent);
+  userInputPendingTmuxOnly = Boolean(sent && userInputPendingTmuxOnly);
+  if (!sent) {
+    resumePlaybackAfterUserTurn(reason || 'user-turn-empty');
+  }
+  updateControlStates();
+  syncShellState({ force: true });
+}
+
+function clearUserInputPending(reason = '') {
+  if (!userInputPending && !userTurnActive) {
+    return;
+  }
+  userInputPending = false;
+  userInputPendingTmuxOnly = false;
+  if (!holdToTalkActive) {
+    userTurnActive = false;
+  }
+  resumePlaybackAfterUserTurn(reason || 'user-input-complete');
+  updateControlStates();
+}
+
+function clearUserTurnState(reason = '') {
+  holdToTalkActive = false;
+  tmuxTalkActive = false;
+  userTurnActive = false;
+  userInputPending = false;
+  userInputPendingTmuxOnly = false;
+  if (reason) {
+    console.info('[switchboard] user turn cleared', { reason, ts: new Date().toISOString() });
+  }
+  syncShellState({ force: true });
 }
 
 function resolveTurnInputThresholdDb() {
@@ -1389,13 +1764,17 @@ function sendBufferedTurn(audioBuffer, { commitMeta = null } = {}) {
   if (!audioBuffer || !ws || ws.readyState !== WebSocket.OPEN) {
     return false;
   }
+  const maySendDuringUserTurn = isUserTurnActive();
   if (
-    interruptPending
-    || busy
-    || replyActive
-    || currentAudio
-    || audioQueue.length > 0
-    || currentState === 'speaking'
+    !maySendDuringUserTurn
+    && (
+      interruptPending
+      || busy
+      || replyActive
+      || currentAudio
+      || audioQueue.length > 0
+      || currentState === 'speaking'
+    )
   ) {
     queuePendingTurn(audioBuffer, { commitMeta });
     return true;
@@ -1422,7 +1801,7 @@ async function ensureVoiceSocketOpen() {
   return Boolean(ws && ws.readyState === WebSocket.OPEN);
 }
 
-async function sendTypedTurn(text) {
+async function sendTypedTurn(text, { tmuxTarget = '' } = {}) {
   const typedText = String(text || '').trim();
   if (!typedText) {
     return false;
@@ -1447,7 +1826,11 @@ async function sendTypedTurn(text) {
   busy = true;
   pendingIdle = false;
   setState('thinking');
-  ws.send(JSON.stringify({ type: 'text-input', text: typedText }));
+  ws.send(JSON.stringify({
+    type: 'text-input',
+    text: typedText,
+    tmux_target: String(tmuxTarget || '').trim(),
+  }));
   return true;
 }
 
@@ -1474,7 +1857,24 @@ function applyRuntimeAudioSettings(audioSettings) {
 
 function renderInterruptControls() {
   const interruptBtn = document.getElementById('interrupt-btn');
-  interruptBtn.textContent = interruptMode === 'barge-in' ? 'barge in' : 'interrupt';
+  const canInterruptNow = isInterruptibleAudioState() || currentState === 'thinking' || busy;
+  if (canInterruptNow) {
+    interruptBtn.textContent = 'interrupt';
+    interruptBtn.setAttribute('aria-label', 'interrupt now');
+    interruptBtn.title = 'Interrupt now';
+  } else if (interruptMode === 'barge-in') {
+    interruptBtn.textContent = 'normal';
+    interruptBtn.setAttribute('aria-label', 'Barge-in: normal');
+    interruptBtn.title = 'Barge-in: normal';
+  } else if (interruptMode === 'off') {
+    interruptBtn.textContent = 'off';
+    interruptBtn.setAttribute('aria-label', 'Barge-in: off');
+    interruptBtn.title = 'Barge-in: off';
+  } else {
+    interruptBtn.textContent = 'hotkey only';
+    interruptBtn.setAttribute('aria-label', 'Barge-in: hotkey only');
+    interruptBtn.title = 'Barge-in: hotkey only';
+  }
   interruptBtn.classList.toggle('active', interruptMode === 'barge-in');
 }
 
@@ -1528,17 +1928,17 @@ function configureTuningControls() {
 
   document.getElementById('interrupt-btn').addEventListener('click', () => {
     if (isInterruptibleAudioState() || currentState === 'thinking' || busy) {
-      setInterruptMode('barge-in');
       manualInterrupt();
       return;
     }
-    setInterruptMode(interruptMode === 'barge-in' ? 'off' : 'barge-in');
+    setInterruptMode(nextInterruptMode(interruptMode));
   });
 }
 
 function configureTextTurnInput() {
   const form = document.getElementById('text-turn-form');
   const input = document.getElementById('text-turn-input');
+  const tmuxTextBtn = document.getElementById('tmux-text-btn');
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     const typedText = input.value.trim();
@@ -1547,6 +1947,19 @@ function configureTextTurnInput() {
     }
     input.value = '';
     void sendTypedTurn(typedText).then((sent) => {
+      if (!sent) {
+        input.value = typedText;
+      }
+    });
+  });
+  tmuxTextBtn.addEventListener('click', () => {
+    const typedText = input.value.trim();
+    if (!typedText) {
+      input.focus();
+      return;
+    }
+    input.value = '';
+    void sendTypedTurn(typedText, { tmuxTarget: selectedTmuxTarget }).then((sent) => {
       if (!sent) {
         input.value = typedText;
       }
@@ -1577,6 +1990,9 @@ function updateControlStates() {
   const pauseBtn = document.getElementById('pause-btn');
   const muteBtn = document.getElementById('mute-btn');
   const talkToggleBtn = document.getElementById('talk-toggle-btn');
+  const tmuxTalkBtn = document.getElementById('tmux-talk-btn');
+  const tmuxTextBtn = document.getElementById('tmux-text-btn');
+  const tmuxTargetSelect = document.getElementById('tmux-target-select');
   pauseBtn.classList.toggle('active', !paused);
   pauseBtn.setAttribute('aria-pressed', paused ? 'false' : 'true');
   pauseBtn.setAttribute('aria-label', paused ? 'voice off' : 'voice on');
@@ -1584,6 +2000,14 @@ function updateControlStates() {
   talkToggleBtn.classList.toggle('active', holdToTalkActive);
   talkToggleBtn.setAttribute('aria-pressed', holdToTalkActive ? 'true' : 'false');
   talkToggleBtn.setAttribute('aria-label', holdToTalkActive ? 'stop speaking and send' : 'start speaking');
+  tmuxTalkBtn.textContent = tmuxTalkActive ? 'send tmux' : 'tmux';
+  tmuxTalkBtn.classList.toggle('active', tmuxTalkActive);
+  tmuxTalkBtn.setAttribute('aria-pressed', tmuxTalkActive ? 'true' : 'false');
+  tmuxTalkBtn.setAttribute('aria-label', tmuxTalkActive ? 'send transcript to tmux' : 'start stt-only tmux capture');
+  tmuxTextBtn.disabled = tmuxTalkActive || tmuxTargetChoices.length === 0;
+  if (tmuxTargetSelect) {
+    tmuxTargetSelect.disabled = tmuxTalkActive || tmuxTargetChoices.length === 0;
+  }
   muteBtn.textContent = 'mute';
   muteBtn.classList.toggle('active', muted);
   renderInterruptControls();
@@ -1620,6 +2044,8 @@ function commitBufferedTurnNow({ reason = 'manual-release' } = {}) {
       thresholdDb: resolveTurnInputThresholdDb(),
       levelDb: currentLevelDb,
       waitAfterSpeakMs: 0,
+      tmuxOnly: isTmuxTalkActive(),
+      tmuxTarget: isTmuxTalkActive() ? selectedTmuxTarget : '',
     },
   });
   resetCaptureBuffer();
@@ -1641,7 +2067,7 @@ function setMutedState(nextMuted, { commitOnMute = true, resetBuffer = true } = 
 function setInterruptMode(nextMode) {
   interruptMode = normalizeInterruptMode(nextMode);
   saveInterruptMode();
-  if ((voiceInterruptDisabled() || usesKeywordInterruptOnly()) && playbackSoftPaused) {
+  if ((voiceInterruptDisabled() || usesKeywordInterruptOnly()) && playbackSoftPaused && !isUserTurnActive()) {
     resumePlaybackAfterBargeIn();
   }
   resetInterruptSpeechDetection();
@@ -1663,8 +2089,14 @@ function resolveShellState() {
   if (!ws || ws.readyState !== WebSocket.OPEN || currentState === 'reconnecting') {
     return 'reconnecting';
   }
-  if (currentState === 'speaking' || currentAudio || audioQueue.length > 0) {
+  if (isHoldToTalkActive()) {
+    return 'talking';
+  }
+  if (playbackLifecycleState === 'playing' || currentState === 'speaking') {
     return 'speaking';
+  }
+  if (currentAudio || audioQueue.length > 0 || playbackLifecycleState === 'queued' || playbackLifecycleState === 'accepted') {
+    return 'thinking';
   }
   if (currentState === 'thinking' || currentState === 'interrupting' || interruptPending || busy) {
     return 'thinking';
@@ -1851,6 +2283,7 @@ function resetPlaybackElement({ preserveUnlocked = false } = {}) {
   }
   playbackAudio = null;
   playbackUnlocked = false;
+  sendClientReady();
 }
 
 function teardownAudioCapture() {
@@ -1875,6 +2308,7 @@ function teardownAudioCapture() {
     audioCtx.close().catch(() => {});
     audioCtx = null;
     webAudioUnlocked = false;
+    sendClientReady();
   }
   lastAudioProcessAt = 0;
 }
@@ -1922,6 +2356,8 @@ function bindAudioRecoveryHooks() {
     if (document.hidden || paused) {
       return;
     }
+    sendClientReady();
+    void refreshVoiceClientStatus();
     void ensurePlaybackReady().catch(() => {});
   });
 
@@ -1929,6 +2365,8 @@ function bindAudioRecoveryHooks() {
     if (paused) {
       return;
     }
+    sendClientReady();
+    void refreshVoiceClientStatus();
     void ensurePlaybackReady().catch(() => {});
   });
 
@@ -1936,6 +2374,7 @@ function bindAudioRecoveryHooks() {
     if (paused) {
       return;
     }
+    sendClientReady();
     void ensurePlaybackReady().catch(() => {});
   };
   document.addEventListener('pointerdown', handleUserActivation, { passive: true });
@@ -2010,6 +2449,7 @@ async function unlockPlaybackAudio() {
   audio.removeAttribute('src');
   audio.load();
   playbackUnlocked = true;
+  sendClientReady();
   return audio;
 }
 
@@ -2045,6 +2485,7 @@ async function unlockWebAudioPlayback() {
     setTimeout(resolve, 60);
   });
   webAudioUnlocked = true;
+  sendClientReady();
 }
 
 async function playAudioBufferWithWebAudio(arrayBuffer, { onStart = null } = {}) {
@@ -2083,6 +2524,7 @@ async function playAudioBufferWithWebAudio(arrayBuffer, { onStart = null } = {})
 function finishPlaybackItem() {
   clearPlaybackSource();
   currentAudio = null;
+  setPlaybackLifecycleState('ended', null, 'playback-ended');
   setManualPlaybackItem(null, '');
   updateControlStates();
   playNextAudio();
@@ -2090,7 +2532,8 @@ function finishPlaybackItem() {
 
 function failPlaybackItem(item, error) {
   console.error(error);
-  if (item?.requestId) {
+  setPlaybackLifecycleState('failed', item, describePlaybackError(error));
+  if (item?.requestId && !item?.playbackAccepted) {
     sendPlaybackRejection(item.requestId, describePlaybackError(error));
   }
   clearPlaybackSource();
@@ -2114,11 +2557,21 @@ function playQueuedAudioItem(item, { manual = false } = {}) {
   const nextBuffer = item && typeof item === 'object' && 'buffer' in item ? item.buffer : item;
   const mimeType = item && typeof item === 'object' && 'mimeType' in item ? item.mimeType : 'audio/mpeg';
   const requestId = item && typeof item === 'object' && 'requestId' in item ? item.requestId : '';
+  const playbackAccepted = Boolean(item && typeof item === 'object' && item.playbackAccepted);
+  setPlaybackLifecycleState('accepted', item, manual ? 'manual-play' : 'dequeued');
   if (isAppleVoiceClient()) {
     currentAudio = ensurePlaybackAudioElement();
-    startPlaybackSession();
     playAudioBufferWithWebAudio(nextBuffer.slice(0), {
-      onStart: () => sendPlaybackAcceptance(requestId),
+      onStart: () => {
+        if (!playbackAccepted) {
+          sendPlaybackAcceptance(requestId);
+        }
+        startPlaybackSession();
+        setPlaybackLifecycleState('playing', item, 'web-audio-start');
+        if (!paused && !interruptPending && !isUserTurnActive()) {
+          setState('speaking');
+        }
+      },
     }).then(finishPlaybackItem).catch((error) => {
       failPlaybackItem(item, error);
     });
@@ -2149,9 +2602,15 @@ function playQueuedAudioItem(item, { manual = false } = {}) {
     }
     failPlaybackItem(item, new Error('audio element error'));
   };
-  startPlaybackSession();
   currentAudio.play().then(() => {
-    sendPlaybackAcceptance(requestId);
+    if (!playbackAccepted) {
+      sendPlaybackAcceptance(requestId);
+    }
+    startPlaybackSession();
+    setPlaybackLifecycleState('playing', item, 'audio-play');
+    if (!paused && !interruptPending && !isUserTurnActive()) {
+      setState('speaking');
+    }
   }).catch((error) => {
     URL.revokeObjectURL(playbackUrl);
     if (currentAudioUrl === playbackUrl) {
@@ -2179,6 +2638,7 @@ async function loadRuntimeState() {
     .then((runtimeState) => {
       applyRuntimeAudioSettings(runtimeState.audio);
       applyVoiceProfileState(runtimeState);
+      applyTmuxTargetState(runtimeState);
       return runtimeState;
     })
     .catch((error) => {
@@ -2688,7 +3148,7 @@ function maybeReturnToListening() {
     setState('paused');
     return;
   }
-  if (isHoldToTalkActive()) {
+  if (isUserTurnActive()) {
     pendingIdle = false;
     setState('listening');
     return;
@@ -2755,6 +3215,7 @@ function isInterruptibleAudioState() {
     && ws.readyState === WebSocket.OPEN
     && !paused
     && !interruptPending
+    && !isUserTurnActive()
     && (replyActive || currentAudio || audioQueue.length > 0),
   );
 }
@@ -2765,8 +3226,9 @@ function isBargeInState() {
     && ws.readyState === WebSocket.OPEN
     && !paused
     && !voiceInterruptDisabled()
+    && allowsFreeformBargeIn()
     && !interruptPending
-    && !isHoldToTalkActive()
+    && !isUserTurnActive()
     && (replyActive || currentAudio || audioQueue.length > 0),
   );
 }
@@ -2843,12 +3305,13 @@ function resumePlaybackAfterBargeIn() {
   }
   playbackSoftPaused = false;
   resetBargeInCapture();
-  if (paused || interruptPending) {
+  if (paused || interruptPending || isUserTurnActive()) {
     return;
   }
   if (currentAudio) {
     currentAudio.play().then(() => {
-      if (!paused && !interruptPending) {
+      if (!paused && !interruptPending && !isUserTurnActive()) {
+        setPlaybackLifecycleState('playing', null, 'resume-barge-in');
         setState('speaking');
       }
     }).catch(() => {
@@ -2858,7 +3321,6 @@ function resumePlaybackAfterBargeIn() {
     return;
   }
   if (audioQueue.length > 0) {
-    setState('speaking');
     playNextAudio();
     return;
   }
@@ -2873,7 +3335,7 @@ function promoteBargeIn(bufferedAudio) {
 
 function maybeCaptureBargeInProbe(pcm, displayedLevel, speechLike, frameMs, now) {
   if (!isBargeInState()) {
-    if (playbackSoftPaused) {
+    if (playbackSoftPaused && !isUserTurnActive()) {
       playbackSoftPaused = false;
     }
     resetBargeInCapture();
@@ -2967,6 +3429,7 @@ function maybeCaptureBargeInProbe(pcm, displayedLevel, speechLike, frameMs, now)
 
 function stopPlayback() {
   playbackSoftPaused = false;
+  playbackLifecycleState = 'idle';
   resetPlaybackSession();
   audioQueue = [];
   if (!currentAudio) {
@@ -3017,17 +3480,18 @@ function requestInterrupt({ keepPaused = paused, preservePendingInput = false } 
 }
 
 function manualInterrupt() {
-  if (paused) {
+  if (paused || isUserTurnActive()) {
     return;
   }
   requestInterrupt({ keepPaused: false });
 }
 
-async function beginHoldToTalk() {
+async function beginHoldToTalk({ tmuxOnly = false } = {}) {
+  playHotkeyPing();
   if (holdToTalkActive) {
     return;
   }
-  holdToTalkActive = true;
+  beginUserTurn({ tmuxOnly });
   updateControlStates();
   resetCaptureBuffer();
   setMutedState(false, { commitOnMute: false });
@@ -3041,12 +3505,15 @@ async function beginHoldToTalk() {
 }
 
 function endHoldToTalk() {
+  playHotkeyPing();
   if (!holdToTalkActive) {
     return false;
   }
   setMutedState(true, { commitOnMute: false, resetBuffer: false });
-  const sent = commitBufferedTurnNow({ reason: 'hold-release' });
+  const sent = commitBufferedTurnNow({ reason: tmuxTalkActive ? 'tmux-release' : 'hold-release' });
   holdToTalkActive = false;
+  tmuxTalkActive = false;
+  finishUserTurn({ sent, reason: sent ? 'hold-release-sent' : 'hold-release-empty' });
   updateControlStates();
   if (!sent) {
     resetCaptureBuffer();
@@ -3061,21 +3528,22 @@ function endHoldToTalk() {
   return false;
 }
 
-async function toggleHoldToTalk() {
+async function toggleHoldToTalk({ tmuxOnly = false } = {}) {
   if (holdToTalkActive) {
     endHoldToTalk();
     return;
   }
-  await beginHoldToTalk();
+  await beginHoldToTalk({ tmuxOnly });
 }
 
 async function setPausedState(nextPaused, { forceInterrupt = false } = {}) {
   paused = Boolean(nextPaused);
   if (paused) {
-    holdToTalkActive = false;
+    clearUserTurnState('paused');
     pendingBargeInAudio = null;
     setReplyActive(false);
     requestInterrupt({ keepPaused: true });
+    sendClientReady();
     return;
   }
   try {
@@ -3099,6 +3567,9 @@ async function setPausedState(nextPaused, { forceInterrupt = false } = {}) {
   pendingIdle = false;
   pendingBargeInAudio = null;
   pendingBargeInCommitMeta = null;
+  if (!holdToTalkActive) {
+    clearUserTurnState('resumed');
+  }
   if (forceInterrupt) {
     stopPlayback();
   }
@@ -3107,9 +3578,18 @@ async function setPausedState(nextPaused, { forceInterrupt = false } = {}) {
   resetInterruptSpeechDetection();
   setState('listening');
   updateControlStates();
+  sendClientReady();
 }
 
 function playNextAudio() {
+  if (isUserTurnActive()) {
+    if (currentAudio || audioQueue.length > 0) {
+      playbackSoftPaused = true;
+      setPlaybackLifecycleState('queued', null, 'deferred-user-turn');
+    }
+    maybeReturnToListening();
+    return;
+  }
   if (playbackSoftPaused || currentAudio || audioQueue.length === 0) {
     maybeReturnToListening();
     return;
@@ -3127,12 +3607,15 @@ async function connect() {
   ws = new WebSocket(wsUrl);
   ws.binaryType = 'arraybuffer';
   ws.onopen = () => {
+    voiceClientRegistrationMisses = 0;
+    setClientStatusText('client: websocket open, registering', 'reconnecting');
     sendClientReady();
     setReplyActive(false);
     rearmVoiceInterrupt();
     setState(paused ? 'paused' : 'listening');
     updateControlStates();
     void ensurePlaybackReady().catch(() => {});
+    void refreshVoiceClientStatus();
     syncShellState({ force: true });
   };
   ws.onerror = (event) => {
@@ -3144,10 +3627,11 @@ async function connect() {
     interruptPending = false;
     pendingBargeInAudio = null;
     pendingBargeInCommitMeta = null;
-    holdToTalkActive = false;
+    clearUserTurnState('websocket-close');
     setReplyActive(false);
     stopPlayback();
     setState('reconnecting');
+    setClientStatusText('client: reconnecting', 'reconnecting');
     setStatusText(describeWebSocketClose(event));
     updateControlStates();
     syncShellState({ force: true });
@@ -3176,15 +3660,18 @@ async function connect() {
         return;
       }
       setReplyActive(true);
+      const acceptQueuedServerSpeak = playbackSource === 'server_speak';
+      if (acceptQueuedServerSpeak && playbackRequestId) {
+        sendPlaybackAcceptance(playbackRequestId);
+      }
       audioQueue.push({
         buffer: event.data,
         mimeType: pendingAudioMimeType || 'audio/mpeg',
         requestId: playbackRequestId,
         source: playbackSource,
+        playbackAccepted: acceptQueuedServerSpeak,
       });
-      if (!playbackSoftPaused) {
-        setState('speaking');
-      }
+      setPlaybackLifecycleState('queued', { requestId: playbackRequestId, source: playbackSource }, 'audio-received');
       playNextAudio();
       return;
     }
@@ -3195,7 +3682,7 @@ async function connect() {
       interruptPending = false;
       pendingBargeInAudio = null;
       pendingBargeInCommitMeta = null;
-      holdToTalkActive = false;
+      clearUserTurnState('runtime-error');
       setReplyActive(false);
       if (paused) {
         setState('paused');
@@ -3209,7 +3696,15 @@ async function connect() {
       return;
     }
     if (data.type === 'transcript') {
+      if (!userInputPendingTmuxOnly) {
+        clearUserInputPending('transcript');
+      }
       setHeardTranscript(data.text);
+      return;
+    }
+    if (data.type === 'tmux-sent') {
+      clearUserInputPending('tmux-sent');
+      replaceSpokenReply('sent to tmux');
       return;
     }
     if (data.type === 'reply-text') {
@@ -3229,10 +3724,11 @@ async function connect() {
         pendingServerSpeakRequestId = String(data.request_id || '');
         pendingAudioMimeType = String(data.audio_mime_type || pendingAudioMimeType || 'audio/mpeg');
         setReplyActive(true);
+        setPlaybackLifecycleState('queued', { requestId: pendingServerSpeakRequestId, source: 'server_speak' }, 'server-speak');
         rearmVoiceInterrupt();
         pendingIdle = false;
-        if (!paused && !interruptPending && !isHoldToTalkActive()) {
-          setState('speaking');
+        if (!paused && !interruptPending && !isUserTurnActive()) {
+          setState('thinking');
         }
         updateControlStates();
         syncShellState();
@@ -3246,7 +3742,7 @@ async function connect() {
         setReplyActive(Boolean(currentAudio || audioQueue.length > 0));
         rearmVoiceInterrupt();
         if (!busy) {
-          pendingIdle = !paused && !isHoldToTalkActive();
+          pendingIdle = !paused && !isUserTurnActive();
           maybeReturnToListening();
         }
         updateControlStates();
@@ -3259,17 +3755,18 @@ async function connect() {
       rearmVoiceInterrupt();
       busy = true;
       pendingIdle = false;
-      if (!paused && !interruptPending && !isHoldToTalkActive()) {
+      if (!paused && !interruptPending && !isUserTurnActive()) {
         setState('thinking');
       }
     } else if (data.status === 'speaking') {
       pendingAudioMimeType = String(data.audio_mime_type || pendingAudioMimeType || 'audio/mpeg');
       setReplyActive(true);
+      setPlaybackLifecycleState('queued', { source: String(data.source || '') }, 'runtime-speaking');
       rearmVoiceInterrupt();
       busy = true;
       pendingIdle = false;
-      if (!paused && !interruptPending && !isHoldToTalkActive()) {
-        setState('speaking');
+      if (!paused && !interruptPending && !isUserTurnActive()) {
+        setState('thinking');
       }
     } else if (data.status === 'idle') {
       setReplyActive(Boolean(currentAudio || audioQueue.length > 0));
@@ -3287,7 +3784,8 @@ async function connect() {
         setState('thinking');
         ws.send(bufferedAudio);
       } else {
-        pendingIdle = !paused && !isHoldToTalkActive();
+        clearUserInputPending('runtime-idle');
+        pendingIdle = !paused && !isUserTurnActive();
         maybeReturnToListening();
       }
     }
@@ -3596,6 +4094,43 @@ document.getElementById('talk-toggle-btn').addEventListener('click', () => {
   void toggleHoldToTalk();
 });
 
+document.getElementById('tmux-talk-btn').addEventListener('click', () => {
+  void toggleHoldToTalk({ tmuxOnly: true });
+});
+
+document.getElementById('tmux-target-select').addEventListener('change', (event) => {
+  selectedTmuxTarget = String(event.target.value || '').trim() || selectedTmuxTarget;
+  updateControlStates();
+});
+
+document.addEventListener('keydown', (event) => {
+  const isSwitchboardShortcut = event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey;
+  if (!isSwitchboardShortcut) {
+    return;
+  }
+  if (event.code === 'KeyA') {
+    event.preventDefault();
+    if (!event.repeat) {
+      void beginHoldToTalk({ tmuxOnly: true });
+    }
+    return;
+  }
+  if (event.code === 'KeyW') {
+    event.preventDefault();
+    if (event.repeat) {
+      return;
+    }
+    void toggleHoldToTalk({ tmuxOnly: true });
+  }
+});
+
+document.addEventListener('keyup', (event) => {
+  if (event.code === 'KeyA' && !event.ctrlKey && !event.metaKey && (event.altKey && event.shiftKey || (holdToTalkActive && tmuxTalkActive))) {
+    event.preventDefault();
+    endHoldToTalk();
+  }
+});
+
 document.getElementById('play-reply-btn').addEventListener('click', () => {
   if (!pendingManualPlaybackItem) {
     return;
@@ -3619,11 +4154,13 @@ void loadRuntimeState().catch((error) => {
 
 window.__marasSwitchboardManualInterrupt = manualInterrupt;
 window.__marasSwitchboardHoldToTalkStart = beginHoldToTalk;
+window.__marasSwitchboardTmuxHoldToTalkStart = () => beginHoldToTalk({ tmuxOnly: true });
+window.__marasSwitchboardTmuxHoldToTalkEnd = () => endHoldToTalk();
+window.__marasSwitchboardTmuxHoldToTalkToggle = () => toggleHoldToTalk({ tmuxOnly: true });
 window.__marasSwitchboardHoldToTalkEnd = endHoldToTalk;
-window.__marasSwitchboardToggleVoiceInterrupt = () => setInterruptMode(
-  interruptMode === 'barge-in' ? 'off' : 'barge-in'
-);
+window.__marasSwitchboardToggleVoiceInterrupt = () => setInterruptMode(nextInterruptMode(interruptMode));
 startShellStatusHeartbeat();
+startVoiceClientWatchdog();
 animateLevelDecay();
 loadAsciiArtBackdrop();
 requestAnimationFrame(animateStateVisual);

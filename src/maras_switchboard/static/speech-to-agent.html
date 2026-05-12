@@ -1,0 +1,715 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Speech to Agent</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #101318;
+    --panel: #181d24;
+    --panel-soft: #202833;
+    --line: #33404e;
+    --text: #edf3f8;
+    --muted: #9caaba;
+    --accent: #66d6a5;
+    --accent-2: #59b7ff;
+    --danger: #ff7f7f;
+    --shadow: rgba(0, 0, 0, 0.32);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    min-height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  main {
+    width: min(880px, calc(100vw - 32px));
+    margin: 0 auto;
+    padding: 28px 0 36px;
+  }
+
+  header {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 18px;
+    align-items: end;
+    margin-bottom: 18px;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(28px, 5vw, 46px);
+    font-weight: 800;
+    letter-spacing: 0;
+  }
+
+  .subhead {
+    margin: 6px 0 0;
+    color: var(--muted);
+    max-width: 64ch;
+  }
+
+  a {
+    color: var(--accent-2);
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+
+  .status-pill {
+    min-width: 170px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--muted);
+    text-align: right;
+    box-shadow: 0 16px 36px var(--shadow);
+  }
+
+  .status-pill strong {
+    display: block;
+    color: var(--text);
+    font-size: 14px;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(270px, 0.9fr);
+    gap: 16px;
+  }
+
+  section,
+  .panel {
+    border: 1px solid var(--line);
+    background: var(--panel);
+    border-radius: 8px;
+    box-shadow: 0 16px 36px var(--shadow);
+  }
+
+  .controls {
+    padding: 18px;
+  }
+
+  label {
+    display: block;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  select,
+  textarea,
+  button {
+    font: inherit;
+  }
+
+  select,
+  textarea {
+    width: 100%;
+    color: var(--text);
+    background: #0c0f13;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    outline: none;
+  }
+
+  select {
+    height: 46px;
+    padding: 0 12px;
+  }
+
+  textarea {
+    min-height: 96px;
+    resize: vertical;
+    padding: 12px;
+    margin-top: 14px;
+  }
+
+  select:focus,
+  textarea:focus {
+    border-color: var(--accent-2);
+  }
+
+  .button-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 14px;
+  }
+
+  button {
+    min-height: 46px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel-soft);
+    color: var(--text);
+    cursor: pointer;
+  }
+
+  button:hover:not(:disabled) {
+    border-color: var(--accent-2);
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+    opacity: 0.52;
+  }
+
+  .primary {
+    background: #1f5f4a;
+    border-color: #2d8d6a;
+    font-weight: 800;
+  }
+
+  .primary.recording {
+    background: #7d2525;
+    border-color: var(--danger);
+  }
+
+  .wave-panel {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    min-height: 320px;
+    overflow: hidden;
+  }
+
+  .wave-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--line);
+    color: var(--muted);
+  }
+
+  .wave-top strong {
+    color: var(--text);
+  }
+
+  canvas {
+    width: 100%;
+    height: 190px;
+    display: block;
+    background: linear-gradient(180deg, #111922, #0c0f13);
+  }
+
+  .meter {
+    height: 8px;
+    background: #0c0f13;
+    border-top: 1px solid var(--line);
+  }
+
+  #meter-fill {
+    width: 0%;
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    transition: width 80ms linear;
+  }
+
+  .log {
+    padding: 14px 16px 16px;
+  }
+
+  .log h2 {
+    margin: 0 0 10px;
+    font-size: 14px;
+    letter-spacing: 0;
+  }
+
+  #events {
+    display: grid;
+    gap: 8px;
+    max-height: 310px;
+    overflow: auto;
+  }
+
+  .event {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #10151b;
+    padding: 10px;
+    overflow-wrap: anywhere;
+  }
+
+  .event .kind {
+    color: var(--muted);
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+
+  @media (max-width: 760px) {
+    main {
+      width: min(100vw - 20px, 880px);
+      padding-top: 16px;
+    }
+
+    header,
+    .layout {
+      grid-template-columns: 1fr;
+    }
+
+    .status-pill {
+      text-align: left;
+    }
+
+    .button-row {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Speech to Agent</h1>
+      <p class="subhead">Choose the tmux target, hold record, and the configured xAI STT path sends the transcript into that agent.</p>
+    </div>
+    <div class="status-pill" aria-live="polite">
+      <strong id="socket-state">connecting</strong>
+      <span id="stt-state">runtime</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <section class="controls" aria-label="speech controls">
+      <label for="target-select">tmux target</label>
+      <select id="target-select"></select>
+
+      <div class="button-row">
+        <button id="record-btn" class="primary" type="button" aria-pressed="false">Hold to speak</button>
+        <button id="refresh-btn" type="button">Refresh targets</button>
+      </div>
+
+      <label for="typed-input" style="margin-top:18px">typed fallback</label>
+      <textarea id="typed-input" spellcheck="true" placeholder="Type a message for the selected tmux target"></textarea>
+      <div class="button-row">
+        <button id="send-text-btn" type="button">Send text</button>
+        <a href="/voice" class="panel" style="display:grid;place-items:center;min-height:46px;border-radius:8px">Full voice UI</a>
+      </div>
+    </section>
+
+    <section class="wave-panel" aria-label="capture state">
+      <div class="wave-top">
+        <strong id="capture-state">idle</strong>
+        <span id="target-state">no target</span>
+      </div>
+      <canvas id="waveform" width="640" height="240" aria-hidden="true"></canvas>
+      <div class="meter"><div id="meter-fill"></div></div>
+    </section>
+  </div>
+
+  <section class="log" style="margin-top:16px" aria-label="events">
+    <h2>Latest</h2>
+    <div id="events"></div>
+  </section>
+</main>
+
+<script>
+const TARGET_CAPTURE_SAMPLE_RATE = 16000;
+const MIN_AUDIO_BYTES = 1600;
+
+const socketState = document.getElementById('socket-state');
+const sttState = document.getElementById('stt-state');
+const targetSelect = document.getElementById('target-select');
+const targetState = document.getElementById('target-state');
+const recordBtn = document.getElementById('record-btn');
+const refreshBtn = document.getElementById('refresh-btn');
+const typedInput = document.getElementById('typed-input');
+const sendTextBtn = document.getElementById('send-text-btn');
+const captureState = document.getElementById('capture-state');
+const events = document.getElementById('events');
+const canvas = document.getElementById('waveform');
+const canvasCtx = canvas.getContext('2d');
+const meterFill = document.getElementById('meter-fill');
+
+let ws = null;
+let audioCtx = null;
+let stream = null;
+let sourceNode = null;
+let processor = null;
+let chunks = [];
+let recording = false;
+let recordingStartedAt = 0;
+let lastSamples = new Float32Array(0);
+
+function appUrl(path) {
+  return new URL(path, window.location.origin + '/').toString();
+}
+
+function wsUrl() {
+  const url = new URL('/ws/voice', window.location.href);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  return url.toString();
+}
+
+function logEvent(kind, text) {
+  const item = document.createElement('div');
+  item.className = 'event';
+  const kindEl = document.createElement('div');
+  kindEl.className = 'kind';
+  kindEl.textContent = kind;
+  const textEl = document.createElement('div');
+  textEl.textContent = text;
+  item.append(kindEl, textEl);
+  events.prepend(item);
+  while (events.children.length > 12) {
+    events.lastElementChild.remove();
+  }
+}
+
+function setSocketState(text) {
+  socketState.textContent = text;
+}
+
+function setCaptureState(text) {
+  captureState.textContent = text;
+}
+
+function selectedTarget() {
+  return String(targetSelect.value || '').trim();
+}
+
+function renderTargets(tmuxState) {
+  const choices = Array.isArray(tmuxState?.choices) ? tmuxState.choices : [];
+  targetSelect.replaceChildren(...choices.map((choice) => {
+    const option = document.createElement('option');
+    option.value = String(choice.id || '');
+    option.textContent = String(choice.label || choice.id || '');
+    option.disabled = choice.configured === false;
+    return option;
+  }));
+  const selected = String(tmuxState?.selected || '').trim();
+  if (selected && choices.some((choice) => String(choice.id || '') === selected)) {
+    targetSelect.value = selected;
+  }
+  targetSelect.disabled = choices.length === 0;
+  targetState.textContent = selectedTarget() || 'no target';
+  recordBtn.disabled = choices.length === 0;
+  sendTextBtn.disabled = choices.length === 0;
+}
+
+async function refreshState() {
+  const [runtimeResponse, setupResponse] = await Promise.all([
+    fetch(appUrl('api/runtime/state'), { cache: 'no-store' }),
+    fetch(appUrl('api/setup/state'), { cache: 'no-store' }),
+  ]);
+  const runtimeState = await runtimeResponse.json();
+  const setupState = await setupResponse.json();
+  renderTargets(runtimeState.tmux || {});
+  const stt = setupState?.saved?.stt || {};
+  const backend = String(stt.default_backend || 'configured STT');
+  sttState.textContent = backend === 'xai' ? 'xAI STT' : backend;
+}
+
+function sendClientReady() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  ws.send(JSON.stringify({
+    type: 'client-ready',
+    features: {
+      playback_accept: false,
+      speech_to_agent: true,
+      playback_unlocked: true,
+      paused: false,
+      page_visible: !document.hidden,
+      page_focused: document.hasFocus(),
+    },
+  }));
+}
+
+function connectSocket() {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
+  ws = new WebSocket(wsUrl());
+  ws.binaryType = 'arraybuffer';
+  setSocketState('connecting');
+  ws.onopen = () => {
+    setSocketState('ready');
+    sendClientReady();
+  };
+  ws.onclose = () => {
+    setSocketState('reconnecting');
+    setTimeout(connectSocket, 900);
+  };
+  ws.onerror = () => {
+    setSocketState('socket error');
+  };
+  ws.onmessage = (event) => {
+    if (typeof event.data !== 'string') {
+      return;
+    }
+    const data = JSON.parse(event.data);
+    if (data.error) {
+      logEvent('error', data.error);
+      setCaptureState('error');
+      return;
+    }
+    if (data.type === 'transcript') {
+      logEvent('heard', data.text || '');
+      return;
+    }
+    if (data.type === 'tmux-sent') {
+      logEvent(`sent to ${data.target_id || selectedTarget()}`, data.payload || data.text || '');
+      setCaptureState('sent');
+      return;
+    }
+    if (data.status) {
+      setCaptureState(data.status);
+    }
+  };
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function ensureSocketOpen() {
+  connectSocket();
+  const startedAt = performance.now();
+  while (ws && ws.readyState === WebSocket.CONNECTING && performance.now() - startedAt < 2200) {
+    await delay(25);
+  }
+  return Boolean(ws && ws.readyState === WebSocket.OPEN);
+}
+
+function resampleFloatBuffer(buffer, inputSampleRate, outputSampleRate) {
+  const sourceRate = Math.max(Number(inputSampleRate) || outputSampleRate, 1);
+  const targetRate = Math.max(Number(outputSampleRate) || sourceRate, 1);
+  if (sourceRate === targetRate) {
+    return new Float32Array(buffer);
+  }
+  const ratio = sourceRate / targetRate;
+  const newLength = Math.max(1, Math.round(buffer.length / ratio));
+  const result = new Float32Array(newLength);
+  for (let i = 0; i < result.length; i += 1) {
+    const sourceIndex = i * ratio;
+    const lower = Math.floor(sourceIndex);
+    const upper = Math.min(lower + 1, buffer.length - 1);
+    const mix = sourceIndex - lower;
+    result[i] = (buffer[lower] || 0) + (((buffer[upper] || 0) - (buffer[lower] || 0)) * mix);
+  }
+  return result;
+}
+
+function floatTo16BitPCM(floatBuffer) {
+  const pcm = new Int16Array(floatBuffer.length);
+  for (let i = 0; i < floatBuffer.length; i += 1) {
+    const sample = Math.max(-1, Math.min(1, floatBuffer[i]));
+    pcm[i] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+  }
+  return pcm;
+}
+
+function flattenPcm(pcmChunks) {
+  const total = pcmChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const merged = new Int16Array(total);
+  let offset = 0;
+  for (const chunk of pcmChunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return merged.buffer;
+}
+
+async function ensureCapture() {
+  if (audioCtx && stream && processor) {
+    return;
+  }
+  stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      channelCount: 1,
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    },
+  });
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  audioCtx = new AudioContextClass({ sampleRate: TARGET_CAPTURE_SAMPLE_RATE });
+  sourceNode = audioCtx.createMediaStreamSource(stream);
+  processor = audioCtx.createScriptProcessor(2048, 1, 1);
+  processor.onaudioprocess = (event) => {
+    const input = event.inputBuffer.getChannelData(0);
+    lastSamples = new Float32Array(input);
+    drawWaveform();
+    const level = Math.min(100, Math.round(rms(input) * 260));
+    meterFill.style.width = `${level}%`;
+    if (!recording) {
+      return;
+    }
+    const pcm = floatTo16BitPCM(resampleFloatBuffer(input, audioCtx.sampleRate, TARGET_CAPTURE_SAMPLE_RATE));
+    chunks.push(pcm);
+  };
+  sourceNode.connect(processor);
+  processor.connect(audioCtx.destination);
+}
+
+function rms(samples) {
+  if (!samples.length) {
+    return 0;
+  }
+  let total = 0;
+  for (const sample of samples) {
+    total += sample * sample;
+  }
+  return Math.sqrt(total / samples.length);
+}
+
+function drawWaveform() {
+  const width = canvas.width;
+  const height = canvas.height;
+  canvasCtx.clearRect(0, 0, width, height);
+  canvasCtx.fillStyle = '#0c0f13';
+  canvasCtx.fillRect(0, 0, width, height);
+  canvasCtx.strokeStyle = recording ? '#66d6a5' : '#59b7ff';
+  canvasCtx.lineWidth = 3;
+  canvasCtx.beginPath();
+  const samples = lastSamples.length ? lastSamples : new Float32Array([0]);
+  for (let x = 0; x < width; x += 1) {
+    const index = Math.floor((x / width) * samples.length);
+    const y = (height / 2) + ((samples[index] || 0) * height * 0.38);
+    if (x === 0) {
+      canvasCtx.moveTo(x, y);
+    } else {
+      canvasCtx.lineTo(x, y);
+    }
+  }
+  canvasCtx.stroke();
+}
+
+async function startRecording() {
+  if (recording) {
+    return;
+  }
+  await ensureCapture();
+  if (audioCtx.state !== 'running') {
+    await audioCtx.resume();
+  }
+  if (!await ensureSocketOpen()) {
+    logEvent('socket', 'not ready yet');
+    return;
+  }
+  chunks = [];
+  recording = true;
+  recordingStartedAt = performance.now();
+  recordBtn.classList.add('recording');
+  recordBtn.textContent = 'Release to send';
+  recordBtn.setAttribute('aria-pressed', 'true');
+  setCaptureState('recording');
+}
+
+function stopRecording() {
+  if (!recording) {
+    return;
+  }
+  recording = false;
+  recordBtn.classList.remove('recording');
+  recordBtn.textContent = 'Hold to speak';
+  recordBtn.setAttribute('aria-pressed', 'false');
+  const audio = flattenPcm(chunks);
+  chunks = [];
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    logEvent('socket', 'not connected');
+    setCaptureState('socket unavailable');
+    return;
+  }
+  if (audio.byteLength < MIN_AUDIO_BYTES) {
+    logEvent('capture', 'too short');
+    setCaptureState('idle');
+    return;
+  }
+  const speechMs = Math.max(0, Math.round(performance.now() - recordingStartedAt));
+  const target = selectedTarget();
+  ws.send(JSON.stringify({
+    type: 'turn-commit',
+    reason: 'speech-to-agent',
+    speech_ms: speechMs,
+    silence_ms: 0,
+    threshold_db: null,
+    level_db: null,
+    wait_after_speak_ms: 0,
+    tmux_only: true,
+    tmux_target: target,
+  }));
+  ws.send(audio);
+  setCaptureState('transcribing');
+  logEvent('capture', `sent ${Math.round(audio.byteLength / 1024)} KB to ${target}`);
+}
+
+async function sendTypedText() {
+  const text = typedInput.value.trim();
+  if (!text) {
+    typedInput.focus();
+    return;
+  }
+  if (!await ensureSocketOpen()) {
+    logEvent('socket', 'not connected');
+    return;
+  }
+  typedInput.value = '';
+  ws.send(JSON.stringify({
+    type: 'text-input',
+    text,
+    tmux_target: selectedTarget(),
+  }));
+  logEvent('typed', text);
+}
+
+recordBtn.addEventListener('pointerdown', (event) => {
+  event.preventDefault();
+  void startRecording();
+});
+recordBtn.addEventListener('pointerup', (event) => {
+  event.preventDefault();
+  stopRecording();
+});
+recordBtn.addEventListener('pointercancel', stopRecording);
+recordBtn.addEventListener('click', () => {
+  if (recording) {
+    stopRecording();
+  }
+});
+refreshBtn.addEventListener('click', () => {
+  void refreshState().catch((error) => logEvent('state', error?.message || String(error)));
+});
+targetSelect.addEventListener('change', () => {
+  targetState.textContent = selectedTarget() || 'no target';
+});
+sendTextBtn.addEventListener('click', sendTypedText);
+typedInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    sendTypedText();
+  }
+});
+document.addEventListener('visibilitychange', sendClientReady);
+window.addEventListener('focus', sendClientReady);
+
+drawWaveform();
+connectSocket();
+void refreshState().catch((error) => logEvent('state', error?.message || String(error)));
+</script>
+</body>
+</html>

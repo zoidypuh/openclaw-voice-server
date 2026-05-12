@@ -16,7 +16,7 @@ DEFAULT_REMOTE_WHISPER_HOST_ALIAS = "remote-whisper"
 DEFAULT_REMOTE_WHISPER_PORT = 18000
 DEFAULT_REMOTE_WHISPER_ENDPOINT_PATH = "/v1/audio/transcriptions"
 DEFAULT_REMOTE_WHISPER_MODEL = "distil-large-v3"
-HOLD_TO_TALK_SHORTCUT_LABEL = "Alt+Shift+A"
+HOLD_TO_TALK_SHORTCUT_LABEL = "Alt+Shift+W"
 ELEVENLABS_DEFAULT_PRESET = "natural"
 XAI_TTS_DEFAULT_VOICE = "Eve"
 XAI_TTS_DEFAULT_LANGUAGE = "en"
@@ -288,6 +288,26 @@ DEFAULT_CONFIG = {
         "silence_threshold": 0.015,
         "silence_ms": 900,
         "min_speech_ms": 350,
+    },
+    "tmux": {
+        "selected_target": "main-codex",
+        "targets": {
+            "mara": {
+                "label": "Mara",
+                "target": "mara:0.0",
+                "prefix": "/queue",
+            },
+            "nadia": {
+                "label": "Nadia",
+                "target": "nadia:0.0",
+                "prefix": "/queue",
+            },
+            "main-codex": {
+                "label": "Main Codex",
+                "target": "codex1:0.0",
+                "prefix": "",
+            },
+        },
     },
     "windows_client": {},
     "validation": {
