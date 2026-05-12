@@ -303,8 +303,28 @@ def create_app() -> web.Application:
                 },
                 "windows_client": state["saved"]["windows_client"],
                 "voice_client": await runtime.playback_status(),
+                "voice_reachable": await runtime.voice_reachable_status(),
             }
         )
+
+    async def runtime_voice_reachable(request: web.Request) -> web.Response:
+        if request.method == "GET":
+            return web.json_response({"ok": True, "voice_reachable": await runtime.voice_reachable_status()})
+        payload = await parse_json(request)
+        action = str(payload.get("action") or "").strip().lower()
+        if "enabled" in payload:
+            enabled = bool(payload.get("enabled"))
+        elif action in {"on", "enable", "enabled", "true"}:
+            enabled = True
+        elif action in {"off", "disable", "disabled", "false"}:
+            enabled = False
+        elif action == "toggle":
+            enabled = not await runtime.voice_reachable_enabled()
+        elif action in {"", "status"}:
+            return web.json_response({"ok": True, "voice_reachable": await runtime.voice_reachable_status()})
+        else:
+            raise ValidationError("Use action on, off, toggle, or status.")
+        return web.json_response({"ok": True, "voice_reachable": await runtime.set_voice_reachable(enabled)})
 
     async def runtime_profile(request: web.Request) -> web.Response:
         payload = await parse_json(request)
@@ -428,6 +448,8 @@ def create_app() -> web.Application:
     add_route("GET", "/health", health)
     add_route("GET", "/api/setup/state", setup_state)
     add_route("GET", "/api/runtime/state", runtime_state)
+    add_route("GET", "/api/runtime/voice-reachable", runtime_voice_reachable)
+    add_route("POST", "/api/runtime/voice-reachable", runtime_voice_reachable)
     add_route("POST", "/api/runtime/profile", runtime_profile)
     add_route("POST", "/api/runtime/speech-probe", runtime_speech_probe)
     add_route("POST", "/api/runtime/speak", runtime_speak)

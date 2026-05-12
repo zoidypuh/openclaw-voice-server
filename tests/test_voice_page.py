@@ -157,6 +157,17 @@ def test_voice_html_uses_root_app_base_so_trailing_slash_urls_do_not_404():
     assert "return new URL('/', window.location.href);" in voice_html
 
 
+def test_voice_html_shows_voice_reachable_indicator():
+    voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
+
+    assert 'id="voice-reachable-status"' in voice_html
+    assert "Voice reachable ${enabled ? 'ON' : 'OFF'}" in voice_html
+    assert "function applyVoiceReachableState(runtimeState) {" in voice_html
+    assert "applyVoiceReachableState(runtimeState);" in voice_html
+    assert "if (data.type === 'voice-reachable') {" in voice_html
+    assert "With headphones on, press the talk key to address Mara" in voice_html
+
+
 def test_voice_html_keeps_server_speak_idle_from_finishing_agent_turn():
     voice_html = (_static_dir() / "voice.html").read_text(encoding="utf-8")
 

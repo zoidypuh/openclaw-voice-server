@@ -427,6 +427,23 @@
   .client-status.warn {
     color: #ffb067;
   }
+  .voice-reachable-status {
+    width: 100%;
+    min-height: 1rem;
+    color: #8c939d;
+    font-size: 0.68rem;
+    line-height: 1.25;
+    letter-spacing: 0.04em;
+    text-align: center;
+    text-transform: uppercase;
+  }
+  .voice-reachable-status.on {
+    color: #7ee0a5;
+  }
+  .voice-reachable-status.off,
+  .voice-reachable-status.warn {
+    color: #ffb067;
+  }
   .status-hint {
     color: #d9dde2;
   }
@@ -660,6 +677,7 @@
     <button id="sliders-toggle" class="mini-btn active" type="button">threshold</button>
   </div>
   <div id="client-status" class="client-status reconnecting" aria-live="polite">client: starting</div>
+  <div id="voice-reachable-status" class="voice-reachable-status" aria-live="polite">mic/headphones: Voice reachable ON; client starting</div>
   <div id="status-hint" class="status-hint hidden" aria-live="polite"></div>
   <div id="level-row">
     <div id="level" aria-hidden="true"><div id="level-bar"></div></div>
@@ -795,6 +813,33 @@ function applyTmuxTargetState(runtimeState) {
   tmuxTargetChoices = Array.isArray(tmuxState.choices) ? tmuxState.choices : [];
   selectedTmuxTarget = String(tmuxState.selected || selectedTmuxTarget || 'main-codex').trim() || 'main-codex';
   renderTmuxTargetSelector();
+}
+
+function renderVoiceReachableIndicator() {
+  const indicator = document.getElementById('voice-reachable-status');
+  if (!indicator) {
+    return;
+  }
+  const enabled = voiceReachableState.enabled !== false;
+  const connected = Boolean(voiceReachableState.active_voice_client || voiceReachableState.websocket_connected);
+  const ready = Boolean(voiceReachableState.playback_accept);
+  const clientText = connected ? (ready ? 'client connected' : `client ${voiceReachableState.client_status || 'not ready'}`) : 'client disconnected';
+  indicator.textContent = `mic/headphones: Voice reachable ${enabled ? 'ON' : 'OFF'}; ${clientText}`;
+  indicator.title = enabled
+    ? 'With headphones on, press the talk key to address Mara; Mara will speak important updates.'
+    : 'Automatic spoken replies are stopped. Manual speak requests still work.';
+  indicator.classList.toggle('on', enabled && ready);
+  indicator.classList.toggle('off', !enabled);
+  indicator.classList.toggle('warn', enabled && !ready);
+}
+
+function applyVoiceReachableState(runtimeState) {
+  const reachable = runtimeState?.voice_reachable || runtimeState?.voiceReachable || runtimeState || {};
+  voiceReachableState = {
+    ...voiceReachableState,
+    ...reachable,
+  };
+  renderVoiceReachableIndicator();
 }
 
 function useProfileImageFallback(image) {
@@ -939,6 +984,12 @@ let transcriptEntryCounter = 0;
 let transcriptScrollAnimationId = 0;
 let selectedTmuxTarget = 'main-codex';
 let tmuxTargetChoices = [];
+let voiceReachableState = {
+  enabled: true,
+  active_voice_client: false,
+  playback_accept: false,
+  client_status: 'unknown',
+};
 let settings = {
   silence_ms: 900,
   silence_threshold: 0.015,
@@ -1223,11 +1274,13 @@ async function refreshVoiceClientStatus() {
   const clientStatus = String(voiceClient.client_status || '');
   if (clientStatus === 'ready') {
     voiceClientRegistrationMisses = 0;
+    applyVoiceReachableState(runtimeState);
     setClientStatusText('client: connected, playback ready', 'ready');
     return;
   }
 
   voiceClientRegistrationMisses += 1;
+  applyVoiceReachableState(runtimeState);
   sendClientReady();
   if (clientStatus === 'pending_accept_registered') {
     setClientStatusText('client: playback acceptance pending', 'reconnecting');
@@ -2639,6 +2692,7 @@ async function loadRuntimeState() {
       applyRuntimeAudioSettings(runtimeState.audio);
       applyVoiceProfileState(runtimeState);
       applyTmuxTargetState(runtimeState);
+      applyVoiceReachableState(runtimeState);
       return runtimeState;
     })
     .catch((error) => {
@@ -3705,6 +3759,10 @@ async function connect() {
     if (data.type === 'tmux-sent') {
       clearUserInputPending('tmux-sent');
       replaceSpokenReply('sent to tmux');
+      return;
+    }
+    if (data.type === 'voice-reachable') {
+      applyVoiceReachableState(data);
       return;
     }
     if (data.type === 'reply-text') {

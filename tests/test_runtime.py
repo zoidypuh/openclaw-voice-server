@@ -347,6 +347,125 @@ def test_handle_ws_applies_reply_style_directive_once(monkeypatch):
     )
 
 
+def test_handle_ws_voice_reachable_slash_off_skips_automatic_speech_but_manual_speak_works(monkeypatch):
+    FakeWebSocketResponse.created.clear()
+    synth_calls = []
+
+    class FakeTranscriber:
+        def transcribe(self, audio_bytes):
+            return type("Result", (), {"text": "hello there", "duration_seconds": 1.0})()
+
+    class FakeSynthesizer:
+        async def synthesize(self, text, *, preset_name=None):
+            synth_calls.append(text)
+            return f"audio:{text}".encode("utf-8")
+
+    class FakeGateway:
+        def __init__(self, **kwargs):
+            pass
+
+        async def stream_reply(self, text, abort_event):
+            yield "Automatic reply."
+
+    monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
+    monkeypatch.setattr(runtime_module, "build_synthesizer", lambda tts, secrets: FakeSynthesizer())
+    monkeypatch.setattr(runtime_module, "DirectGatewayClient", lambda **kwargs: FakeGateway())
+    monkeypatch.setattr(runtime_module.web, "WebSocketResponse", FakeWebSocketResponse)
+
+    async def scenario():
+        runtime = VoiceRuntime(FakeStore())
+        handler_task = asyncio.create_task(runtime.handle_ws(object()))
+
+        while not FakeWebSocketResponse.created:
+            await asyncio.sleep(0)
+        ws = FakeWebSocketResponse.created[-1]
+        ws.auto_accept_playback = True
+        await ws.messages.put(
+            FakeMessage(
+                WSMsgType.TEXT,
+                payload={"type": "client-ready", "features": {"playback_accept": True}},
+            )
+        )
+        await ws.messages.put(FakeMessage(WSMsgType.TEXT, payload={"type": "text-input", "text": "/voice-off"}))
+        while not any(message.get("type") == "voice-reachable" for message in ws.json_messages):
+            await asyncio.sleep(0)
+        await ws.messages.put(FakeMessage(WSMsgType.TEXT, payload={"type": "text-input", "text": "hello"}))
+        while not any(message.get("text") == "Automatic reply." for message in ws.json_messages):
+            await asyncio.sleep(0)
+
+        manual = await runtime.speak_text("manual line")
+        await ws.messages.put(FakeWebSocketResponse.STOP)
+        await handler_task
+        return manual, ws
+
+    manual, ws = asyncio.run(scenario())
+
+    assert synth_calls == ["manual line"]
+    assert manual["ok"] is True
+    assert any(message.get("voice_reachable", {}).get("enabled") is False for message in ws.json_messages)
+    assert b"audio:Automatic reply." not in ws.binary_messages
+    assert b"audio:manual line" in ws.binary_messages
+
+
+def test_handle_ws_voice_reachable_skips_tiny_ack_audio(monkeypatch):
+    FakeWebSocketResponse.created.clear()
+    synth_calls = []
+
+    class FakeTranscriber:
+        def transcribe(self, audio_bytes):
+            return type("Result", (), {"text": "hello there", "duration_seconds": 1.0})()
+
+    class FakeSynthesizer:
+        async def synthesize(self, text, *, preset_name=None):
+            synth_calls.append(text)
+            return b"audio"
+
+    class FakeGateway:
+        def __init__(self, **kwargs):
+            pass
+
+        async def stream_reply(self, text, abort_event):
+            yield "OK."
+
+    monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
+    monkeypatch.setattr(runtime_module, "build_synthesizer", lambda tts, secrets: FakeSynthesizer())
+    monkeypatch.setattr(runtime_module, "DirectGatewayClient", lambda **kwargs: FakeGateway())
+    monkeypatch.setattr(runtime_module.web, "WebSocketResponse", FakeWebSocketResponse)
+
+    async def scenario():
+        runtime = VoiceRuntime(FakeStore())
+        handler_task = asyncio.create_task(runtime.handle_ws(object()))
+
+        while not FakeWebSocketResponse.created:
+            await asyncio.sleep(0)
+        ws = FakeWebSocketResponse.created[-1]
+        await ws.messages.put(FakeMessage(WSMsgType.TEXT, payload={"type": "text-input", "text": "hello"}))
+        while not any(message.get("text") == "OK." for message in ws.json_messages):
+            await asyncio.sleep(0)
+        await ws.messages.put(FakeWebSocketResponse.STOP)
+        await handler_task
+        return ws
+
+    ws = asyncio.run(scenario())
+
+    assert synth_calls == []
+    assert ws.binary_messages == []
+
+
+def test_voice_reachable_spoken_text_summarizes_long_replies_and_drops_tiny_acks():
+    long_reply = (
+        "This is a longer operational update that should be spoken as a short summary. "
+        "The full detail can stay visible in text while the headphones get the concise version. "
+        "Extra diagnostic detail follows here but should not be read in full. "
+        "More logs, caveats, and implementation notes can remain on screen without becoming audio spam."
+    )
+
+    assert runtime_module._spoken_voice_reachable_text("OK.") == ""
+    spoken = runtime_module._spoken_voice_reachable_text(long_reply)
+
+    assert spoken == "Summary: This is a longer operational update that should be spoken as a short summary."
+
+
 def test_handle_ws_keeps_short_real_speech_for_gateway(monkeypatch):
     FakeWebSocketResponse.created.clear()
     gateway_calls = []

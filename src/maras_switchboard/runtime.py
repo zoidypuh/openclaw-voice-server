@@ -42,6 +42,20 @@ PLAYBACK_ACCEPT_TIMEOUT_STALE_SECONDS = 30.0
 DEBATE_TURN_PAUSE_SECONDS = 2.0
 SILENCE_SAMPLE_RATE = 24_000
 DEFAULT_DEBATE_SPEAKERS = ("speaker-a", "speaker-b")
+VOICE_REACHABLE_DEFAULT_ENABLED = True
+VOICE_REACHABLE_SPOKEN_REPLY_LIMIT = 240
+VOICE_REACHABLE_TINY_ACKS = {
+    "ok",
+    "okay",
+    "sure",
+    "yep",
+    "yeah",
+    "done",
+    "got it",
+    "roger",
+    "thanks",
+    "thank you",
+}
 
 
 def _format_elapsed(seconds: float | None) -> str:
@@ -84,6 +98,55 @@ def _should_skip_spoken_reply(text: str) -> bool:
     if not normalized:
         return True
     return normalized.upper() == "EMPTY"
+
+
+def _voice_reachable_command(text: str) -> str | None:
+    normalized = " ".join(str(text or "").strip().casefold().split())
+    normalized = normalized.replace("_", "-")
+    if not normalized.startswith("/voice"):
+        return None
+    if normalized in {"/voice-on", "/voice on", "/voice-reachable on", "/voice reachable on"}:
+        return "on"
+    if normalized in {"/voice-off", "/voice off", "/voice-reachable off", "/voice reachable off"}:
+        return "off"
+    if normalized in {"/voice-status", "/voice status", "/voice-reachable", "/voice reachable"}:
+        return "status"
+    if normalized in {"/voice-toggle", "/voice toggle"}:
+        return "toggle"
+    return None
+
+
+def _format_voice_reachable_status(status: dict[str, object]) -> str:
+    reachable = "ON" if status.get("enabled") else "OFF"
+    client = "connected" if status.get("active_voice_client") else "disconnected"
+    playback = "playback ready" if status.get("playback_accept") else str(status.get("client_status") or "not ready")
+    if status.get("enabled"):
+        return (
+            f"Voice reachable {reachable}. Switchboard voice client is {client}; {playback}. "
+            "With headphones on, press the talk key to address Mara and she will speak important updates."
+        )
+    return f"Voice reachable {reachable}. Automatic spoken replies are stopped; manual speak still works."
+
+
+def _spoken_voice_reachable_text(text: str) -> str:
+    normalized = " ".join(str(text or "").split()).strip()
+    if not normalized:
+        return ""
+    ack_key = normalized.rstrip(".!?,").casefold()
+    if ack_key in VOICE_REACHABLE_TINY_ACKS:
+        return ""
+    if len(normalized) <= VOICE_REACHABLE_SPOKEN_REPLY_LIMIT:
+        return normalized
+    sentence_end = -1
+    for marker in (". ", "! ", "? "):
+        index = normalized.find(marker)
+        if 39 <= index <= VOICE_REACHABLE_SPOKEN_REPLY_LIMIT - 1:
+            sentence_end = index + 1
+            break
+    if sentence_end > 0:
+        return f"Summary: {normalized[:sentence_end].strip()}"
+    summary = normalized[: VOICE_REACHABLE_SPOKEN_REPLY_LIMIT - 12].rstrip(" ,;:")
+    return f"Summary: {summary}..."
 
 
 def _tmux_targets_from_settings(settings: dict) -> dict[str, dict[str, str]]:
@@ -285,6 +348,8 @@ class VoiceRuntime:
         self._playback_request_labels: dict[str, str] = {}
         self._playback_request_clients: dict[str, web.WebSocketResponse] = {}
         self._pending_playback_accepts_lock = asyncio.Lock()
+        self._voice_reachable_enabled = VOICE_REACHABLE_DEFAULT_ENABLED
+        self._voice_reachable_lock = asyncio.Lock()
 
     @staticmethod
     def _disable_faster_whisper_vad(stt_settings: dict) -> dict:
@@ -797,6 +862,31 @@ class VoiceRuntime:
             "last_playback_accept_timeout_label": timeout_label if timeout_recent else "",
         }
 
+    async def voice_reachable_status(self) -> dict[str, object]:
+        async with self._voice_reachable_lock:
+            enabled = self._voice_reachable_enabled
+        playback = await self.playback_status()
+        return {
+            "enabled": enabled,
+            "mode": "on" if enabled else "off",
+            "active_voice_client": playback["active_voice_client"],
+            "playback_accept": playback["playback_accept"],
+            "client_status": playback["client_status"],
+            "websocket_status": playback["websocket_status"],
+            "websocket_connected": playback["websocket_connected"],
+        }
+
+    async def set_voice_reachable(self, enabled: bool) -> dict[str, object]:
+        async with self._voice_reachable_lock:
+            self._voice_reachable_enabled = bool(enabled)
+        if not enabled:
+            await self._reject_all_playback_accepts("Voice reachable mode was turned off.")
+        return await self.voice_reachable_status()
+
+    async def voice_reachable_enabled(self) -> bool:
+        async with self._voice_reachable_lock:
+            return self._voice_reachable_enabled
+
     @staticmethod
     def _build_silence_wav(duration_seconds: float, *, sample_rate: int = SILENCE_SAMPLE_RATE) -> bytes:
         frame_count = max(int(round(max(duration_seconds, 0.0) * sample_rate)), 1)
@@ -1063,6 +1153,22 @@ class VoiceRuntime:
             await ws.send_json({"type": "transcript", "text": turn.transcript})
             await ws.send_json({"type": "reply-text", "text": "", "replace": True})
 
+            voice_reachable_command = _voice_reachable_command(turn.transcript)
+            if voice_reachable_command:
+                if voice_reachable_command == "on":
+                    voice_reachable = await self.set_voice_reachable(True)
+                elif voice_reachable_command == "off":
+                    voice_reachable = await self.set_voice_reachable(False)
+                elif voice_reachable_command == "toggle":
+                    voice_reachable = await self.set_voice_reachable(not await self.voice_reachable_enabled())
+                else:
+                    voice_reachable = await self.voice_reachable_status()
+                reply = _format_voice_reachable_status(voice_reachable)
+                await ws.send_json({"type": "voice-reachable", "voice_reachable": voice_reachable})
+                await ws.send_json({"type": "reply-text", "text": reply, "replace": True})
+                await ws.send_json({"status": "idle"})
+                return
+
             if input_source == "tmux":
                 sent = await _send_transcript_to_tmux(
                     turn.transcript,
@@ -1115,31 +1221,53 @@ class VoiceRuntime:
                         _summarize_text(chunk_text),
                     )
                     return
+                if not await self.voice_reachable_enabled():
+                    await ws.send_json({"type": "reply-text", "text": chunk_text, "append": True})
+                    if turn.ttft_seconds is None:
+                        turn.ttft_seconds = time.perf_counter() - reply_started_at
+                    turn.reply_chunks.append(_summarize_text(chunk_text))
+                    LOGGER.info(
+                        "[dim]voice reachable off, automatic speech skipped: %s[/dim]",
+                        _summarize_text(chunk_text),
+                    )
+                    return
+                spoken_chunk_text = _spoken_voice_reachable_text(chunk_text)
+                if not spoken_chunk_text:
+                    await ws.send_json({"type": "reply-text", "text": chunk_text, "append": True})
+                    if turn.ttft_seconds is None:
+                        turn.ttft_seconds = time.perf_counter() - reply_started_at
+                    turn.reply_chunks.append(_summarize_text(chunk_text))
+                    LOGGER.info(
+                        "[dim]tiny automatic speech skipped: %s[/dim]",
+                        _summarize_text(chunk_text),
+                    )
+                    return
                 if self._tts_requires_buffered_reply(settings, speaker_name=reply_speaker):
                     if turn.ttft_seconds is None:
                         turn.ttft_seconds = time.perf_counter() - reply_started_at
                     buffered_reply_text = (
-                        f"{buffered_reply_text} {chunk_text}".strip()
+                        f"{buffered_reply_text} {spoken_chunk_text}".strip()
                         if buffered_reply_text
-                        else chunk_text
+                        else spoken_chunk_text
                     )
+                    await ws.send_json({"type": "reply-text", "text": chunk_text, "append": True})
                     return
                 current_synthesizer, current_audio_mime_type = resolve_chunk_synthesizer(reply_speaker)
                 if turn.ttft_seconds is None:
                     turn.ttft_seconds = time.perf_counter() - reply_started_at
                 tts_started_at = time.perf_counter()
-                audio = await current_synthesizer.synthesize(chunk_text, preset_name=reply_style)
+                audio = await current_synthesizer.synthesize(spoken_chunk_text, preset_name=reply_style)
                 tts_elapsed = time.perf_counter() - tts_started_at
                 turn.total_tts_seconds += tts_elapsed
                 if not audio:
                     return
-                turn.reply_chunks.append(_summarize_text(chunk_text))
+                turn.reply_chunks.append(_summarize_text(spoken_chunk_text))
                 if turn.first_tts_seconds is None:
                     turn.first_tts_seconds = tts_elapsed
                 if not speaking_started:
                     speaking_started = True
                     request_id = uuid.uuid4().hex
-                    await self._remember_playback_request(request_id, chunk_text)
+                    await self._remember_playback_request(request_id, spoken_chunk_text)
                     speaking_payload = {"status": "speaking"}
                     speaking_payload["source"] = "voice_reply"
                     speaking_payload["request_id"] = request_id

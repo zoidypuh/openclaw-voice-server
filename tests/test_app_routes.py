@@ -101,6 +101,45 @@ def test_runtime_state_exposes_voice_client_playback_status():
         "last_playback_accept_timeout_seconds": None,
         "last_playback_accept_timeout_label": "",
     }
+    assert payload["voice_reachable"] == {
+        "enabled": True,
+        "mode": "on",
+        "active_voice_client": False,
+        "playback_accept": False,
+        "client_status": "no_websocket",
+        "websocket_status": "no_websocket",
+        "websocket_connected": False,
+    }
+
+
+def test_runtime_voice_reachable_route_toggles_runtime_state():
+    async def scenario():
+        client = TestClient(TestServer(create_app()))
+        await client.start_server()
+        try:
+            off_response = await client.post(
+                "/api/runtime/voice-reachable",
+                json={"action": "off"},
+            )
+            off_payload = json.loads(await off_response.text())
+            state_response = await client.get("/api/runtime/state")
+            state_payload = json.loads(await state_response.text())
+            on_response = await client.post(
+                "/api/runtime/voice-reachable",
+                json={"enabled": True},
+            )
+            on_payload = json.loads(await on_response.text())
+            return off_response.status, off_payload, state_payload, on_response.status, on_payload
+        finally:
+            await client.close()
+
+    off_status, off_payload, state_payload, on_status, on_payload = asyncio.run(scenario())
+
+    assert off_status == 200
+    assert off_payload["voice_reachable"]["enabled"] is False
+    assert state_payload["voice_reachable"]["mode"] == "off"
+    assert on_status == 200
+    assert on_payload["voice_reachable"]["enabled"] is True
 
 
 def test_legacy_setup_prefixed_setup_state_route_still_works_for_stale_tabs():
