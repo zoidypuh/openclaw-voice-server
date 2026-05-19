@@ -11,6 +11,7 @@ from ..installer import ensure_python_package
 from .base import BaseTranscriber, Transcriber, TranscriptionResult
 from .faster_whisper import FasterWhisperTranscriber
 from .openai_whisper import OpenAIWhisperTranscriber
+from .parakeet import ParakeetTranscriber, normalize_parakeet_endpoint_url
 from .remote_whisper import RemoteWhisperAPITranscriber, normalize_whisper_endpoint_url
 from .xai import XAITranscriber
 
@@ -18,6 +19,7 @@ from .xai import XAITranscriber
 BACKEND_CLASSES = {
     "faster-whisper": FasterWhisperTranscriber,
     "whisper": OpenAIWhisperTranscriber,
+    "parakeet": ParakeetTranscriber,
     "xai": XAITranscriber,
 }
 
@@ -87,6 +89,8 @@ def _build_transcriber(backend_id: str, settings: dict) -> BaseTranscriber:
         kwargs["speech_precheck"] = bool(settings.get("speech_precheck", True))
     if backend_id == "xai":
         kwargs["api_key"] = str(settings.get("xai_api_key") or "").strip()
+    if backend_id == "parakeet":
+        kwargs["endpoint_url"] = normalize_parakeet_endpoint_url(settings.get("parakeet_endpoint_url", ""))
     return transcriber_cls(**kwargs)
 
 
@@ -100,6 +104,7 @@ def validate_stt_selection(settings: dict) -> dict:
     settings["device"] = normalize_stt_device(str(settings.get("device") or "cpu"))
     settings["whisper_endpoint_url"] = normalize_whisper_endpoint_url(settings.get("whisper_endpoint_url", ""))
     settings["whisper_endpoint_model"] = str(settings.get("whisper_endpoint_model") or "").strip()
+    settings["parakeet_endpoint_url"] = normalize_parakeet_endpoint_url(settings.get("parakeet_endpoint_url", ""))
 
     backend_models = settings.get("backend_models") or {}
     settings["backend_models"] = backend_models
@@ -137,6 +142,7 @@ def validate_stt_selection(settings: dict) -> dict:
                 "installed_now": bool(install_result["installed"]),
                 "whisper_endpoint_url": settings["whisper_endpoint_url"] if backend_id == "whisper" else "",
                 "whisper_endpoint_model": settings["whisper_endpoint_model"] if backend_id == "whisper" else "",
+                "parakeet_endpoint_url": settings["parakeet_endpoint_url"] if backend_id == "parakeet" else "",
             }
         )
 

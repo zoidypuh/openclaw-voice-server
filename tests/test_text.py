@@ -17,6 +17,11 @@ def test_should_drop_voice_transcript_keeps_short_words():
     assert should_drop_voice_transcript("quick pause", 0.3) is False
 
 
+def test_should_drop_voice_transcript_honors_min_words():
+    assert should_drop_voice_transcript("one two three", 2.0, min_words=4) is True
+    assert should_drop_voice_transcript("one two three four", 2.0, min_words=4) is False
+
+
 def test_should_drop_voice_transcript_filters_known_noise_phrases():
     assert should_drop_voice_transcript("Vielen Dank", 0.2, min_duration=0.5) is True
     assert should_drop_voice_transcript("what time is it", 1.2) is False

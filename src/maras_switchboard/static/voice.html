@@ -1030,6 +1030,7 @@ const BARGE_IN_MAX_MS = 1600;
 const BARGE_IN_ARM_CONFIDENCE = 0.32;
 const BARGE_IN_READY_CONFIDENCE = 0.78;
 const BARGE_IN_CONFIDENCE_MAX = 1.25;
+const BARGE_IN_THRESHOLD_GAIN = 1.2;
 const APPLE_PLAYBACK_NO_BARGE_IN_MS = 1000;
 const APPLE_BARGE_IN_MIN_SPEECH_MS = 220;
 const APPLE_BARGE_IN_SILENCE_MS = 220;
@@ -1531,6 +1532,15 @@ function updateBargeInConfidence(displayedLevel, speechLike, thresholdDb, frameM
     bargeInConfidenceQualified = true;
   }
   return bargeInConfidence;
+}
+
+function resolveBargeInThresholdDb() {
+  return clampNumber(
+    tuning.inputThresholdDb + gainMultiplierToDb(BARGE_IN_THRESHOLD_GAIN),
+    LEVEL_DB_FLOOR,
+    LEVEL_DB_CEILING,
+    tuning.inputThresholdDb,
+  );
 }
 
 function loadTuning() {
@@ -3404,7 +3414,7 @@ function maybeCaptureBargeInProbe(pcm, displayedLevel, speechLike, frameMs, now)
   }
 
   const allowFreeformBargeIn = allowsFreeformBargeIn();
-  const bargeThreshold = tuning.inputThresholdDb;
+  const bargeThreshold = resolveBargeInThresholdDb();
   const requiredBargeInSpeechMs = allowFreeformBargeIn ? BARGE_IN_MIN_SPEECH_MS : APPLE_BARGE_IN_MIN_SPEECH_MS;
   const requiredBargeInSilenceMs = allowFreeformBargeIn ? BARGE_IN_SILENCE_MS : APPLE_BARGE_IN_SILENCE_MS;
   const allowedBargeInMaxMs = allowFreeformBargeIn ? BARGE_IN_MAX_MS : APPLE_BARGE_IN_MAX_MS;

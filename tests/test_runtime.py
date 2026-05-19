@@ -570,6 +570,7 @@ def test_handle_ws_logs_human_readable_turn_timing(monkeypatch, caplog):
 
 def test_handle_ws_logs_vad_ignored_noise(monkeypatch, caplog):
     FakeWebSocketResponse.created.clear()
+    filter_calls = []
 
     class FakeTranscriber:
         def transcribe(self, audio_bytes):
@@ -587,14 +588,24 @@ def test_handle_ws_logs_vad_ignored_noise(monkeypatch, caplog):
             if False:  # pragma: no cover - keeps this as an async generator
                 yield ""
 
+    class FilterStore(FakeStore):
+        def load_runtime_settings(self):
+            settings = super().load_runtime_settings()
+            settings["audio"] = {"min_speech_ms": 350, "min_transcript_words": 4}
+            return settings
+
+    def fake_should_drop_voice_transcript(*args, **kwargs):
+        filter_calls.append((args, kwargs))
+        return True
+
     monkeypatch.setattr(runtime_module, "build_transcriber", lambda settings: FakeTranscriber())
     monkeypatch.setattr(runtime_module, "build_synthesizer", lambda tts, secrets: FakeSynthesizer())
     monkeypatch.setattr(runtime_module, "DirectGatewayClient", lambda **kwargs: FakeGateway())
     monkeypatch.setattr(runtime_module.web, "WebSocketResponse", FakeWebSocketResponse)
-    monkeypatch.setattr(runtime_module, "should_drop_voice_transcript", lambda *args, **kwargs: True)
+    monkeypatch.setattr(runtime_module, "should_drop_voice_transcript", fake_should_drop_voice_transcript)
 
     async def scenario():
-        runtime = VoiceRuntime(FakeStore())
+        runtime = VoiceRuntime(FilterStore())
         handler_task = asyncio.create_task(runtime.handle_ws(object()))
 
         while not FakeWebSocketResponse.created:
@@ -611,6 +622,7 @@ def test_handle_ws_logs_vad_ignored_noise(monkeypatch, caplog):
         asyncio.run(scenario())
 
     assert "dropped: hmm" in caplog.text
+    assert filter_calls[-1][1]["min_words"] == 4
 
 
 def test_speak_text_pushes_server_side_audio_to_active_client(monkeypatch):

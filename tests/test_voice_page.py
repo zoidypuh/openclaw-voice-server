@@ -41,12 +41,15 @@ def test_voice_html_uses_echo_controls_and_apple_specific_barge_in_guard():
     assert "const APPLE_BARGE_IN_MIN_SPEECH_MS = 220;" in voice_html
     assert "const BARGE_IN_ARM_CONFIDENCE = 0.32;" in voice_html
     assert "const BARGE_IN_READY_CONFIDENCE = 0.78;" in voice_html
+    assert "const BARGE_IN_THRESHOLD_GAIN = 1.2;" in voice_html
     assert "let bargeInConfidence = 0;" in voice_html
     assert "let bargeInConfidenceQualified = false;" in voice_html
     assert "function allowsFreeformBargeIn()" in voice_html
     assert "return interruptMode === 'hotkey-only';" in voice_html
     assert "&& allowsFreeformBargeIn()" in voice_html
     assert "function updateBargeInConfidence(displayedLevel, speechLike, thresholdDb, frameMs) {" in voice_html
+    assert "function resolveBargeInThresholdDb() {" in voice_html
+    assert "tuning.inputThresholdDb + gainMultiplierToDb(BARGE_IN_THRESHOLD_GAIN)" in voice_html
     assert "bargeInConfidenceQualified = true;" in voice_html
     assert "if (!bargeInPending && confidence >= BARGE_IN_ARM_CONFIDENCE) {" in voice_html
     assert "if (!bargeInConfidenceQualified && totalMs >= allowedBargeInMaxMs) {" in voice_html

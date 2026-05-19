@@ -1,5 +1,7 @@
 # Mara's Switchboard
 
+> Deprecated: this repo is now legacy/reference code. Use **Mara Duplex WebGPU** at `C:\Users\gisma\maras-duplex-webgpu` for the current Mara voice app. New Mara voice work and reply hooks should target the Duplex relay at `http://127.0.0.1:8768/api/mara-reply`, not this older web voice server on `http://127.0.0.1:8765`.
+
 ![Mara's Switchboard voice runtime screenshot](image.png)
 
 `maras-switchboard` is a local voice frontend for text agents. It gives you a browser setup page at `/setup`, a voice UI at `/voice`, local or remote STT, multiple TTS backends, per-profile voice routing, typed fallback input, and an optional Windows tray client.

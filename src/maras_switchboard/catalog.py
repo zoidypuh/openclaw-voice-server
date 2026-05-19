@@ -108,6 +108,16 @@ SUPPORTED_STT_BACKENDS = {
             "xai-stt",
         ],
     },
+    "parakeet": {
+        "id": "parakeet",
+        "label": "Parakeet local STT",
+        "package": None,
+        "import_name": None,
+        "default_model": "nvidia/parakeet-tdt-0.6b-v3",
+        "models": [
+            "nvidia/parakeet-tdt-0.6b-v3",
+        ],
+    },
 }
 
 SUPPORTED_TTS_PROVIDERS = {
@@ -189,6 +199,7 @@ ENV_TO_CONFIG = {
     "MARAS_SWITCHBOARD_WHISPER_DEVICE": ("stt", "device"),
     "MARAS_SWITCHBOARD_WHISPER_COMPUTE_TYPE": ("stt", "compute_type"),
     "MARAS_SWITCHBOARD_WHISPER_LANG": ("stt", "language"),
+    "MARAS_SWITCHBOARD_PARAKEET_ENDPOINT_URL": ("stt", "parakeet_endpoint_url"),
     "MARAS_SWITCHBOARD_ELEVENLABS_VOICE_ID": ("tts", "elevenlabs_voice_id"),
     "MARAS_SWITCHBOARD_ELEVENLABS_MODEL": ("tts", "elevenlabs_model"),
     "MARAS_SWITCHBOARD_CHATTERBOX_PYTHON_PATH": ("tts", "chatterbox_python_path"),
@@ -247,10 +258,12 @@ DEFAULT_CONFIG = {
         "compute_type": "float16",
         "whisper_endpoint_url": "",
         "whisper_endpoint_model": "",
+        "parakeet_endpoint_url": "http://127.0.0.1:18765",
         "backend_models": {
             "faster-whisper": "large-v3",
             "whisper": "large",
             "xai": "xai-stt",
+            "parakeet": "nvidia/parakeet-tdt-0.6b-v3",
         },
     },
     "tts": {
@@ -288,6 +301,7 @@ DEFAULT_CONFIG = {
         "silence_threshold": 0.015,
         "silence_ms": 900,
         "min_speech_ms": 350,
+        "min_transcript_words": 4,
     },
     "tmux": {
         "selected_target": "main-codex",

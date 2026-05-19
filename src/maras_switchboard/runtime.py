@@ -1442,15 +1442,26 @@ class VoiceRuntime:
                 return
             audio_settings = settings.get("audio", {})
             min_duration = max(float(audio_settings.get("min_speech_ms", 350) or 350) / 1000.0, 0.0)
-            if should_drop_voice_transcript(text, duration, min_duration=min_duration):
+            try:
+                min_words = int(audio_settings.get("min_transcript_words", 1) or 1)
+            except (TypeError, ValueError):
+                min_words = 1
+            min_words = max(min_words, 1)
+            if should_drop_voice_transcript(
+                text,
+                duration,
+                min_duration=min_duration,
+                min_words=min_words,
+            ):
                 LOGGER.debug(
-                    "[%s] dropped: %s turn dropped state=filtered committed_at=%s transcribed_at=%s target=%s speech=%s",
+                    "[%s] dropped: %s turn dropped state=filtered committed_at=%s transcribed_at=%s target=%s speech=%s min_words=%s",
                     turn.turn_id,
                     _summarize_text(text),
                     _format_wall_time(committed_at),
                     _format_wall_time(transcribed_at),
                     tmux_target or "-",
                     _format_elapsed(duration),
+                    min_words,
                 )
                 await ws.send_json({"status": "idle"})
                 return
